@@ -3,6 +3,7 @@ hosting.md
 
 # ─── macOS launcher & launchd service ───
 _local-launch-command.command
+_local-launch.command
 com.colesurfs.server.plist
 com.colesurfs.autopull.plist
 
