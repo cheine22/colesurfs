@@ -1,0 +1,3475 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>colesurfs</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="colesurfs"/>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <!-- Leaflet core -->
+  <link  rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- leaflet-rotate — proper bearing rotation of map view -->
+  <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+       Hue Mac — Terminal × Obsidian palette, JetBrains Mono
+    ═══════════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* ── Dark mode (default) ─── */
+      --bg0:        #0d0d0f;
+      --bg1:        #131316;
+      --bg2:        #1a1a1f;
+      --bg3:        #222228;
+      --border0:    #1e1e24;
+      --border1:    #2e2e38;
+      --border2:    #3e3e4e;
+      --text0:      #e8e8f0;
+      --text1:      #a0a0b8;
+      --text2:      #606075;
+      --text3:      #404055;
+      --accent:     #7c6af7;
+      --accent-glow:#7c6af733;
+      --green:      #3fb950;
+      --green-dim:  #1a4a22;
+      --amber:      #d29922;
+      --red:        #f85149;
+      --font:       'JetBrains Mono', 'Fira Code', monospace;
+      /* ── Theme-specific ─── */
+      --map-bg:     #090910;
+      --cell-border:#ffffff0a;
+    }
+
+    /* ── Light mode — Obsidian-inspired clean palette ── */
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) {
+        --bg0:        #f6f6f7;
+        --bg1:        #ffffff;
+        --bg2:        #fafafa;
+        --bg3:        #f0f0f2;
+        --border0:    #e5e5e8;
+        --border1:    #d0d0d6;
+        --border2:    #b0b0bc;
+        --text0:      #1e1e21;
+        --text1:      #484860;
+        --text2:      #72728a;
+        --text3:      #a0a0ae;
+        --green-dim:  #ddf4e2;
+        --accent-glow:#7c6af718;
+        --map-bg:     #e8eaef;
+        --cell-border:#00000012;
+      }
+    }
+    /* ── Light mode — forced via toggle ── */
+    html[data-theme="light"] {
+      --bg0:        #f6f6f7;
+      --bg1:        #ffffff;
+      --bg2:        #fafafa;
+      --bg3:        #f0f0f2;
+      --border0:    #e5e5e8;
+      --border1:    #d0d0d6;
+      --border2:    #b0b0bc;
+      --text0:      #1e1e21;
+      --text1:      #484860;
+      --text2:      #72728a;
+      --text3:      #a0a0ae;
+      --green-dim:  #ddf4e2;
+      --accent-glow:#7c6af718;
+      --map-bg:     #e8eaef;
+      --cell-border:#00000012;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--bg0);
+      color: var(--text0);
+      font-family: var(--font);
+      font-size: 13px;
+    }
+
+    /* ─── Header ─────────────────────────────────────────── */
+    .app-header {
+      position: sticky; top: 0; z-index: 200;
+      background: var(--bg1); border-bottom: 1px solid var(--border0);
+      padding: 0 24px; height: 44px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-logo { font-size: 14px; font-weight: 700; letter-spacing: .12em; color: var(--accent); display: inline-flex; align-items: center; gap: 3px; }
+    .header-logo .wave-glyph { font-size: 1.5em; line-height: 1; position: relative; top: -2px; }
+    .header-right { display: flex; align-items: center; gap: 18px; }
+    .live-dot { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text2); }
+    .live-dot::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 5px var(--green);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    #clock { font-size: 10px; color: var(--text2); letter-spacing: .05em; font-variant-numeric: tabular-nums; }
+
+    /* ─── Controls ───────────────────────────────────────── */
+    .controls-bar {
+      position: sticky; top: 44px; z-index: 150;
+      background: var(--bg1); border-bottom: 1px solid var(--border0);
+      padding: 7px 24px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .ctrl-label { font-size: 10px; color: var(--text2); letter-spacing: .08em; text-transform: uppercase; }
+
+    /* Model radio switch */
+    .model-switch {
+      display: flex; border-radius: 6px; overflow: hidden;
+      border: 1px solid var(--border1);
+    }
+    .sw-btn {
+      padding: 4px 16px; border: none;
+      border-right: 1px solid var(--border1);
+      background: var(--bg2); color: var(--text1);
+      font-family: var(--font); font-size: 11px; font-weight: 700;
+      cursor: pointer; letter-spacing: .06em;
+      transition: background .15s, color .15s;
+    }
+    .sw-btn:last-child { border-right: none; }
+    .sw-btn.active.EURO { background: var(--accent-glow); color: var(--accent); }
+    .sw-btn.active.GFS  { background: var(--green-dim);   color: var(--green);  }
+
+    .sep { width: 1px; height: 18px; background: var(--border0); }
+    .pill-group { display: flex; gap: 3px; }
+    .pill {
+      padding: 3px 11px; border-radius: 100px;
+      border: 1px solid var(--border1); background: var(--bg2);
+      color: var(--text1); font-family: var(--font); font-size: 10px; font-weight: 500;
+      cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+    }
+    .pill:hover { border-color: var(--border2); color: var(--text0); }
+    .pill.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); }
+    .btn-refresh {
+      padding: 3px 12px; border-radius: 5px;
+      border: 1px solid var(--border1); background: var(--bg3);
+      color: var(--text1); font-family: var(--font); font-size: 10px;
+      cursor: pointer; transition: border-color .15s, color .15s;
+    }
+    .btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+    .status-bar {
+      margin-left: auto; display: flex; align-items: center; gap: 10px;
+    }
+    .status-tag {
+      font-size: 8.5px; letter-spacing: .04em; color: var(--text2);
+      font-family: var(--font);
+    }
+    .status-tag b { font-weight: 600; color: var(--text1); }
+
+    /* ─── Content ─────────────────────────────────────────── */
+    .content { padding: 16px 24px 56px; display: flex; flex-direction: column; gap: 14px; }
+    .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .section-label { font-size: 10px; color: var(--text2); letter-spacing: .08em; text-transform: uppercase; }
+
+    /* ─── Wind Map ────────────────────────────────────────── */
+    #wind-time-display { font-size: 10px; color: var(--accent); letter-spacing: .04em; }
+    .map-time-overlay {
+      display: none;
+      font-size: 11px; color: var(--accent); letter-spacing: .04em;
+      font-family: var(--font); font-weight: 600;
+      background: var(--bg1); padding: 4px 9px; border-radius: 5px;
+      border: 1px solid var(--border1); pointer-events: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,.35);
+      white-space: nowrap;
+    }
+    body.sbs .map-time-overlay { display: block; }
+    .map-wrapper {
+      width: 100%; height: 420px;
+      border-radius: 8px; border: 1px solid var(--border1);
+      overflow: visible; background: var(--map-bg);
+    }
+    #map {
+      width: 100%; height: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--map-bg) !important;
+    }
+
+    /* ─── Wind speed scale ────────────────────────────────── */
+    .map-section { position: relative; }
+    .wind-speed-scale {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      position: absolute; bottom: 10px; right: 10px; z-index: 600;
+      background: none; padding: 0;
+      border: none; border-radius: 0;
+      pointer-events: none;
+    }
+    .wind-speed-scale .wss-label:first-child { display: none; }
+    .wss-label { font-size: 9px; color: var(--text2); letter-spacing: .07em; text-transform: uppercase; }
+    .wss-band {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 2px 8px; border-radius: 100px;
+      font-size: 9px; font-weight: 600; letter-spacing: .04em;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    /* ─── Table ───────────────────────────────────────────── */
+    .table-scroll { width: 100%; overflow-x: auto;
+      scrollbar-width: thin; scrollbar-color: var(--border2) var(--bg0);
+      border-radius: 8px; border: 1px solid var(--border1); }
+    .table-scroll::-webkit-scrollbar,
+    body.sbs .table-section::-webkit-scrollbar { width: 5px; height: 5px; }
+    .table-scroll::-webkit-scrollbar-track,
+    body.sbs .table-section::-webkit-scrollbar-track { background: var(--bg0); }
+    .table-scroll::-webkit-scrollbar-thumb,
+    body.sbs .table-section::-webkit-scrollbar-thumb {
+      background: var(--border2); border-radius: 3px; }
+    .table-scroll::-webkit-scrollbar-thumb:hover,
+    body.sbs .table-section::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+    body.sbs .table-section {
+      scrollbar-width: thin; scrollbar-color: var(--border2) var(--bg0); }
+    .legend { display: flex; gap: 5px; flex-wrap: wrap; }
+    .legend-pill {
+      padding: 2px 9px; border-radius: 100px;
+      font-size: 9px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+    /* Light-mode: add subtle border so pills/bands don't dissolve into the bg */
+    html[data-theme="light"] .legend-pill,
+    html[data-theme="light"] .wss-band { border-color: rgba(0,0,0,.12); }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) .legend-pill,
+      html:not([data-theme="dark"]) .wss-band { border-color: rgba(0,0,0,.12); }
+    }
+
+    .swell-table {
+      border-collapse: separate; border-spacing: 0;
+      white-space: nowrap; font-size: 11px; min-width: 100%;
+    }
+    .swell-table th {
+      padding: 4px 6px; background: var(--bg1);
+      color: var(--text2); font-size: 8.5px; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase;
+      border-bottom: 2px solid var(--border1); border-right: 1px solid var(--border0);
+      position: sticky; top: 0; z-index: 20;
+    }
+    th.th-spot { position: sticky; left: 0; top: 0; z-index: 40; min-width: 120px; background: var(--bg1); }
+    th.th-buoy {
+      background: var(--bg2); color: var(--text1);
+      border-left: 1px solid var(--border1); min-width: 80px; text-align: center;
+    }
+    th.th-time { text-align: center; min-width: 66px; }
+    th.th-time.col-empty { min-width: 24px; width: 24px; padding: 4px 2px; }
+    td.cell.col-empty    { min-width: 24px; }
+
+    td.spot-cell {
+      position: sticky; left: 0; z-index: 5; background: var(--bg1);
+      min-width: 120px; padding: 0 8px;
+      font-size: 10px; font-weight: 600; color: var(--text0);
+      border-right: 1px solid var(--border0); border-bottom: 1px solid var(--border0);
+      vertical-align: middle; line-height: 1.25;
+    }
+    tr:hover td.spot-cell { background: var(--bg2); }
+
+    td.cell {
+      padding: 0; min-width: 66px; height: 46px;
+      border-right: 1px solid var(--cell-border);
+      border-bottom: 1px solid var(--cell-border);
+      vertical-align: top;
+    }
+    td.cell.buoy-col {
+      border-left: 1px solid var(--border1); min-width: 80px;
+    }
+    td.cell.col-active {
+      outline: 1.5px solid var(--accent); outline-offset: -1.5px;
+      position: relative; z-index: 2;
+    }
+
+    .cell-inner {
+      width: 100%; height: 100%; padding: 3px 5px;
+      display: flex; flex-direction: column; gap: 0;
+      justify-content: center;
+    }
+    .comp-line { display: flex; align-items: baseline; gap: 2px; line-height: 1.2; }
+    .comp-line.p1 { font-size: 11px; font-weight: 600; }
+    .comp-line.p2 { font-size: 9.5px; font-weight: 500; opacity: .75; }
+    .comp-line.p3 { font-size: 9.5px; font-weight: 400; opacity: .55; }
+    .c-ht { font-weight: 700; font-variant-numeric: tabular-nums; }
+    /* FIRING / MONSTRO cells — heavier weight across all comp-lines */
+    .cell-emphasis .comp-line.p1 { font-weight: 800; }
+    .cell-emphasis .comp-line.p2 { font-weight: 700; opacity: .88; }
+    .cell-emphasis .comp-line.p3 { font-weight: 600; opacity: .72; }
+    .model-agree {
+      display: inline-block;
+      font-size: 9px; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 1px 6px; border-radius: 3px;
+      margin-top: 3px;
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.18);
+    }
+    html[data-theme="light"] .model-agree,
+    html:not([data-theme="dark"]) .model-agree {
+      background: rgba(0,0,0,.08);
+      border-color: rgba(0,0,0,.1);
+    }
+
+    .null-cell {
+      display: flex; align-items: center; justify-content: center;
+      height: 100%; color: var(--text3); font-size: 10px;
+    }
+
+    tr.spot-sep td { height: 4px; background: var(--bg0); border: none; }
+
+    /* ─── Footer ─────────────────────────────────────────── */
+    .app-footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+      background: var(--bg1); border-top: 1px solid var(--border0);
+      padding: 0 24px; height: 38px;
+      display: flex; align-items: center; justify-content: space-between;
+      user-select: none;
+    }
+    .footer-btns { display: flex; align-items: center; gap: 10px; }
+    .footer-divider { color: var(--text3); font-size: 12px; }
+    .footer-sig {
+      font-size: 10px; letter-spacing: .18em; color: var(--text3);
+      transition: color .2s;
+    }
+    .footer-sig:hover { color: var(--text2); }
+    .footer-sig .sig-accent { color: var(--accent); }
+    .footer-api {
+      font-size: 8.5px; letter-spacing: .04em; color: var(--text3);
+      font-family: var(--font);
+    }
+    .footer-btn {
+      padding: 3px 11px; border: 1px solid var(--border1);
+      border-radius: 5px; background: transparent;
+      color: var(--text3); font-family: var(--font);
+      font-size: 10px; letter-spacing: .1em;
+      cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .footer-btn:hover { color: #e05555; border-color: #e05555; }
+
+    /* Leaflet overrides */
+    .leaflet-container { background: var(--map-bg) !important; }
+    .leaflet-control-attribution { display: none !important; }
+    /* Theme toggle button (reuses footer-btn style) */
+    #theme-btn { min-width: 64px; }
+
+    /* ─── Swell arrow labels ─────────────────────────────── */
+    .swell-arrow-label {
+      font-family: var(--font); font-size: 9px; font-weight: 600;
+      color: var(--text0); background: var(--bg1);
+      padding: 1px 5px; border-radius: 3px;
+      white-space: nowrap; pointer-events: none;
+      transform: translate(5px, -50%);
+      display: inline-block;
+    }
+    .swell-arrow-sec { opacity: 0.65; }
+
+    /* ─── Regional mode ──────────────────────────────────── */
+    .spot-cell.region-active { font-weight: 700; color: var(--text0); }
+    .wind-spot-cell { color: var(--text1); }
+    /* Strip td padding so the <a> can fill the full cell area */
+    td.spot-cell.wind-spot-cell { padding: 0; }
+    .wind-spot-cell a {
+      display: flex; align-items: center;
+      padding: 0 8px; min-height: 46px; width: 100%;
+      color: inherit; text-decoration: none;
+    }
+    .wind-spot-cell a:hover { color: var(--text0); background: var(--bg2); }
+    .region-wind-sep td { padding: 0; }
+    .region-section-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .12em;
+      color: var(--text2); padding: 4px 10px 2px;
+      text-transform: uppercase;
+    }
+    .wind-cell { min-width: 66px; }
+    .wind-cell-inner { padding: 3px 5px; }
+    .wind-line { font-size: 10px; line-height: 1.45; color: var(--text1); white-space: nowrap; }
+    .wind-gust { color: var(--text2); font-size: 9.5px; }
+    .wind-tide { color: var(--accent); font-size: 9.5px; margin-bottom: 2px; border-bottom: 1px solid var(--border0); padding-bottom: 2px; }
+    .wind-tide.tide-null { color: var(--text3); }
+    .wind-cond { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .06em;
+                 text-transform: uppercase; padding: 1px 6px; border-radius: 3px; margin-top: 3px; }
+    td.cell.wind-clean .wind-speed,
+    td.cell.wind-clean .wind-gust  { font-weight: 700; color: var(--text0); }
+
+    /* ─── Night columns ───────────────────────────────────── */
+    th.th-time.night-col { color: var(--text3); }
+    td.cell.night-col    { box-shadow: inset 0 2px 0 0 rgba(100, 80, 200, 0.3); }
+    .night-moon          { display: inline; font-size: inherit; }
+
+    /* Regional wind map labels */
+    .region-wind-label {
+      line-height: 1.4; min-width: 72px;
+    }
+    .wind-gust-line { opacity: 0.72; font-size: 8.5px; }
+
+    /* ─── Map recenter button (Leaflet bottom-left control) ── */
+    .map-recenter-btn {
+      display: block; padding: 4px 9px;
+      background: var(--bg1); color: var(--text1);
+      border: 1px solid var(--border1); border-radius: 5px;
+      font-family: var(--font); font-size: 11px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      transition: color .15s, border-color .15s;
+      box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    }
+    .map-recenter-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .map-overview-btn {
+      display: none; padding: 4px 9px;
+      background: var(--bg1); color: var(--accent);
+      border: 1px solid var(--accent); border-radius: 5px;
+      font-family: var(--font); font-size: 11px; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      transition: color .15s, border-color .15s;
+      box-shadow: 0 1px 4px rgba(0,0,0,.35);
+    }
+    .map-overview-btn.visible { display: block; }
+    .map-overview-btn:hover { color: var(--text1); border-color: var(--text1); }
+
+    /* ─── Loading overlay ────────────────────────────────────── */
+    .loading-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: var(--bg0);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 18px;
+      transition: opacity 0.5s ease;
+    }
+    .loading-overlay.fade-out { opacity: 0; pointer-events: none; }
+    .loading-logo {
+      font-family: var(--font);
+      font-size: 22px;
+      color: var(--text0);
+      letter-spacing: 2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .loading-logo .logo-accent { color: var(--accent); font-size: 1.6em; line-height: 1; }
+    .loading-bar-track {
+      width: 280px; height: 4px;
+      background: var(--bg3);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loading-bar-fill {
+      height: 100%; width: 0%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .loading-pct {
+      font-family: var(--font);
+      font-size: 11px;
+      color: var(--text2);
+      letter-spacing: 1px;
+    }
+    .loading-status {
+      font-family: var(--font);
+      font-size: 10px;
+      color: var(--text3);
+      max-width: 320px;
+      text-align: center;
+    }
+
+    /* ─── Side-by-side mode ──────────────────────────────────── */
+    body.sbs { overflow: hidden; }
+    body.sbs .content {
+      flex-direction: row;
+      align-items: stretch;
+      padding: 0;
+      gap: 0;
+      overflow: hidden;
+      /* height set dynamically by setSbsHeight() */
+    }
+    body.sbs .map-section {
+      order: 2;
+      width: 50%;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 14px 10px 8px;
+      gap: 6px;
+      border-left: 1px solid var(--border0);
+      overflow: hidden;
+    }
+    body.sbs .map-wrapper {
+      flex: 1;
+      min-height: 0;
+      height: auto !important;
+    }
+    body.sbs .table-section {
+      order: 1;
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 10px 10px 10px 14px;
+      overflow: hidden;
+    }
+    body.sbs .table-section .table-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    /* In SBS mode: hide section headers (Swell/Wind labels), show bottom legends */
+    .swell-legend-bottom { display: none; }
+    body.sbs .section-header { display: none; }
+    body.sbs .swell-legend-top { display: none; }
+    body.sbs .swell-legend-bottom {
+      display: flex; gap: 5px; flex-wrap: wrap; align-items: center;
+      margin-top: 6px;
+    }
+    body.sbs .swell-legend-bottom::before {
+      content: 'SWELL'; font-size: 9px; color: var(--text2);
+      letter-spacing: .07em; margin-right: 4px;
+    }
+    body.sbs .wind-speed-scale {
+      position: static;
+      flex-shrink: 0;
+      background: none; padding: 0; border: none;
+      border-radius: 0; pointer-events: auto;
+    }
+    body.sbs .wind-speed-scale .wss-label:first-child { display: none; }
+    body.sbs .wind-speed-scale::before {
+      content: 'WIND'; font-size: 9px; color: var(--text2);
+      letter-spacing: .07em; margin-right: 4px;
+    }
+    /* Active state for side-by-side button */
+    #sbs-btn.sbs-active {
+      color: var(--accent); border-color: var(--accent); background: var(--accent-glow);
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       MOBILE LAYOUT — iPhone 15 Pro (393×852) and similar
+       Breakpoint: 600px width
+    ═══════════════════════════════════════════════════════════ */
+
+    /* Mobile bottom menu bar (hidden on desktop) */
+    .mobile-bottom-bar { display: none; }
+
+    @media (max-width: 600px) {
+      /* Prevent any horizontal overflow on mobile */
+      html, body { overflow-x: hidden !important; max-width: 100vw !important; }
+
+      /* ── Hide desktop controls bar and footer ── */
+      .controls-bar { display: none !important; }
+      .app-footer   { display: none !important; }
+
+      /* ── Header: ultra-compact ── */
+      .app-header {
+        height: 22px;
+        padding: 0 8px;
+        min-height: 0 !important;
+        align-items: flex-start !important;
+        padding-top: 0 !important;
+        line-height: 16px !important;
+      }
+      .header-logo { font-size: 13px; }
+      .header-logo .wave-glyph { font-size: 1.2em; top: 0 !important; }
+      #clock { font-size: 7.5px; }
+      .live-dot { font-size: 7.5px; }
+
+      /* ── Content: vertical stack, fill viewport ── */
+      /* height = viewport − header(22) − scrubber(34) − bottom bar(46) − sig(21) */
+      .content {
+        padding: 0 !important;
+        gap: 0 !important;
+        flex-direction: column !important;
+        height: calc(100vh - 22px - 34px - 46px - 21px) !important;
+        overflow: hidden !important;
+      }
+
+      /* ── Map: fixed 55% of available content height ── */
+      .map-section {
+        flex: 0 0 55% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 0 !important;
+        order: 1 !important;
+        overflow: hidden !important;
+        border-left: none !important;
+      }
+      .map-section .section-header { display: none; }
+      .map-wrapper {
+        height: calc(100% - 6px) !important;
+        border-radius: 8px !important;
+        border: 1px solid var(--border1) !important;
+        margin: 3px 6px !important;
+        max-width: calc(100vw - 12px) !important;
+      }
+      #map { border-radius: 8px !important; }
+
+      /* Wind speed scale: hidden on mobile */
+      .wind-speed-scale { display: none !important; }
+
+      /* ── Table: fill remaining 60% ── */
+      .table-section {
+        flex: 1 1 0% !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        padding: 0 !important;
+        order: 2 !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      .table-section .section-header { display: none; }
+      .swell-legend-top { display: none !important; }
+      .swell-legend-bottom { display: none !important; }
+      .table-scroll {
+        flex: 1 !important;
+        min-height: 0 !important;
+        overflow-x: hidden !important;   /* slider controls horizontal scroll programmatically */
+        overflow-y: auto !important;     /* vertical scroll for spot rows */
+        touch-action: pan-y;             /* block horizontal touch gestures */
+        scrollbar-width: none;           /* Firefox: hide scrollbar */
+        border-radius: 8px !important;
+        border: 1px solid var(--border1) !important;
+        margin: 2px 6px 4px !important;  /* match map left/right inset */
+        max-width: calc(100vw - 12px) !important;
+      }
+      .table-scroll::-webkit-scrollbar { display: none !important; } /* Chrome/Safari: hide scrollbar */
+      /* Only spot-name links are tappable; data cells are inert */
+      .swell-table td.cell { pointer-events: none; }
+      .swell-table td.spot-cell,
+      .swell-table td.wind-spot-cell { pointer-events: auto; }
+
+      /* Table cells for mobile */
+      .swell-table th { padding: 3px 4px; font-size: 8px; letter-spacing: .1em; }
+      .swell-table th { border-bottom-width: 2px; }
+      th.th-spot { min-width: 52px; max-width: 52px; }
+      th.th-time { min-width: 56px; }
+      td.spot-cell {
+        min-width: 52px; max-width: 52px; padding: 0 3px; font-size: 8.5px;
+        white-space: normal !important; word-break: break-word;
+        line-height: 1.2; overflow-wrap: break-word;
+        text-align: center;
+      }
+      td.cell { min-width: 56px; height: 42px; }
+      .comp-line.p1 { font-size: 10px; }
+      .comp-line.p2 { font-size: 9px; }
+      .comp-line.p3 { font-size: 9px; }
+      .c-ht { font-size: inherit; }
+      .cell-inner { padding: 2px 4px; }
+
+      /* Regional mode wind cells */
+      .wind-cell { min-width: 56px; }
+      .wind-cell-inner { padding: 2px 4px; }
+      .wind-line { font-size: 9.5px; }
+      .wind-gust { font-size: 8.5px; }
+      .wind-tide { font-size: 8.5px; }
+      .wind-cond { font-size: 8px; padding: 1px 4px; }
+      .model-agree { font-size: 8px; padding: 1px 4px; }
+      td.spot-cell.wind-spot-cell {
+        padding: 0; min-width: 52px; max-width: 52px;
+        white-space: normal !important; word-break: break-word;
+        overflow-wrap: break-word; text-align: center;
+      }
+      .wind-spot-cell a { padding: 0 3px; min-height: 42px; font-size: 8.5px; line-height: 1.2;
+                          justify-content: center; text-align: center; }
+
+      /* Buoy column */
+      th.th-buoy { min-width: 64px; }
+      td.cell.buoy-col { min-width: 64px; }
+
+      /* ── Time slider bar ── */
+      .mobile-time-scrubber { display: flex !important; }
+      .mobile-time-scrubber {
+        position: fixed;
+        left: 0; right: 0;
+        bottom: calc(46px + 21px);  /* above bottom bar + sig */
+        z-index: 201;
+        height: 34px;
+        background: var(--bg1);
+        border-top: 1px solid var(--border0);
+        align-items: center;
+        padding: 0 14px;
+        gap: 6px;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      /* Current time label (left) */
+      .slider-label {
+        font-size: 9px;
+        font-weight: 700;
+        color: var(--accent);
+        font-family: var(--font);
+        white-space: nowrap;
+        min-width: 48px;
+        text-align: center;
+        letter-spacing: .04em;
+      }
+      /* Track container — extra padding so handle doesn't clip at edges */
+      .slider-track-wrap {
+        flex: 1;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        position: relative;
+        padding: 0 10px;  /* inset so handle stays within bounds */
+      }
+      .slider-track {
+        width: 100%;
+        height: 2px;
+        background: var(--border1);
+        border-radius: 1px;
+        position: relative;
+      }
+      .slider-fill {
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        background: var(--accent);
+        border-radius: 1px;
+        width: 0%;
+        pointer-events: none;
+        opacity: 0.5;
+      }
+      /* Date tick marks on track */
+      .slider-date-tick {
+        position: absolute;
+        top: -2px;
+        width: 1px;
+        height: 6px;
+        background: var(--text3);
+        opacity: 0.5;
+      }
+      .slider-date-label {
+        position: absolute;
+        top: -13px;
+        font-size: 6.5px;
+        font-weight: 600;
+        color: var(--text3);
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        transform: translateX(-50%);
+      }
+      /* Handle / thumb */
+      .slider-handle {
+        position: absolute;
+        top: 50%;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 2px solid var(--bg1);
+        transform: translate(-50%, -50%);
+        cursor: grab;
+        box-shadow: 0 1px 4px rgba(0,0,0,.3);
+        z-index: 2;
+      }
+      .slider-handle:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.15); }
+
+      /* Scrub speed indicator */
+      .scrub-speed-label {
+        font-size: 8px;
+        font-weight: 700;
+        color: var(--accent);
+        font-family: var(--font);
+        letter-spacing: .06em;
+        min-width: 28px;
+        text-align: center;
+        opacity: 0;
+        transition: opacity .15s ease;
+        white-space: nowrap;
+      }
+
+      /* ── Mobile signature line — very bottom of page ── */
+      .mobile-sig {
+        display: flex !important;
+        position: fixed;
+        left: 0; right: 0;
+        bottom: 0;  /* very bottom of screen */
+        z-index: 201;
+        height: 21px;
+        align-items: flex-start !important;
+        padding-top: 1px;
+        justify-content: center;
+        background: var(--bg1);
+      }
+      .mobile-sig-text {
+        font-size: 8px;
+        color: var(--text3);
+        letter-spacing: .08em;
+        font-family: var(--font);
+      }
+      .mobile-sig-text .sig-accent { color: var(--accent); }
+
+      /* ── Mobile bottom bar: above sig ── */
+      .mobile-bottom-bar {
+        display: flex !important;
+        position: fixed;
+        bottom: 21px; left: 0; right: 0;  /* above sig */
+        z-index: 200;
+        height: 46px;
+        background: var(--bg1);
+        border-top: 1px solid var(--border0);
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 14px;
+        gap: 6px;
+      }
+      .mob-section {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .mob-btn {
+        padding: 4px 10px;
+        border-radius: 5px;
+        border: 1px solid var(--border1);
+        background: var(--bg2);
+        color: var(--text1);
+        font-family: var(--font);
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        letter-spacing: .04em;
+        transition: background .15s, color .15s, border-color .15s;
+        white-space: nowrap;
+      }
+      .mob-btn.active {
+        background: var(--accent-glow);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .mob-btn.active-gfs {
+        background: var(--green-dim);
+        border-color: var(--green);
+        color: var(--green);
+      }
+      /* Model run info: stacked, bigger */
+      .mob-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+      }
+      .mob-meta-run {
+        font-size: 9.5px;
+        font-weight: 600;
+        color: var(--text1);
+        letter-spacing: .03em;
+        font-family: var(--font);
+        line-height: 1.2;
+      }
+      .mob-meta-next {
+        font-size: 8px;
+        color: var(--text2);
+        letter-spacing: .03em;
+        font-family: var(--font);
+        line-height: 1.2;
+      }
+      /* Hide old sig inside mob-meta */
+      .mob-meta-sig { display: none !important; }
+
+      /* Leaflet controls: smaller on mobile */
+      .leaflet-control-zoom a {
+        width: 26px !important; height: 26px !important;
+        line-height: 26px !important; font-size: 14px !important;
+      }
+      .map-recenter-btn { font-size: 9px !important; padding: 3px 7px !important; }
+      .map-overview-btn { font-size: 9px !important; padding: 3px 7px !important; }
+
+      /* Map time overlay — match button style */
+      .map-time-overlay {
+        display: block !important;
+        font-size: 9px !important;
+        padding: 3px 7px !important;
+      }
+
+      /* Loading overlay: smaller */
+      .loading-logo { font-size: 18px; }
+      .loading-bar-track { width: 220px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ Loading Overlay ═══════════════════════════════════════ -->
+<div class="loading-overlay" id="loading-overlay">
+  <span class="loading-logo">colesurfs</span>
+  <div class="loading-bar-track">
+    <div class="loading-bar-fill" id="loading-bar-fill"></div>
+  </div>
+  <span class="loading-pct" id="loading-pct">0%</span>
+  <span class="loading-status" id="loading-status">Initializing…</span>
+</div>
+
+<!-- ══ Header ════════════════════════════════════════════════ -->
+<div class="app-header">
+  <span class="header-logo"><span class="wave-glyph">∿</span>colesurfs</span>
+  <div class="header-right">
+    <span class="live-dot">LIVE</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</div>
+
+<!-- ══ Controls ══════════════════════════════════════════════ -->
+<div class="controls-bar">
+  <span class="ctrl-label">Model</span>
+  <div class="model-switch">
+    <button class="sw-btn active EURO" data-model="EURO" onclick="setModel('EURO',this)">EURO</button>
+    <button class="sw-btn GFS"         data-model="GFS"  onclick="setModel('GFS',this)">GFS</button>
+  </div>
+  <div class="sep"></div>
+  <span class="ctrl-label">Resolution</span>
+  <div class="pill-group">
+    <button class="pill"        onclick="setResolution(1,this)">Hourly</button>
+    <button class="pill active" onclick="setResolution(3,this)">3-Hour</button>
+  </div>
+  <div class="status-bar">
+    <span class="status-tag" id="model-run-tag">Run: <b>—</b></span>
+    <button class="btn-refresh" onclick="refreshAll()">↺ Refresh Model Now</button>
+  </div>
+</div>
+
+<!-- ══ Content ═══════════════════════════════════════════════ -->
+<div class="content">
+
+  <!-- Wind Map — full width, above table -->
+  <div class="map-section">
+    <div class="section-header">
+      <span class="section-label">Wind</span>
+      <span id="wind-time-display">NOW</span>
+    </div>
+    <div class="map-wrapper">
+      <div id="map"></div>
+    </div>
+    <!-- Wind speed colour scale — rendered from CFG.wind_bands -->
+    <div class="wind-speed-scale" id="wind-speed-scale">
+      <span class="wss-label">Wind</span>
+      <!-- bands injected by buildWindScale() -->
+      <span class="wss-label">mph</span>
+    </div>
+  </div>
+
+  <!-- Swell Table — 1 row per spot -->
+  <div class="table-section">
+    <div class="section-header">
+      <span class="section-label">Swell</span>
+      <div class="legend swell-legend-top" id="energy-legend"></div>
+    </div>
+    <div class="table-scroll">
+      <table class="swell-table">
+        <thead id="table-head"></thead>
+        <tbody id="table-body">
+          <tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2);font-size:11px">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- Swell legend at bottom for side-by-side mode (mirrors wind scale on map side) -->
+    <div class="legend swell-legend-bottom" id="energy-legend-bottom"></div>
+  </div>
+
+</div>
+
+<!-- ══ Mobile Time Slider (hidden on desktop) ══════════════ -->
+<div class="mobile-time-scrubber" id="mobile-time-scrubber" style="display:none">
+  <div class="slider-label" id="slider-label">—</div>
+  <div class="slider-track-wrap" id="slider-track-wrap">
+    <div class="slider-track" id="slider-track">
+      <div class="slider-fill" id="slider-fill"></div>
+      <!-- date tick marks injected by JS -->
+    </div>
+    <div class="slider-handle" id="slider-handle"></div>
+  </div>
+  <div class="scrub-speed-label" id="scrub-speed-label"></div>
+</div>
+
+<!-- ══ Mobile Signature (hidden on desktop) ═════════════════ -->
+<div class="mobile-sig" id="mobile-sig" style="display:none">
+  <span class="mobile-sig-text">made by cole &amp; claude</span>
+</div>
+
+<!-- ══ Mobile Bottom Bar (hidden on desktop) ════════════════ -->
+<div class="mobile-bottom-bar" id="mobile-bottom-bar">
+  <div class="mob-section">
+    <button class="mob-btn active" id="mob-euro" onclick="setModelMobile('EURO')">EURO</button>
+    <button class="mob-btn"        id="mob-gfs"  onclick="setModelMobile('GFS')">GFS</button>
+  </div>
+  <div class="mob-section">
+    <button class="mob-btn"        id="mob-1hr" onclick="setResMobile(1)">1hr</button>
+    <button class="mob-btn active" id="mob-3hr" onclick="setResMobile(3)">3hr</button>
+  </div>
+  <div class="mob-section">
+    <button class="mob-btn" id="mob-theme" onclick="toggleTheme()">◑</button>
+  </div>
+  <div class="mob-meta">
+    <span class="mob-meta-run" id="mob-run-tag">—</span>
+    <span class="mob-meta-next" id="mob-next-tag"></span>
+  </div>
+</div>
+
+<!-- ══ Footer ════════════════════════════════════════════════ -->
+<footer class="app-footer">
+  <span class="footer-sig">
+    made by cole &amp; claude &nbsp;·&nbsp; 2026
+  </span>
+  <span class="footer-api" id="api-usage-tag">—</span>
+  <div class="footer-btns">
+    <button class="footer-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑ LIGHT</button>
+    <span class="footer-divider">·</span>
+    <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
+  </div>
+</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   colesurfs v3
+   Architecture:
+   ─ WindRenderer: custom canvas particle system. No Leaflet
+     layer lifecycle — canvas appended directly to overlayPane.
+     setData() is fully synchronous: stop→clear→resize→init→
+     start. No internal timers, no zombie layers.
+   ─ WindScheduler: thin 60ms debounce wrapper around
+     WindRenderer.setData(). Prevents rapid-hover races.
+   ─ _requestWind / _resubmitWind: track current wind target
+     so zoom/drag events re-render without recalculating.
+   ─ _displayTime: tracks the user's current time selection
+     so map interactions keep markers + particles in sync.
+════════════════════════════════════════════════════════════ */
+
+// ═══ 0. LOADING PROGRESS ════════════════════════════════════
+const _loader = {
+  _done: 0,
+  _total: 9,   // config, buoys, euro, gfs, wind, regionWind, tides, sunData, windForecast
+  step(label) {
+    this._done = Math.min(this._done + 1, this._total);
+    const pct = Math.round((this._done / this._total) * 100);
+    const fill = document.getElementById('loading-bar-fill');
+    const num  = document.getElementById('loading-pct');
+    const stat = document.getElementById('loading-status');
+    if (fill) fill.style.width = pct + '%';
+    if (num)  num.textContent  = pct + '%';
+    if (stat) stat.textContent = label || '';
+  },
+  finish() {
+    const fill = document.getElementById('loading-bar-fill');
+    const num  = document.getElementById('loading-pct');
+    if (fill) fill.style.width = '100%';
+    if (num)  num.textContent  = '100%';
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+      overlay.classList.add('fade-out');
+      setTimeout(() => overlay.remove(), 600);
+    }
+  }
+};
+
+
+// ═══ 1. GLOBAL STATE ════════════════════════════════════════
+
+let CFG          = null;
+let buoyData     = {};
+let forecastData = {};     // { EURO:{spotName:[...]}, GFS:{spotName:[...]} }
+let windCurrent  = null;   // { u, v, la1, lo1, nx, ny, dx, dy } — "NOW" snapshot
+let windForecast = null;   // full forecast structure from /api/wind_forecast
+let windByTime   = {};     // { timeStr: { u:[], v:[] } }
+let sunData      = {};     // { dateStr: { first_light_ms, last_light_ms } }
+
+let activeModel     = 'EURO';
+let resolution      = 3;
+let hoverTimer      = null;
+
+// Layer groups (owned outside WindScheduler — these are simple Leaflet groups)
+let swellArrowLayer = null;
+let regionWindLayer = null;
+let coastAngleLayer = null;
+
+// Regional mode state
+let regionMode      = null;   // null = overview; string = active buoy spot name
+let regionWindData  = {};     // { spot_name: [{time, speed_mph, ...}] }
+let regionTideData  = {};     // { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, pct} } }
+
+// Side-by-side mode
+let sbsMode = false;
+
+// Tile layer reference (for theme switching)
+let tileLayer = null;
+
+// Diagnostic flag — set true to draw coast-angle lines on map
+const DIAG_COAST_ANGLES = false;
+
+// Light-mode wind color table (index matches CFG.wind_bands)
+const LIGHT_WIND_COLORS = [
+  ['#ececf0', '#606074'],
+  ['#d8d4f5', '#4030c0'],
+  ['#c6eacc', '#14702a'],
+  ['#f2e2b4', '#7a5510'],
+  ['#f5cfcf', '#b01515'],
+];
+
+
+// ═══ 2. CLOCK ═══════════════════════════════════════════════
+
+(function tick() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-US',
+      { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  setTimeout(tick, 1000);
+})();
+
+
+// ═══ 3. THEME HELPERS ═══════════════════════════════════════
+
+function _isDark() {
+  return document.documentElement.getAttribute('data-theme') !== 'light';
+}
+
+function _tileUrl() {
+  return _isDark()
+    ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
+}
+
+function _colorScale() {
+  return _isDark()
+    ? ['#1a1a2e','#2e2e4e','#4a3faa','#7c6af7','#3fb950','#d29922','#f85149']
+    : ['#5a6898','#4a50a0','#4a3faa','#7c6af7','#3fb950','#d29922','#f85149'];
+}
+
+
+// ═══ 4. WIND RENDERER ═══════════════════════════════════════
+// Custom canvas particle system. Replaces leaflet-velocity
+// entirely. Canvas lives directly in overlayPane — no Leaflet
+// layer lifecycle, no internal timers, no zombie states.
+//
+// Public API:
+//   init(map)           — create canvas, register with map
+//   setData(u, v, grid) — synchronous: stop→clear→resize→start
+//   setColors(arr)      — update color scale (call on theme change)
+//   stop()              — halt animation + clear canvas
+//   reset()             — halt + clear + discard data
+
+const WindRenderer = (() => {
+  const MAX_AGE   = 180;
+  const FADE      = 0.96;
+  const VEL_SCALE = 0.008;
+  const PART_MUL  = 0.0018;
+  const LINE_W    = 1.6;
+  const MAX_VEL   = 20;   // m/s — both grid and spot data use m/s
+
+  let _map  = null, _canvas = null, _ctx = null;
+  let _W = 0, _H = 0;
+  let _particles = [], _animId = null, _running = false;
+  let _ready = false;
+  let _colors = [];
+
+  // Grid mode state (overview)
+  let _uData = null, _vData = null, _grid = null;
+
+  // Spot mode state (regional) — [{lat, lon, u, v}] in m/s
+  // Particles use inverse-distance-squared (IDW) interpolation from these points,
+  // which are derived from the same regionWindData records shown in the table.
+  let _spots = null;
+
+  // Layer-point origin of the canvas — set in _resize().
+  // Canvas pixel (px, py) maps to layer point (_origin.x + px, _origin.y + py).
+  let _origin = { x: 0, y: 0 };
+  // True when the canvas covers the full grid extent (pan needs no restart).
+  // False when we fell back to viewport-sized (moveend must restart).
+  let _fullExtent = false;
+
+  // ── Public ────────────────────────────────────────────────
+
+  function init(leafletMap) {
+    _map = leafletMap;
+    _canvas = document.createElement('canvas');
+    // Place canvas in the OVERLAY PANE so Leaflet applies its CSS transform
+    // during pan/zoom — the canvas moves with the map tiles automatically.
+    _canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:450;';
+    _map.getPane('overlayPane').appendChild(_canvas);
+    _ctx = _canvas.getContext('2d');
+    _resize();
+  }
+
+  // Grid mode — used in overview.
+  // Always does a full restart: stop → clear → resize → init → start.
+  function setData(uData, vData, grid) {
+    _stop();
+    _spots = null; _spotBox = null;
+    _uData = uData; _vData = vData; _grid = grid;
+    _ready = !!(uData && vData && grid && uData.length > 0);
+    _clear();
+    if (_ready) { _resize(); _initParticles(); _start(); }
+  }
+
+  // Spot mode — used in regional view. spots = [{lat, lon, u, v}] in m/s.
+  // Always does a full restart so particles reflect the new data and canvas position.
+  function setSpotData(spots) {
+    const newSpots = (spots && spots.length) ? spots : null;
+    _stop();
+    _uData = null; _vData = null; _grid = null;
+    _spots = newSpots;
+    _ready = !!_spots;
+    _clear();
+    _computeSpotBox();
+    if (_ready) { _resize(); _initParticles(); _start(); }
+  }
+
+  function setColors(colors) {
+    _colors = colors || [];
+  }
+
+  // Stop animation and clear canvas (call on zoomstart).
+  function stop() {
+    _stop();
+    _clear();
+  }
+
+  // Stop, clear, and discard all data (call on refresh / theme change / mode exit).
+  function reset() {
+    _stop();
+    _clear();
+    _uData = null; _vData = null; _grid = null; _spots = null; _spotBox = null; _ready = false;
+  }
+
+  // ── Private ───────────────────────────────────────────────
+
+  function _resize() {
+    if (!_map || !_canvas) return;
+
+    // In grid mode, try to size the canvas to cover the ENTIRE wind-data extent
+    // so particles exist everywhere and panning is fully seamless.
+    // If the extent is too large at the current zoom (> MAX_DIM pixels), fall
+    // back to viewport-based sizing — moveend will restart to cover new areas.
+    const MAX_DIM = 4096;
+    let topLeft, w, h;
+    _fullExtent = false;
+
+    if (_grid) {
+      const { la1, lo1, nx, ny, dx, dy } = _grid;
+      const southLat = la1 - (ny - 1) * dy;
+      const eastLon  = lo1 + (nx - 1) * dx;
+      const nw = _map.latLngToLayerPoint([la1, lo1]);
+      const se = _map.latLngToLayerPoint([southLat, eastLon]);
+      const PAD = 40;
+      const gw = (se.x - nw.x) + PAD * 2;
+      const gh = (se.y - nw.y) + PAD * 2;
+
+      if (gw <= MAX_DIM && gh <= MAX_DIM) {
+        // Full extent fits — use it for seamless panning
+        topLeft = L.point(nw.x - PAD, nw.y - PAD);
+        w = gw;
+        h = gh;
+        _fullExtent = true;
+      }
+    }
+
+    if (!_fullExtent) {
+      // Viewport-based sizing (spot mode, no data, or grid too large at this zoom)
+      const size = _map.getSize();
+      topLeft = _map.containerPointToLayerPoint([0, 0]);
+      w = size.x;
+      h = size.y;
+    }
+
+    _W = Math.round(w);
+    _H = Math.round(h);
+    const dpr = window.devicePixelRatio || 1;
+    _canvas.width  = Math.round(_W * dpr);
+    _canvas.height = Math.round(_H * dpr);
+    _canvas.style.width  = _W + 'px';
+    _canvas.style.height = _H + 'px';
+    L.DomUtil.setPosition(_canvas, topLeft);
+    _origin = { x: topLeft.x, y: topLeft.y };
+    _ctx = _canvas.getContext('2d');
+    _ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function _clear() {
+    if (_ctx && _W && _H) _ctx.clearRect(0, 0, _W, _H);
+  }
+
+  function _stop() {
+    _running = false;
+    if (_animId !== null) { cancelAnimationFrame(_animId); _animId = null; }
+  }
+
+  function _start() {
+    if (_running || !_ready) return;
+    _running = true;
+    const loop = () => {
+      if (!_running) return;
+      _step();
+      _animId = requestAnimationFrame(loop);
+    };
+    _animId = requestAnimationFrame(loop);
+  }
+
+  function _initParticles() {
+    // Use full canvas area for particle count so density is uniform everywhere.
+    // The full-extent canvas is typically only ~2–4× the viewport at normal zoom,
+    // so performance is fine.  Cap at 25 000 particles as an absolute safety net.
+    const n = Math.min(Math.round(_W * _H * PART_MUL), 25000);
+    _particles = Array.from({ length: n }, () => ({
+      x: Math.random() * _W,
+      y: Math.random() * _H,
+      age: Math.floor(Math.random() * MAX_AGE),
+    }));
+  }
+
+  function _step() {
+    if (!_ctx || !_W || !_H) return;
+
+    const dpr   = window.devicePixelRatio || 1;
+    _ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    _ctx.save();
+    _ctx.globalCompositeOperation = 'destination-in';
+    _ctx.globalAlpha = FADE;
+    _ctx.fillRect(0, 0, _W, _H);
+    _ctx.restore();
+    // Use viewport size (not canvas size) for velocity scaling so particles
+    // move at the same visual speed regardless of canvas extent.
+    const vp    = _map ? _map.getSize() : { x: _W, y: _H };
+    const scale = VEL_SCALE * Math.pow(dpr, 1 / 3) * (vp.x + vp.y) / 200;
+
+    _ctx.lineWidth = LINE_W;
+
+    for (const p of _particles) {
+      const wind = _interpolate(p.x, p.y);
+      if (!wind || wind.speed < 0.01) { _resetParticle(p); continue; }
+
+      const nx = p.x + wind.u * scale;
+      const ny = p.y - wind.v * scale;   // v is northward → y decreases
+
+      _ctx.beginPath();
+      _ctx.strokeStyle = _speedToColor(wind.speed);
+      _ctx.globalAlpha = Math.min(p.age / 20, 0.9);
+      _ctx.moveTo(p.x, p.y);
+      _ctx.lineTo(nx, ny);
+      _ctx.stroke();
+
+      p.x = nx; p.y = ny; p.age++;
+      if (p.age > MAX_AGE || nx < -1 || nx > _W + 1 || ny < -1 || ny > _H + 1) {
+        _resetParticle(p);
+      }
+    }
+    _ctx.globalAlpha = 1;
+  }
+
+  // Cached bounding box for spot-mode particle spawning (recomputed in setSpotData).
+  let _spotBox = null;   // {x0, y0, x1, y1} in container px, or null
+
+  function _computeSpotBox() {
+    if (!_spots || !_spots.length || !_map) { _spotBox = null; return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const s of _spots) {
+      // Convert lat/lng → layer point → canvas pixel
+      const lp = _map.latLngToLayerPoint([s.lat, s.lon]);
+      const cx = lp.x - _origin.x, cy = lp.y - _origin.y;
+      if (cx < minX) minX = cx;
+      if (cx > maxX) maxX = cx;
+      if (cy < minY) minY = cy;
+      if (cy > maxY) maxY = cy;
+    }
+    // Generous padding so particles have room to flow — at least ±150 px
+    const pad = Math.max(150, (maxX - minX + maxY - minY) * 0.6);
+    _spotBox = {
+      x0: minX - pad, y0: minY - pad,
+      x1: maxX + pad, y1: maxY + pad,
+    };
+  }
+
+  function _resetParticle(p) {
+    // In spot mode, spawn particles within the observation cluster's bounding box
+    // so they don't land in dead zones (outside the IDW cutoff) and flicker.
+    if (_spotBox) {
+      p.x = _spotBox.x0 + Math.random() * (_spotBox.x1 - _spotBox.x0);
+      p.y = _spotBox.y0 + Math.random() * (_spotBox.y1 - _spotBox.y0);
+    } else {
+      p.x = Math.random() * _W;
+      p.y = Math.random() * _H;
+    }
+    p.age = 0;
+  }
+
+  // Dispatch to the correct interpolation method based on active mode.
+  function _interpolate(px, py) {
+    if (_spots) return _interpolateSpots(px, py);
+    return _interpolateGrid(px, py);
+  }
+
+  // Bilinear interpolation over the coarse global grid (overview mode).
+  function _interpolateGrid(px, py) {
+    if (!_uData || !_vData || !_grid || !_map) return null;
+    try {
+      // Canvas pixel (px,py) → layer point → lat/lng
+      const ll = _map.layerPointToLatLng(L.point(_origin.x + px, _origin.y + py));
+      const { la1, lo1, nx, ny, dx, dy } = _grid;
+      const fi = (la1 - ll.lat) / dy;
+      const fj = (ll.lng  - lo1) / dx;
+      if (fi < 0 || fi > ny - 1 || fj < 0 || fj > nx - 1) return null;
+      const i0 = Math.min(Math.floor(fi), ny - 2), i1 = i0 + 1;
+      const j0 = Math.min(Math.floor(fj), nx - 2), j1 = j0 + 1;
+      const di  = fi - i0, dj = fj - j0;
+      const idx = (r, c) => r * nx + c;
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const u = lerp(
+        lerp(_uData[idx(i0, j0)] || 0, _uData[idx(i0, j1)] || 0, dj),
+        lerp(_uData[idx(i1, j0)] || 0, _uData[idx(i1, j1)] || 0, dj), di);
+      const v = lerp(
+        lerp(_vData[idx(i0, j0)] || 0, _vData[idx(i0, j1)] || 0, dj),
+        lerp(_vData[idx(i1, j0)] || 0, _vData[idx(i1, j1)] || 0, dj), di);
+      return { u, v, speed: Math.sqrt(u * u + v * v) };
+    } catch (_) { return null; }
+  }
+
+  // Inverse-distance-squared (IDW) interpolation from point observations (regional mode).
+  // Uses exactly the same records as the wind markers, so particles always agree with
+  // the table.  Direction convention: speed_mph + direction_deg (FROM) → u/v in m/s.
+  // MAX_IDW_DEG: if nearest spot is farther than this many degrees, return null so
+  // particles outside the region simply reset instead of showing extrapolated wind.
+  const MAX_IDW_DEG = 1.5;   // ~100 mi — generous enough for any regional cluster
+  function _interpolateSpots(px, py) {
+    if (!_spots || !_map) return null;
+    try {
+      // Canvas pixel (px,py) → layer point → lat/lng
+      const ll = _map.layerPointToLatLng(L.point(_origin.x + px, _origin.y + py));
+      let sumWU = 0, sumWV = 0, sumW = 0;
+      let minD2 = Infinity;
+      for (const s of _spots) {
+        const dlat = ll.lat - s.lat;
+        const dlon = ll.lng - s.lon;
+        const d2 = dlat * dlat + dlon * dlon;
+        if (d2 < minD2) minD2 = d2;
+        // If particle is essentially on top of a station, return that station's wind exactly
+        if (d2 < 1e-8) return { u: s.u, v: s.v, speed: Math.sqrt(s.u * s.u + s.v * s.v) };
+        const w = 1 / d2;
+        sumWU += w * s.u;
+        sumWV += w * s.v;
+        sumW  += w;
+      }
+      // Kill particles that are too far from any observation point
+      if (minD2 > MAX_IDW_DEG * MAX_IDW_DEG) return null;
+      if (sumW === 0) return null;
+      const u = sumWU / sumW, v = sumWV / sumW;
+      return { u, v, speed: Math.sqrt(u * u + v * v) };
+    } catch (_) { return null; }
+  }
+
+  function _speedToColor(speed) {
+    if (!_colors.length) return '#7c6af7';
+    const t  = Math.min(speed / MAX_VEL, 1);
+    const n  = _colors.length;
+    const fi = t * (n - 1);
+    const i0 = Math.min(Math.floor(fi), n - 2), i1 = i0 + 1;
+    const f  = fi - i0;
+    const h  = s => parseInt(s, 16);
+    const r  = Math.round(h(_colors[i0].slice(1, 3)) + (h(_colors[i1].slice(1, 3)) - h(_colors[i0].slice(1, 3))) * f);
+    const g  = Math.round(h(_colors[i0].slice(3, 5)) + (h(_colors[i1].slice(3, 5)) - h(_colors[i0].slice(3, 5))) * f);
+    const b  = Math.round(h(_colors[i0].slice(5, 7)) + (h(_colors[i1].slice(5, 7)) - h(_colors[i0].slice(5, 7))) * f);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Recompute spot bounding box without restarting animation (call after pan in regional mode).
+  function refreshSpotBox() { _computeSpotBox(); }
+
+  return { init, setData, setSpotData, setColors, stop, reset, refreshSpotBox,
+           get isFullExtent() { return _fullExtent; } };
+})();
+
+
+// ═══ 5. WIND SCHEDULER ══════════════════════════════════════
+// Thin debounce wrapper around WindRenderer.setData().
+// All wind rendering goes through request() — callers never
+// touch WindRenderer directly except for stop/reset.
+
+const WindScheduler = (() => {
+  let _target = null, _timer = null;
+  const DEBOUNCE_MS = 30;
+
+  function request(uArr, vArr, grid, label) {
+    if (!uArr || !vArr) return;
+    _target = { uArr, vArr, grid, label };
+    clearTimeout(_timer);
+    _timer = setTimeout(_apply, DEBOUNCE_MS);
+  }
+
+  function _apply() {
+    if (!_target) return;
+    const { uArr, vArr, grid, label } = _target;
+    _target = null;
+    WindRenderer.setData(uArr, vArr, grid);
+    _setWindTimeLabel(label || 'NOW');
+  }
+
+  function reset() {
+    clearTimeout(_timer);
+    _target = null;
+    WindRenderer.reset();
+  }
+
+  return { request, reset };
+})();
+
+
+// ═══ 6. WIND TARGET TRACKING & SYNC ════════════════════════
+// _displayTime  — null = "now"; ISO string = user's hovered/clicked time.
+//   Persists across map interactions so zoom/drag keeps the right time.
+//
+// _requestWind  — saves current wind state, forwards to WindScheduler.
+// _resubmitWind — re-sends saved state; used by zoom/drag map events.
+// syncToNow     — snaps to nearest available wind time; updates all map overlays.
+// syncByTime    — seeks to a specific time column; updates all map overlays.
+
+let _displayTime   = null;      // null = NOW, string = ISO time column
+let _savedU        = null;      // last-requested u array
+let _savedV        = null;      // last-requested v array
+let _savedGrid     = null;      // last-requested grid metadata
+let _savedLabel    = 'NOW';     // last-requested display label
+
+function _requestWind(uArr, vArr, grid, label) {
+  _savedU     = uArr;
+  _savedV     = vArr;
+  _savedGrid  = grid;
+  _savedLabel = label;
+  // Forward to the scheduler (overview / grid mode only).
+  // In regional mode, callers use buildRegionWindMarkers() → setSpotData()
+  // instead, and must NOT call _requestWind to avoid overwriting spot particles.
+  WindScheduler.request(uArr, vArr, grid, label);
+}
+
+// Re-submit the current wind target without recalculating.
+// Called by zoomend/moveend so particles restart at the correct time.
+// In regional mode, spot particles are rebuilt by buildRegionWindMarkers()
+// which is called separately; this only handles grid (overview) re-arm.
+function _resubmitWind() {
+  if (regionMode) {
+    // Rebuild spot particles from the current regionWindData at the current time.
+    buildRegionWindMarkers(_displayTime);
+    return;
+  }
+  if (_savedU && _savedV) {
+    WindScheduler.request(_savedU, _savedV, _savedGrid, _savedLabel);
+  }
+}
+
+// Clear all saved wind state (call before full refresh or model switch).
+function _clearWindState() {
+  _displayTime = null;
+  _savedU = _savedV = _savedGrid = null;
+  _savedLabel = 'NOW';
+}
+
+// Update wind time label in both the section header and the SBS map overlay.
+function _setWindTimeLabel(label) {
+  const el = document.getElementById('wind-time-display');
+  if (el) el.textContent = label;
+  const ov = document.getElementById('map-time-overlay');
+  if (ov) ov.textContent = label;
+}
+
+// Fetch and display model run + API usage status in the controls bar.
+async function _refreshStatus() {
+  try {
+    const data = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
+    const runEl = document.getElementById('model-run-tag');
+    const apiEl = document.getElementById('api-usage-tag');
+    if (data.model_run && runEl) {
+      let datePart = '';
+      if (data.model_run.run_date) {
+        const d = new Date(data.model_run.run_date + 'T00:00:00');
+        const mon = d.toLocaleString('en-US', { month: 'short' });
+        datePart = `${mon} ${d.getDate()} `;
+      }
+      const run = data.model_run.run_utc;
+      let next = '';
+      if (data.model_run.hours_to_next != null) {
+        const h = data.model_run.hours_to_next;
+        next = ` · next run in ~${h < 1 ? '<1' : Math.round(h)}h`;
+      }
+      runEl.innerHTML = `<b>${datePart}${run}</b>${next}`;
+      // Sync mobile run tag (stacked: run on line 1, next on line 2)
+      const mobRun  = document.getElementById('mob-run-tag');
+      const mobNext = document.getElementById('mob-next-tag');
+      if (mobRun)  mobRun.textContent = `${datePart}${run}`;
+      if (mobNext) mobNext.textContent = next ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h` : '';
+    }
+    if (data.api_usage && apiEl) {
+      apiEl.textContent = `SWELL DATA PROVIDED BY OPEN-METEO (${data.api_usage.total.toLocaleString()}/10,000 today)`;
+    }
+  } catch(e) { /* silent */ }
+}
+
+// Snap the map to the nearest available time to "now".
+function syncToNow() {
+  _displayTime = null;
+  buildSwellArrows(null, 'buoy');
+
+  // In regional mode, buildRegionWindMarkers drives particles via setSpotData.
+  // Do NOT also send grid data through _requestWind — same race-condition
+  // guard as in syncByTime().
+  if (regionMode) {
+    buildRegionWindMarkers(null);
+    _setWindTimeLabel('NOW');
+    return;
+  }
+
+  const now = Date.now();
+  let nearest = null, minDiff = Infinity;
+  for (const t of Object.keys(windByTime)) {
+    const diff = Math.abs(new Date(t.replace('T', ' ')).getTime() - now);
+    if (diff < minDiff) { minDiff = diff; nearest = t; }
+  }
+  const d    = nearest ? windByTime[nearest] : windCurrent;
+  const grid = nearest ? (windForecast && windForecast.grid ? windForecast.grid : windCurrent) : windCurrent;
+  if (d && d.u && d.v) _requestWind(d.u, d.v, grid, 'NOW');
+}
+
+// Seek to a specific forecast time column.
+function syncByTime(timeStr) {
+  _displayTime = timeStr;
+  buildSwellArrows(timeStr, 'forecast');
+
+  // In regional mode, buildRegionWindMarkers() drives both the map labels AND
+  // the wind particles (via setSpotData).  Do NOT also queue a grid-mode
+  // _requestWind — the WindScheduler's 60 ms debounce would fire AFTER
+  // setSpotData and overwrite the correct spot-based particles with the
+  // coarse overview grid, causing a visible mismatch.
+  if (regionMode) {
+    buildRegionWindMarkers(timeStr);
+    _setWindTimeLabel(fmtLabel(timeStr));
+    return;
+  }
+
+  const keys = Object.keys(windByTime);
+  if (!keys.length) {
+    // Wind forecast not yet loaded — keep showing the current-wind snapshot
+    // at its true "NOW" label.  Do NOT relabel it with the hovered time;
+    // that creates a misleading mismatch where the label says e.g. "WED 3p"
+    // but the particles still show today's wind.  Once loadWindForecast()
+    // finishes it will call _syncAfterWindLoad() to catch up.
+    return;
+  }
+
+  // Find exact match first, then nearest by timestamp.
+  let usedKey = timeStr;
+  if (!windByTime[timeStr]) {
+    const tMs = new Date(timeStr.replace('T', ' ')).getTime();
+    let minDiff = Infinity;
+    for (const k of keys) {
+      const diff = Math.abs(new Date(k.replace('T', ' ')).getTime() - tMs);
+      if (diff < minDiff) { minDiff = diff; usedKey = k; }
+    }
+  }
+
+  const target = windByTime[usedKey];
+  if (target && target.u && target.v) {
+    const grid = windForecast && windForecast.grid ? windForecast.grid : windCurrent;
+    _requestWind(target.u, target.v, grid, fmtLabel(timeStr));
+  }
+}
+
+
+// ═══ 7. DATA LOADING ════════════════════════════════════════
+
+async function init() {
+  CFG = await fetch('/api/config').then(r => r.json());
+  // Populate REGION_VIEWS from YAML-derived config
+  if (CFG.region_views) REGION_VIEWS = CFG.region_views;
+  _loader.step('Building interface…');
+  buildLegend();
+  buildWindScale();
+  initMap();
+  if (sbsMode) {
+    setSbsHeight(); map.invalidateSize();
+  } else if (_isMobile()) {
+    // On mobile, the map container dimensions are set by CSS flex.
+    // Leaflet needs a nudge to pick up the computed size.
+    map.invalidateSize();
+  }
+  // Start the wind forecast fetch NOW (in parallel with loadAll) so it overlaps
+  // with the buoy/wave/tide fetches.  This substantially reduces the window
+  // where the wind animation is stuck on "NOW" while the table is interactive.
+  const wfPromise = loadWindForecast();
+  await loadAll();
+  await wfPromise;   // wait for wind forecast before considering init complete
+  _loader.finish();
+  _refreshStatus();
+}
+
+async function loadAll() {
+  document.getElementById('table-body').innerHTML =
+    '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2);font-size:11px">Loading…</td></tr>';
+
+  // Wrap each fetch so we can report progress as each one resolves.
+  const track = (promise, label) => promise.then(v => { _loader.step(label); return v; });
+
+  const [buoys, euro, gfs, wind, regionWind, tides] = await Promise.allSettled([
+    track(fetch('/api/buoys').then(r => r.json()),                        'Buoy data loaded'),
+    track(fetch('/api/forecast/EURO').then(r => r.json()),                'EURO forecast loaded'),
+    track(fetch('/api/forecast/GFS').then(r => r.json()),                 'GFS forecast loaded'),
+    track(fetch(`/api/wind?model=${activeModel}`).then(r => r.json()),    'Wind grid loaded'),
+    track(fetch(`/api/region_wind?model=${activeModel}`).then(r => r.json()), 'Regional wind loaded'),
+    track(fetch('/api/tides').then(r => r.json()),                        'Tide data loaded'),
+  ]);
+
+  buoyData = buoys.status === 'fulfilled' ? (buoys.value || {}) : {};
+
+  // Grey out dots for offline buoys
+  if (window._buoyDots) {
+    for (const [name, marker] of Object.entries(window._buoyDots)) {
+      const b = buoyData[name];
+      if (b && b._offline) {
+        marker.setStyle({ color: '#606075', fillColor: '#606075', fillOpacity: 0.4 });
+      } else {
+        marker.setStyle({ color: '#7c6af7', fillColor: '#7c6af7', fillOpacity: 0.9 });
+      }
+    }
+  }
+
+  forecastData = {
+    EURO: euro.status === 'fulfilled' ? (euro.value || {}) : {},
+    GFS:  gfs.status  === 'fulfilled' ? (gfs.value  || {}) : {},
+  };
+
+  if (wind.status === 'fulfilled' && wind.value) {
+    const g = wind.value.grid || wind.value;
+    if (g && g.u) {
+      windCurrent = g;
+      syncToNow();
+    }
+  }
+  if (regionWind.status === 'fulfilled' && regionWind.value) {
+    regionWindData = regionWind.value;
+    console.log('[loadAll] regionWindData loaded:', Object.keys(regionWindData).length, 'spots');
+  } else {
+    console.warn('[loadAll] region_wind fetch failed:', regionWind.status,
+      regionWind.status === 'rejected' ? regionWind.reason : '(null value)');
+  }
+  if (tides.status === 'fulfilled' && tides.value) {
+    regionTideData = tides.value;
+  }
+
+  // Fetch sunrise/sunset data (await so night markers render on first build).
+  if (!Object.keys(sunData).length) {
+    const lidoSpot = (CFG.wind_spots || []).find(ws => ws.name === 'Lido Beach') || CFG.spots && CFG.spots[0];
+    if (lidoSpot) await fetchSunData(lidoSpot.lat, lidoSpot.lon);
+  }
+  _loader.step('Building table…');
+
+  buildTable();
+  buildSwellArrows(null, 'buoy');
+}
+
+async function loadWindForecast(model) {
+  const m = model || activeModel;
+  try {
+    windForecast = await fetch(`/api/wind_forecast?model=${m}`).then(r => r.json());
+    if (!windForecast || !windForecast.times) {
+      console.warn('[wind_forecast] backend returned null (rate limited or unavailable)');
+      return;
+    }
+    _applyWindForecast();
+  } catch(e) {
+    console.warn('[wind_forecast]', e);
+  }
+  _loader.step('Wind forecast loaded');
+}
+
+function _applyWindForecast() {
+  if (!windForecast || !windForecast.times) return;
+  windByTime = {};
+  windForecast.times.forEach((t, i) => {
+    windByTime[t] = {
+      u: windForecast.u_by_time[i],
+      v: windForecast.v_by_time[i],
+    };
+  });
+  _syncAfterWindLoad();
+}
+
+// Called when wind forecast data arrives.  If the user is hovering a column
+// (_displayTime set) the wind animation was stuck on "NOW" — update it now.
+function _syncAfterWindLoad() {
+  if (_displayTime && Object.keys(windByTime).length) {
+    syncByTime(_displayTime);
+  }
+}
+
+
+// ═══ 8. LEGEND & WIND SCALE ═════════════════════════════════
+
+function buildWindScale() {
+  const container = document.getElementById('wind-speed-scale');
+  if (!container || !CFG || !CFG.wind_bands) return;
+  const dark = _isDark();
+  container.querySelectorAll('.wss-band').forEach(el => el.remove());
+  const lastLabel = container.querySelector('.wss-label:last-child');
+  CFG.wind_bands.forEach((b, idx) => {
+    const label = b.max != null ? `${b.min}–${b.max}` : `${b.min}+`;
+    const [bg, txt] = (!dark && LIGHT_WIND_COLORS[idx]) ? LIGHT_WIND_COLORS[idx] : [b.bg, b.text];
+    const span = document.createElement('span');
+    span.className = 'wss-band';
+    span.style.background = bg;
+    span.style.color = txt;
+    span.textContent = label;
+    container.insertBefore(span, lastLabel);
+  });
+}
+
+function buildLegend() {
+  const targets = [
+    document.getElementById('energy-legend'),
+    document.getElementById('energy-legend-bottom'),
+  ];
+  if (!CFG) return;
+  const dark = _isDark();
+  const displayOrder = CFG.swell_categories
+    .filter(c => c.name !== 'HECTIC')
+    .concat(CFG.swell_categories.filter(c => c.name === 'HECTIC'));
+  targets.forEach(el => {
+    if (!el) return;
+    el.innerHTML = '';
+    displayOrder.forEach(cat => {
+      const bg  = dark ? cat.dark_bg   : cat.light_bg;
+      const txt = dark ? cat.dark_text : cat.light_text;
+      const p = document.createElement('span');
+      p.className = 'legend-pill';
+      if (cat.name === 'FIRING' || cat.name === 'MONSTRO') p.style.fontWeight = '800';
+      p.style.background = bg;
+      p.style.color = txt;
+      p.textContent = cat.name;
+      el.appendChild(p);
+    });
+  });
+}
+
+// Get the swell category from the alternate model for concordance checking.
+function getAltModelCat(spotName, time) {
+  const altModel = activeModel === 'EURO' ? 'GFS' : 'EURO';
+  const altRows  = (forecastData[altModel] || {})[spotName] || [];
+  const altRec   = altRows.find(r => r.time === time);
+  if (!altRec || altRec.wave_height_ft == null) return null;
+  const pc = altRec.components && altRec.components.length > 0 ? altRec.components[0] : null;
+  const h  = pc ? pc.height_ft : altRec.wave_height_ft;
+  const p  = pc ? pc.period_s  : altRec.wave_period_s;
+  const [, , catName] = swellColor(h, p);
+  return catName;
+}
+
+// Returns [bg, text, catName] for a swell height+period reading.
+function swellColor(height_ft, period_s) {
+  const dark = _isDark();
+  if (height_ft == null) {
+    return dark ? ['var(--bg1)', 'var(--text3)', null]
+                : ['var(--bg2)', 'var(--text3)', null];
+  }
+  const bands = CFG.swell_bands;
+  let band = bands[bands.length - 1];
+  for (const b of bands) {
+    const ub = b.period_ub == null ? Infinity : b.period_ub;
+    if (period_s < ub) { band = b; break; }
+  }
+  const cats = CFG.swell_categories;
+  let lastValid = cats[0];
+  for (const cat of cats) {
+    const rule = band.rules[cat.name];
+    if (rule === 'never') continue;
+    lastValid = cat;
+    if (rule === 'always') break;
+    if (rule !== null && typeof rule === 'object') {
+      if (height_ft >= rule.gte) break;
+    } else if (typeof rule === 'number') {
+      if (height_ft < rule) break;
+    }
+  }
+  return dark ? [lastValid.dark_bg,  lastValid.dark_text,  lastValid.name]
+              : [lastValid.light_bg, lastValid.light_text, lastValid.name];
+}
+
+
+// ═══ 9. TABLE BUILDING ══════════════════════════════════════
+
+function buildTable() {
+  if (!CFG) return;
+  if (regionMode) { buildRegionTable(); return; }
+
+  const allTimes = new Set();
+  for (const spot of CFG.spots) {
+    const rows = (forecastData[activeModel] || {})[spot.name] || [];
+    rows.forEach((r, i) => { if (i % resolution === 0) allTimes.add(r.time); });
+  }
+  const nowFloor = new Date();
+  nowFloor.setMinutes(0, 0, 0);
+  const times = [...allTimes].sort()
+    .filter(t => new Date(t.replace('T', ' ')) >= nowFloor);
+
+  const spotByTime = {};
+  CFG.spots.forEach(spot => {
+    const m = {};
+    ((forecastData[activeModel] || {})[spot.name] || []).forEach(r => { m[r.time] = r; });
+    spotByTime[spot.name] = m;
+  });
+
+  const emptyTimes = new Set();
+  for (const t of times) {
+    const allEmpty = CFG.spots.every(spot => {
+      const r = spotByTime[spot.name][t];
+      return !r || r.wave_height_ft == null;
+    });
+    if (allEmpty) emptyTimes.add(t);
+  }
+
+  const ovColIntervalMs = times.length >= 2
+    ? new Date(times[1].replace('T',' ')).getTime() - new Date(times[0].replace('T',' ')).getTime()
+    : 3 * 3600 * 1000;
+  const ovNightCols = new Set(times.filter(t => isNightCol(t, ovColIntervalMs)));
+
+  let hrow = `<tr>
+    <th class="th-spot">SPOT</th>
+    <th class="th-buoy">BUOY NOW</th>`;
+  times.forEach(t => {
+    if (emptyTimes.has(t)) {
+      hrow += `<th class="th-time col-empty">—</th>`;
+    } else {
+      const night = ovNightCols.has(t);
+      const moon  = night ? `<span class="night-moon">🌙</span>` : '';
+      hrow += `<th class="th-time${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+    }
+  });
+  hrow += '</tr>';
+  document.getElementById('table-head').innerHTML = hrow;
+
+  let html = '';
+  CFG.spots.forEach((spot, si) => {
+    const b          = buoyData[spot.name];
+    const hasRegion  = CFG.wind_spots && CFG.wind_spots.some(ws => ws.buoy_region === spot.name);
+    const activeAttr = (regionMode === spot.name) ? ' region-active' : '';
+    const clickAttr  = hasRegion
+      ? ` style="cursor:pointer" onclick="enterRegionMode('${spot.name.replace(/'/g,"\\'")}')"`
+      : '';
+    html += `<tr>
+      <td class="spot-cell${activeAttr}"${clickAttr}>${spot.name}</td>
+      ${buildBuoyCell(b)}`;
+    times.forEach(t => {
+      const nightClass = ovNightCols.has(t) && !emptyTimes.has(t) ? 'night-col' : '';
+      const extraClass = [emptyTimes.has(t) ? 'col-empty' : '', nightClass].filter(Boolean).join(' ');
+      html += buildWaveCell(spotByTime[spot.name][t], t, extraClass, spot.name);
+    });
+    html += '</tr>';
+    if (si < CFG.spots.length - 1) {
+      html += `<tr class="spot-sep"><td colspan="${2 + times.length}"></td></tr>`;
+    }
+  });
+
+  document.getElementById('table-body').innerHTML =
+    html || '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2)">No data</td></tr>';
+  attachHoverListeners();
+}
+
+function buildRegionTable() {
+  if (!CFG || !regionMode) return;
+  const buoySpot = CFG.spots.find(s => s.name === regionMode);
+  if (!buoySpot) return;
+
+  const allTimes = new Set();
+  const rows = (forecastData[activeModel] || {})[buoySpot.name] || [];
+  rows.forEach((r, i) => { if (i % resolution === 0) allTimes.add(r.time); });
+  const nowFloor = new Date();
+  nowFloor.setMinutes(0, 0, 0);
+  const times = [...allTimes].sort()
+    .filter(t => new Date(t.replace('T', ' ')) >= nowFloor);
+
+  const buoyByTime = {};
+  rows.forEach(r => { buoyByTime[r.time] = r; });
+
+  const windSpots = (CFG.wind_spots || []).filter(ws => ws.buoy_region === regionMode);
+  const windBySpotTime = {};
+  windSpots.forEach(ws => {
+    const m = {};
+    (regionWindData[ws.name] || []).forEach(r => { m[r.time] = r; });
+    windBySpotTime[ws.name] = m;
+  });
+
+  const colIntervalMs = times.length >= 2
+    ? new Date(times[1].replace('T',' ')).getTime() - new Date(times[0].replace('T',' ')).getTime()
+    : 3 * 3600 * 1000;
+  const nightCols = new Set(times.filter(t => isNightCol(t, colIntervalMs)));
+
+  let hrow = `<tr>
+    <th class="th-spot">SPOT</th>
+    <th class="th-buoy">BUOY NOW</th>`;
+  times.forEach(t => {
+    const night = nightCols.has(t);
+    const moon  = night ? `<span class="night-moon">🌙</span>` : '';
+    hrow += `<th class="th-time${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+  });
+  hrow += '</tr>';
+  document.getElementById('table-head').innerHTML = hrow;
+
+  const colCount = 2 + times.length;
+
+  const b = buoyData[buoySpot.name];
+  let html = `<tr>
+    <td class="spot-cell region-active" style="cursor:pointer"
+        onclick="exitRegionMode()">${buoySpot.name}</td>
+    ${buildBuoyCell(b)}`;
+  times.forEach(t => {
+    html += buildWaveCell(buoyByTime[t], t, nightCols.has(t) ? 'night-col' : '', buoySpot.name);
+  });
+  html += '</tr>';
+
+  windSpots.forEach((ws, wi) => {
+    const stationTides = regionTideData[ws.name] || {};
+    const nameHtml = ws.surfline_url
+      ? `<a href="${ws.surfline_url}" target="_blank" rel="noopener noreferrer">${ws.name}</a>`
+      : ws.name;
+    html += `<tr><td class="spot-cell wind-spot-cell">${nameHtml}</td>`;
+    html += `<td class="cell" style="background:var(--bg1)"><div class="null-cell">—</div></td>`;
+    times.forEach(t => {
+      const tide = _resolveTide(stationTides, t, resolution);
+      html += buildWindCell(windBySpotTime[ws.name][t], t, tide, ws.shore_normal, nightCols.has(t) ? 'night-col' : '');
+    });
+    html += '</tr>';
+    if (wi < windSpots.length - 1) {
+      html += `<tr class="spot-sep"><td colspan="${colCount}"></td></tr>`;
+    }
+  });
+
+  document.getElementById('table-body').innerHTML = html;
+  attachHoverListeners();
+}
+
+
+// ═══ 10. CELL BUILDERS ══════════════════════════════════════
+
+function buildBuoyCell(b) {
+  if (!b) {
+    return `<td class="cell buoy-col buoy-now" style="background:var(--bg2)">
+              <div class="null-cell">NO DATA</div></td>`;
+  }
+  if (b._offline) {
+    const url = `https://www.ndbc.noaa.gov/station_page.php?station=${b.buoy_id}`;
+    return `<td class="cell buoy-col buoy-now" style="background:var(--bg2)">
+              <a href="${url}" target="_blank" rel="noopener noreferrer"
+                 class="null-cell" style="color:var(--red);text-decoration:none;font-size:9px;letter-spacing:.04em">
+                BUOY OFFLINE</a></td>`;
+  }
+  if (b.wave_height_ft == null) {
+    const hasWind = b.wind_speed_kts != null;
+    if (!hasWind) {
+      return `<td class="cell buoy-col buoy-now" style="background:var(--bg2)">
+                <div class="null-cell">NO WAVES</div></td>`;
+    }
+    const windDir = b.wind_direction_deg != null ? toCard(b.wind_direction_deg) : '?';
+    return `<td class="cell buoy-col buoy-now" style="background:var(--bg2)">
+      <div class="cell-inner" style="color:var(--text1)">
+        <div class="null-cell" style="height:auto;padding-top:6px;font-size:9px;color:var(--text3)">NO WAVE HT</div>
+        <div class="comp-line p2" style="justify-content:center">
+          ${b.wind_speed_kts}kt${b.wind_gust_kts ? ' g'+b.wind_gust_kts : ''}&nbsp;${windDir}
+        </div>
+      </div>
+    </td>`;
+  }
+  const comps = b.components && b.components.length > 0 ? b.components : null;
+  const primaryHeight = comps ? comps[0].height_ft : b.wave_height_ft;
+  const primaryPeriod = comps ? comps[0].period_s  : b.wave_period_s;
+  const [bg, fg, catName] = swellColor(primaryHeight, primaryPeriod);
+  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
+  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
+  if (comps) {
+    comps.forEach((c, ci) => {
+      const cls   = ['p1','p2','p3'][ci] || 'p3';
+      const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+      const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
+      inner += `<div class="comp-line ${cls}">
+        <span class="c-ht">${c.height_ft}</span>
+        <span>&nbsp;@${c.period_s ?? '?'}</span>
+        <span>&nbsp;${arrow}${dir}</span>
+      </div>`;
+    });
+  } else {
+    const dir   = b.wave_direction_deg != null ? toCard(b.wave_direction_deg) : '?';
+    const arrow = b.wave_direction_deg != null ? toArrow(b.wave_direction_deg) : '';
+    inner += `<div class="comp-line p1">
+      <span class="c-ht">${b.wave_height_ft}</span>
+      <span>&nbsp;@${b.wave_period_s ?? '?'}</span>
+      <span>&nbsp;${arrow}${dir}</span>
+    </div>`;
+  }
+  inner += '</div>';
+  return `<td class="cell buoy-col buoy-now" style="background:${bg}">${inner}</td>`;
+}
+
+function buildWaveCell(r, t, extraClass = '', spotName = null) {
+  const tdCls = 'cell' + (extraClass ? ' ' + extraClass : '');
+  if (!r || r.wave_height_ft == null) {
+    const [flatBg, flatFg] = swellColor(0, 10);
+    return `<td class="${tdCls}" data-time="${t}" style="background:${flatBg}">
+              <div class="null-cell" style="color:${flatFg}">—</div></td>`;
+  }
+  const primaryComp   = r.components && r.components.length > 0 ? r.components[0] : null;
+  const primaryHeight = primaryComp ? primaryComp.height_ft : r.wave_height_ft;
+  const primaryPeriod = primaryComp ? primaryComp.period_s  : r.wave_period_s;
+  const [bg, fg, catName] = swellColor(primaryHeight, primaryPeriod);
+  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
+  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
+  if (r.components && r.components.length > 0) {
+    r.components.forEach((c, ci) => {
+      const cls   = ['p1','p2','p3'][ci] || 'p3';
+      const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+      const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
+      inner += `<div class="comp-line ${cls}">
+        <span class="c-ht">${c.height_ft}</span>
+        <span>&nbsp;@${c.period_s ?? '?'}</span>
+        <span>&nbsp;${arrow}${dir}</span>
+      </div>`;
+    });
+  } else {
+    const dir   = r.wave_direction_deg != null ? toCard(r.wave_direction_deg) : '?';
+    const arrow = r.wave_direction_deg != null ? toArrow(r.wave_direction_deg) : '';
+    inner += `<div class="comp-line p1">
+      <span class="c-ht">${r.wave_height_ft}</span>
+      <span>&nbsp;@${r.wave_period_s ?? '?'}</span>
+      <span>&nbsp;${arrow}${dir}</span>
+    </div>`;
+  }
+  // Model concordance badge — show when both EURO and GFS agree on category
+  if (spotName && catName) {
+    const altCat = getAltModelCat(spotName, t);
+    if (altCat && altCat === catName) {
+      inner += `<span class="model-agree">Model Agreement</span>`;
+    }
+  }
+  inner += '</div>';
+  return `<td class="${tdCls}" data-time="${t}" style="background:${bg}">${inner}</td>`;
+}
+
+/**
+ * 6-tier wind condition classification (evaluated hierarchically):
+ *
+ *   1. Glassy    — offshore, gust < 10 mph
+ *   2. Groomed   — offshore, sustained > 20 mph (strong offshore)
+ *   3. Clean     — offshore any speed, OR any direction w/ sustained < 5 mph
+ *   4. Textured  — sideshore (32°–115°) gust < 15 OR onshore (>115°) gust < 10
+ *   5. Messy     — sideshore gust < 25 OR onshore gust < 20
+ *   6. Blown Out — everything else
+ *
+ * Effective gust = min(raw_gust, sustained × 1.5) — caps ECMWF over-reporting.
+ */
+function windCondition(speed_mph, direction_deg, shore_normal, gust_mph) {
+  if (speed_mph == null || shore_normal == null) return null;
+  const rawG = gust_mph != null ? gust_mph : speed_mph;
+  const g    = Math.min(rawG, speed_mph * 1.5);   // effective gust
+
+  // Direction classification
+  let isOffshore = false, isSideshore = false, isOnshore = false;
+  if (direction_deg != null) {
+    const offshoreFrom = (shore_normal + 180) % 360;
+    let diff = Math.abs(direction_deg - offshoreFrom) % 360;
+    if (diff > 180) diff = 360 - diff;
+    isOffshore  = diff <= 32;
+    isSideshore = diff > 32 && diff <= 115;
+    isOnshore   = diff > 115;
+  }
+
+  // 1. Glassy — offshore + light gust
+  if (isOffshore && g < 10)                     return 'Glassy';
+  // 2. Groomed — offshore + strong sustained
+  if (isOffshore && speed_mph > 20)             return 'Groomed';
+  // 3. Clean — offshore any speed, OR any direction with very light sustained
+  if (isOffshore)                               return 'Clean';
+  if (speed_mph < 5)                            return 'Clean';
+  // If no direction data, can't classify further
+  if (direction_deg == null)                    return null;
+  // 4. Textured — moderate sideshore or light onshore
+  if (isSideshore && g < 15)                    return 'Textured';
+  if (isOnshore   && g < 10)                    return 'Textured';
+  // 5. Messy — stronger sideshore or moderate onshore
+  if (isSideshore && g < 25)                    return 'Messy';
+  if (isOnshore   && g < 20)                    return 'Messy';
+  // 6. Blown Out — everything else
+  return 'Blown Out';
+}
+
+function windCondColor(cond) {
+  const dark = _isDark();
+  // Green tier: Glassy, Groomed, Clean
+  if (cond === 'Glassy' || cond === 'Groomed' || cond === 'Clean')
+    return dark ? { bg: '#0d1a0f', text: '#3fb950' }
+                : { bg: '#ccecd4', text: '#166028' };
+  // Gold tier: Textured (was Doable)
+  if (cond === 'Textured')
+    return dark ? { bg: '#1a1800', text: '#f5c518' }
+                : { bg: '#f5e6c0', text: '#7a5500' };
+  // Blue tier: Messy
+  if (cond === 'Messy')
+    return dark ? { bg: '#0d1520', text: '#3d7ab5' }
+                : { bg: '#d8e8f8', text: '#1a5a9a' };
+  // Grey tier: Blown Out (matches FLAT swell category)
+  return dark ? { bg: '#131316', text: '#404055' }
+              : { bg: '#e2e2de', text: '#70707c' };
+}
+
+/**
+ * Resolve the best tide record for a displayed time column.
+ * In 3-hr mode, the exact hour may not carry the hilo annotation — it could
+ * be on an intermediate hour (e.g., low tide at 16:00 when showing 15:00).
+ * This scans the window [t, t+resolution) and merges any hilo into the
+ * base record for t.
+ */
+function _resolveTide(stationTides, t, res) {
+  const base = stationTides[t] || null;
+  if (res <= 1) return base;  // hourly mode — no merging needed
+
+  // Look through the intermediate hours for a hilo annotation
+  const tMs = new Date(t.replace('T', ' ')).getTime();
+  let hiloRec = null;
+  for (let h = 0; h < res; h++) {
+    const probe = new Date(tMs + h * 3600000);
+    const key = probe.getFullYear() + '-'
+      + String(probe.getMonth() + 1).padStart(2, '0') + '-'
+      + String(probe.getDate()).padStart(2, '0') + 'T'
+      + String(probe.getHours()).padStart(2, '0') + ':'
+      + String(probe.getMinutes()).padStart(2, '0');
+    const rec = stationTides[key];
+    if (rec && rec.hilo_time) {
+      hiloRec = rec;
+      break;  // take the first hilo in the window
+    }
+  }
+
+  if (!hiloRec) return base;  // no hilo in window
+  if (!base) return hiloRec;  // no base record — use hilo directly
+
+  // Merge: use the hilo record's height/pct (the actual H/L values) with the hilo annotation
+  return { ...base, height_ft: hiloRec.height_ft, pct: hiloRec.pct, hilo_time: hiloRec.hilo_time, hilo_type: hiloRec.hilo_type };
+}
+
+function buildWindCell(r, t, tideRec, shoreNormal, extraClass = '') {
+  const cond     = (r && r.speed_mph != null)
+    ? windCondition(r.speed_mph, r.direction_deg, shoreNormal, r.gust_mph)
+    : null;
+  const cleanCls = (cond === 'Clean' || cond === 'Glassy' || cond === 'Groomed') ? ' wind-clean' : '';
+  const tdCls    = `cell wind-cell${cleanCls}${extraClass ? ' ' + extraClass : ''}`;
+  let tideHtml;
+  if (tideRec == null) {
+    tideHtml = `<div class="wind-line wind-tide tide-null">—</div>`;
+  } else {
+    const suffix = tideRec.hilo_time ? ` ${tideRec.hilo_time}` : '';
+    tideHtml = `<div class="wind-line wind-tide">${tideRec.height_ft} ft (${tideRec.pct}%${suffix})</div>`;
+  }
+  if (!r || r.speed_mph == null) {
+    return `<td class="${tdCls}" data-time="${t}" style="background:var(--bg1)">
+      <div class="wind-cell-inner">${tideHtml}<div class="null-cell">—</div></div></td>`;
+  }
+  const col      = cond ? windCondColor(cond) : null;
+  const cellBg   = col ? col.bg : 'var(--bg1)';
+  const condHtml = cond
+    ? `<div><span class="wind-cond" style="background:${col.bg};color:${col.text};border:1px solid ${col.text}22">${cond}</span></div>`
+    : '';
+  return `<td class="${tdCls}" data-time="${t}" style="background:${cellBg}">
+    <div class="wind-cell-inner">
+      ${tideHtml}
+      <div class="wind-line wind-speed">${r.speed_mph} mph ${r.direction_cardinal}</div>
+      <div class="wind-line wind-gust">${r.gust_mph != null ? Math.round(Math.min(r.gust_mph, r.speed_mph * 1.5) * 10) / 10 : '—'} mph ${r.gust_cardinal ?? ''} gusts</div>
+      ${condHtml}
+    </div>
+  </td>`;
+}
+
+
+// ═══ 11. HOVER / COLUMN SYNC ════════════════════════════════
+
+function attachHoverListeners() {
+  // Rebuild mobile time scrubber whenever the table is rebuilt.
+  buildScrubber();
+
+  document.querySelectorAll('td.cell[data-time]').forEach(td => {
+    td.addEventListener('mouseenter', () => {
+      const t = td.getAttribute('data-time');
+      // Column highlight is instant
+      clearHighlight();
+      document.querySelectorAll(`td.cell[data-time="${t}"]`)
+        .forEach(el => el.classList.add('col-active'));
+      // Wind map + overlays are debounced — prevents rapid-hover setData() races
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => syncByTime(t), 40);
+    });
+  });
+
+  document.querySelectorAll('td.cell.buoy-now').forEach(td => {
+    td.addEventListener('mouseenter', () => {
+      clearHighlight();
+      td.classList.add('col-active');
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => syncToNow(), 40);
+    });
+  });
+
+  document.querySelector('.swell-table').addEventListener('mouseleave', () => {
+    clearTimeout(hoverTimer);
+    clearHighlight();
+    // Intentionally do NOT reset wind or _displayTime on mouseleave.
+    // User may be studying the map while cursor is off the table.
+  });
+}
+
+function clearHighlight() {
+  document.querySelectorAll('td.cell.col-active').forEach(el => el.classList.remove('col-active'));
+}
+
+
+// ═══ 12. SUNRISE / SUNSET ═══════════════════════════════════
+
+async function fetchSunData(lat, lon) {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+                `&daily=sunrise,sunset&forecast_days=10&timezone=America%2FNew_York`;
+    const d = await fetch(url).then(r => r.json());
+    const dates    = d.daily && d.daily.time    || [];
+    const sunrises = d.daily && d.daily.sunrise || [];
+    const sunsets  = d.daily && d.daily.sunset  || [];
+    const THIRTY   = 30 * 60 * 1000;
+    const result   = {};
+    dates.forEach((dateStr, i) => {
+      result[dateStr] = {
+        first_light_ms: new Date(sunrises[i].replace('T', ' ')).getTime() - THIRTY,
+        last_light_ms:  new Date(sunsets[i].replace('T',  ' ')).getTime() + THIRTY,
+      };
+    });
+    sunData = result;
+  } catch(e) { console.warn('[sun] fetch failed', e); }
+}
+
+function isNightCol(isoTime, colIntervalMs) {
+  if (!Object.keys(sunData).length) return false;
+  const tMs    = new Date(isoTime.replace('T', ' ')).getTime();
+  const tEndMs = tMs + colIntervalMs;
+  const dateStr = isoTime.slice(0, 10);
+  const sun = sunData[dateStr];
+  if (!sun) return false;
+  if (tEndMs <= sun.first_light_ms) return true;
+  if (tMs >= sun.last_light_ms)     return true;
+  return false;
+}
+
+
+// ═══ 13. SWELL ARROWS ═══════════════════════════════════════
+
+const _ARROW_KM  = 32;
+const _HEAD_KM   = 7;
+const _HEAD_W_KM = 2.5;
+const _TAIL_W_KM = 0.2;
+const _R_EARTH   = 6371;
+// Arrow scale is computed dynamically so arrows appear the same pixel size
+// at every zoom level.  At _REF_ZOOM the base KM values produce the desired
+// visual size; at other zooms we compensate with 2^(ref−current).
+const _REF_ZOOM  = 7;
+function _computeArrowScale() {
+  if (!map) return 1.0;
+  return Math.pow(2, _REF_ZOOM - map.getZoom());
+}
+let _arrowScale = 1.0;
+
+function _geoOffset(lat, lon, bearingDeg, distKm) {
+  const rad  = bearingDeg * Math.PI / 180;
+  const dlat = (distKm / _R_EARTH) * Math.cos(rad) * (180 / Math.PI);
+  const dlon = (distKm / _R_EARTH) * Math.sin(rad) / Math.cos(lat * Math.PI / 180) * (180 / Math.PI);
+  return [lat + dlat, lon + dlon];
+}
+
+function _drawSwellArrow(lat, lon, dirDeg, heightFt, periodS, isPrimary, skipLabel, filtered) {
+  if (!map || !swellArrowLayer || dirDeg == null) return;
+  const dark   = _isDark();
+  let color, opacity;
+  if (filtered) {
+    // Muted arrow for swell that was filtered from the table (short period etc.)
+    color   = dark ? '#666' : '#aaa';
+    opacity = 0.45;
+  } else {
+    const [, , catName] = swellColor(heightFt, periodS);
+    const catObj = CFG.swell_categories.find(c => c.name === catName);
+    color  = dark
+      ? (catObj ? catObj.dark_text  : '#7c6af7')
+      : (catObj ? catObj.light_text : '#3828b8');
+    opacity = isPrimary ? 0.9 : 0.55;
+  }
+  const travelDeg = (dirDeg + 180) % 360;
+  const arrowKm   = _ARROW_KM  * _arrowScale;
+  const headKm    = _HEAD_KM   * _arrowScale;
+  const headWKm   = _HEAD_W_KM * _arrowScale;
+  const tailWKm   = _TAIL_W_KM * _arrowScale;
+  const [tailLat, tailLon] = _geoOffset(lat, lon, dirDeg, arrowKm);
+  const [baseLat, baseLon] = _geoOffset(lat, lon, dirDeg, headKm);
+  const [ttLat, ttLon] = _geoOffset(tailLat, tailLon, travelDeg + 90, tailWKm);
+  const [tbLat, tbLon] = _geoOffset(tailLat, tailLon, travelDeg - 90, tailWKm);
+  const [blLat, blLon] = _geoOffset(baseLat, baseLon, travelDeg + 90, headWKm);
+  const [brLat, brLon] = _geoOffset(baseLat, baseLon, travelDeg - 90, headWKm);
+  L.polygon(
+    [[ttLat, ttLon], [blLat, blLon], [lat, lon], [brLat, brLon], [tbLat, tbLon]],
+    { color, fillColor: color, fillOpacity: opacity, weight: 0, interactive: false }
+  ).addTo(swellArrowLayer);
+  // Labels are placed separately by buildSwellArrows() with collision avoidance.
+  // Only draw inline labels when skipLabel is not set (e.g. called from region mode).
+  if (!skipLabel && heightFt != null && periodS != null) {
+    const secCls = isPrimary ? '' : ' swell-arrow-sec';
+    L.marker([tailLat, tailLon], {
+      icon: L.divIcon({
+        html: `<div class="swell-arrow-label${secCls}">${heightFt}ft @${periodS}s</div>`,
+        className: '', iconSize: null, iconAnchor: [0, 0],
+      }),
+      interactive: false,
+    }).addTo(swellArrowLayer);
+  }
+}
+
+function buildSwellArrows(timeStr, source) {
+  if (!map || !swellArrowLayer || !CFG) return;
+  swellArrowLayer.clearLayers();
+  _arrowScale = _computeArrowScale();
+  const spotsToRender = regionMode
+    ? CFG.spots.filter(s => s.name === regionMode)
+    : CFG.spots;
+
+  // Collect all arrows first so we can de-overlap labels afterwards.
+  const arrows = [];
+  spotsToRender.forEach(spot => {
+    let comps = null;
+    if (source === 'buoy') {
+      const b = buoyData[spot.name];
+      if (!b || b.wave_height_ft == null) return;
+      comps = (b.components && b.components.length > 0)
+        ? b.components
+        : [{ height_ft: b.wave_height_ft, period_s: b.wave_period_s, direction_deg: b.wave_direction_deg }];
+    } else {
+      const rows = (forecastData[activeModel] || {})[spot.name] || [];
+      const rec  = rows.find(r => r.time === timeStr);
+      if (!rec) return;
+      if (rec.wave_height_ft != null) {
+        comps = (rec.components && rec.components.length > 0)
+          ? rec.components
+          : [{ height_ft: rec.wave_height_ft, period_s: rec.wave_period_s, direction_deg: rec.wave_direction_deg }];
+      } else if (rec.raw_direction_deg != null) {
+        // Swell was filtered from table (period < 6s etc.) but we still
+        // know the direction — show a direction-only arrow on the map.
+        comps = [{ height_ft: null, period_s: null, direction_deg: rec.raw_direction_deg, _filtered: true }];
+      } else {
+        return;
+      }
+    }
+    comps.slice(0, 2).forEach((c, ci) => {
+      if (c.direction_deg == null) return;
+      arrows.push({ lat: spot.lat, lon: spot.lon, dir: c.direction_deg,
+                     ht: c.height_ft, per: c.period_s, primary: ci === 0,
+                     filtered: !!c._filtered });
+    });
+  });
+
+  // Draw arrows (no labels yet)
+  arrows.forEach(a => _drawSwellArrow(a.lat, a.lon, a.dir, a.ht, a.per, a.primary, true, a.filtered));
+
+  // Now place labels with collision avoidance.
+  // Convert each arrow's tail position to container pixels, then nudge any
+  // overlapping labels vertically so they don't stack on top of each other.
+  const LABEL_H = 14;   // approx label height in px
+  const LABEL_W = 75;   // approx label width in px
+  const placed = [];     // [{px, py}] in container coords
+
+  arrows.forEach(a => {
+    if (a.ht == null || a.per == null) return;
+    const arrowKm = _ARROW_KM * _arrowScale;
+    const [tailLat, tailLon] = _geoOffset(a.lat, a.lon, a.dir, arrowKm);
+    const pt = map.latLngToContainerPoint([tailLat, tailLon]);
+    let offY = 0;
+    // Check against already-placed labels and shift down if overlapping
+    for (let iter = 0; iter < 8; iter++) {
+      let collision = false;
+      for (const p of placed) {
+        if (Math.abs(pt.x - p.px) < LABEL_W && Math.abs((pt.y + offY) - p.py) < LABEL_H) {
+          collision = true;
+          break;
+        }
+      }
+      if (!collision) break;
+      offY += LABEL_H;
+    }
+    placed.push({ px: pt.x, py: pt.y + offY });
+
+    const secCls = a.primary ? '' : ' swell-arrow-sec';
+    L.marker([tailLat, tailLon], {
+      icon: L.divIcon({
+        html: `<div class="swell-arrow-label${secCls}">${a.ht}ft @${a.per}s</div>`,
+        className: '', iconSize: null, iconAnchor: [0, -offY],
+      }),
+      interactive: false,
+    }).addTo(swellArrowLayer);
+  });
+}
+
+
+// ═══ 14. REGIONAL WIND MARKERS ══════════════════════════════
+
+function buildRegionWindMarkers(timeStr) {
+  if (!map || !regionWindLayer || !CFG || !regionMode) {
+    console.warn('[regionWind] early return — missing:', {map: !!map, layer: !!regionWindLayer, CFG: !!CFG, regionMode});
+    return;
+  }
+  regionWindLayer.clearLayers();
+
+  const windSpots = (CFG.wind_spots || []).filter(ws => ws.buoy_region === regionMode);
+  if (!windSpots.length) {
+    console.warn('[regionWind] no wind_spots found for region:', regionMode);
+  }
+  const dataKeys = Object.keys(regionWindData);
+  if (!dataKeys.length) {
+    console.warn('[regionWind] regionWindData is empty — API may have failed');
+  }
+  // When a specific time is requested, fall back to the nearest record to THAT
+  // time — not to Date.now().  Using "now" caused map labels and particles to
+  // show current wind while the table displayed a different (hovered) time.
+  const fallbackMs = timeStr
+    ? new Date(timeStr.replace('T', ' ')).getTime()
+    : Date.now();
+
+  const spotItems = windSpots.map(ws => {
+    const records = regionWindData[ws.name] || [];
+    // If timeStr provided, try exact match first
+    let rec = timeStr ? records.find(r => r.time === timeStr) : null;
+    // Fall back to nearest to the requested time (or now if no timeStr)
+    if (!rec && records.length) {
+      let minDiff = Infinity;
+      for (const r of records) {
+        const diff = Math.abs(new Date(r.time.replace('T', ' ')).getTime() - fallbackMs);
+        if (diff < minDiff) { minDiff = diff; rec = r; }
+      }
+    }
+    return { ws, rec };
+  });
+
+  // Screen-space label collision resolution (iterative, handles chains of 3+ close spots)
+  const LABEL_H = 36, LABEL_W = 92, LABEL_X = 8, GAP = 3;
+  const screenPts = spotItems.map(({ ws }) => map.latLngToContainerPoint([ws.lat, ws.lon]));
+  const nudge = new Array(spotItems.length).fill(0);
+
+  for (let pass = 0; pass < 12; pass++) {
+    let moved = false;
+    for (let i = 0; i < spotItems.length; i++) {
+      for (let j = i + 1; j < spotItems.length; j++) {
+        const liL = screenPts[i].x + LABEL_X, liR = liL + LABEL_W;
+        const ljL = screenPts[j].x + LABEL_X, ljR = ljL + LABEL_W;
+        if (liR < ljL || ljR < liL) continue;
+        const yi = screenPts[i].y + nudge[i];
+        const yj = screenPts[j].y + nudge[j];
+        const overlap = (LABEL_H + GAP) - Math.abs(yi - yj);
+        if (overlap <= 0) continue;
+        const half = overlap / 2;
+        if (yi <= yj) { nudge[i] -= half; nudge[j] += half; }
+        else          { nudge[i] += half; nudge[j] -= half; }
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  spotItems.forEach(({ ws, rec }, idx) => {
+    const cond   = rec ? windCondition(rec.speed_mph, rec.direction_deg, ws.shore_normal, rec.gust_mph) : null;
+    const dotCol = cond ? windCondColor(cond).text : '#3d7ab5';
+    L.circleMarker([ws.lat, ws.lon], {
+      radius: 5, color: dotCol, fillColor: dotCol, fillOpacity: 0.9, weight: 1, interactive: false,
+    }).addTo(regionWindLayer);
+    if (rec && rec.speed_mph != null) {
+      const line1 = `${rec.speed_mph} mph ${rec.direction_cardinal}`;
+      const effGust = rec.gust_mph != null ? Math.round(Math.min(rec.gust_mph, rec.speed_mph * 1.5) * 10) / 10 : null;
+      const line2 = effGust != null ? `${effGust} mph gusts` : '';
+      const yTransform = `calc(-50% + ${nudge[idx]}px)`;
+      const labelHtml = `<div class="swell-arrow-label region-wind-label"
+          style="transform: translate(8px, ${yTransform})">
+        <span>${line1}</span>${line2 ? `<br><span class="wind-gust-line">${line2}</span>` : ''}
+      </div>`;
+      L.marker([ws.lat, ws.lon], {
+        icon: L.divIcon({ html: labelHtml, className: '', iconSize: null, iconAnchor: [0, 0] }),
+        interactive: false,
+      }).addTo(regionWindLayer);
+    }
+  });
+
+  // Drive wind particles from the same records used above.
+  // Convert speed_mph + direction_deg (FROM) → u/v in m/s so units match
+  // the global grid and the MAX_VEL colour scale stays correct.
+  // direction_deg is meteorological (FROM): u = −spd·sin(dir), v = −spd·cos(dir)
+  const MPH_TO_MS = 0.44704;
+  const windParticleSpots = spotItems
+    .filter(({ rec }) => rec && rec.speed_mph != null && rec.direction_deg != null)
+    .map(({ ws, rec }) => {
+      const dirRad = rec.direction_deg * Math.PI / 180;
+      const spd    = rec.speed_mph * MPH_TO_MS;
+      return {
+        lat: ws.lat,
+        lon: ws.lon,
+        u: -spd * Math.sin(dirRad),   // eastward component
+        v: -spd * Math.cos(dirRad),   // northward component
+      };
+    });
+  if (!windParticleSpots.length) {
+    console.warn('[regionWind] no valid particle spots — wind animation will not render.',
+      {spotsInRegion: spotItems.length, withRecords: spotItems.filter(s => s.rec).length});
+  }
+  WindRenderer.setSpotData(windParticleSpots.length ? windParticleSpots : null);
+}
+
+
+// ═══ 15. DIAGNOSTIC: COAST-ANGLE LINES ══════════════════════
+
+function buildCoastAngleLines() {
+  if (!map || !coastAngleLayer || !CFG || !regionMode) return;
+  coastAngleLayer.clearLayers();
+  if (!DIAG_COAST_ANGLES) return;
+  const windSpots = (CFG.wind_spots || []).filter(ws => ws.buoy_region === regionMode);
+  const HALF_DEG  = 0.022;
+  windSpots.forEach(ws => {
+    if (ws.shore_normal == null) return;
+    const coastBearing = ((ws.shore_normal - 90) + 360) % 360;
+    const br   = coastBearing * Math.PI / 180;
+    const dlat = Math.cos(br) * HALF_DEG;
+    const dlon = Math.sin(br) * HALF_DEG / Math.cos(ws.lat * Math.PI / 180);
+    L.polyline(
+      [[ws.lat + dlat, ws.lon + dlon], [ws.lat - dlat, ws.lon - dlon]],
+      { color: '#ffffff', opacity: 0.55, weight: 1.5, dashArray: '4 4', interactive: false }
+    ).addTo(coastAngleLayer);
+    L.marker([ws.lat + dlat * 1.25, ws.lon + dlon * 1.25], {
+      icon: L.divIcon({
+        html: `<span style="font-family:monospace;font-size:9px;color:#fff;opacity:.7;white-space:nowrap;text-shadow:0 0 3px #000">${coastBearing.toFixed(1)}°</span>`,
+        className: '', iconSize: null, iconAnchor: [0, 8],
+      }),
+      interactive: false,
+    }).addTo(coastAngleLayer);
+  });
+}
+
+
+// ═══ 16. LEAFLET MAP ════════════════════════════════════════
+
+let map = null;
+const MAP_CENTER = [40.98, -71.9695];
+const MAP_ZOOM   = 7;
+const MAP_CENTER_MOBILE = [40.70, -72.35];
+const MAP_ZOOM_MOBILE   = 7;
+
+// REGION_VIEWS — loaded from regions.yaml via /api/config.
+// Populated in init() after CFG is fetched.
+let REGION_VIEWS = {};
+
+function initMap() {
+  const mob = _isMobile();
+  map = L.map('map', {
+    center: mob ? MAP_CENTER_MOBILE : MAP_CENTER,
+    zoom: mob ? MAP_ZOOM_MOBILE : MAP_ZOOM,
+    bearing: 0, rotate: true,
+    zoomControl: false, attributionControl: false,
+  });
+
+  tileLayer = L.tileLayer(_tileUrl(), { maxZoom: 12, opacity: _isDark() ? 0.7 : 0.9, detectRetina: true }).addTo(map);
+
+  // WindRenderer — initialize BEFORE any vector layers are added to the map.
+  // Canvas is appended to overlayPane first, so all SVG vector elements
+  // (circle markers, swell arrows, wind markers) are added after it and
+  // therefore paint on top of the wind particles. Correct visual order:
+  // tiles → wind particles → swell arrows → buoy dots → region markers.
+  WindRenderer.init(map);
+  WindRenderer.setColors(_colorScale());
+
+  // Buoy dots — stored so we can grey out offline buoys after data loads.
+  window._buoyDots = {};
+  if (CFG) {
+    CFG.spots.forEach(spot => {
+      const m = L.circleMarker([spot.lat, spot.lon], {
+        radius: 5, color: '#7c6af7', fillColor: '#7c6af7', fillOpacity: .9,
+        weight: 1, interactive: false,
+      }).addTo(map);
+      window._buoyDots[spot.name] = m;
+    });
+  }
+
+  swellArrowLayer = L.layerGroup().addTo(map);
+  regionWindLayer = L.layerGroup().addTo(map);
+  coastAngleLayer = L.layerGroup().addTo(map);
+
+  // Map interaction handlers.
+  // KEY DESIGN: do NOT call syncToNow() on zoom/move. That recalculates
+  // "nearest time", resets _displayTime, and rebuilds all overlays —
+  // heavyweight and wrong when the user is looking at a specific time column.
+  //
+  // ZOOM: stop + clear immediately (scale change makes particles visually wrong),
+  //   then restart on zoomend.
+  // PAN: the canvas lives in Leaflet's overlayPane and covers the full wind-data
+  //   extent, so particles exist everywhere and animation runs uninterrupted.
+  //   In spot mode (viewport-sized canvas) we restart on moveend.
+  let _lastZoom = null;
+  map.on('zoomstart', () => { _lastZoom = map.getZoom(); WindRenderer.stop(); });
+  map.on('zoomend',   () => {
+    _resubmitWind();
+    // Redraw swell arrows at the new zoom-compensated scale
+    if (_displayTime) buildSwellArrows(_displayTime, 'forecast');
+    else buildSwellArrows(null, 'buoy');
+  });
+  map.on('moveend',   () => {
+    // If zoom just changed, zoomend already handled the restart
+    if (_lastZoom !== null && _lastZoom !== map.getZoom()) { _lastZoom = null; return; }
+    _lastZoom = null;
+    // Restart if canvas is viewport-sized (spot mode, or grid mode zoomed in
+    // past the point where the full extent fits in a single canvas).
+    if (regionMode || !WindRenderer.isFullExtent) _resubmitWind();
+  });
+
+  // Time badge — always top-right
+  const TimeOverlayControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const el = L.DomUtil.create('div', 'map-time-overlay');
+      el.id = 'map-time-overlay';
+      el.textContent = 'NOW';
+      return el;
+    },
+  });
+  window._timeOverlayCtrl = new TimeOverlayControl().addTo(map);
+
+  // Recenter button — always bottom-right
+  const RecenterControl = L.Control.extend({
+    options: { position: 'bottomright' },
+    onAdd() {
+      const btn = L.DomUtil.create('button', 'map-recenter-btn');
+      btn.title = 'Reset map to default view';
+      btn.textContent = '⊙ RECENTER';
+      L.DomEvent.on(btn, 'click', e => { L.DomEvent.stopPropagation(e); recenterMap(); });
+      return btn;
+    },
+  });
+  new RecenterControl().addTo(map);
+
+  // Overview button — always bottom-right
+  const OverviewControl = L.Control.extend({
+    options: { position: 'bottomright' },
+    onAdd() {
+      const btn = L.DomUtil.create('button', 'map-overview-btn');
+      btn.title = 'Return to overview';
+      btn.textContent = 'OVERVIEW';
+      L.DomEvent.on(btn, 'click', e => { L.DomEvent.stopPropagation(e); exitRegionMode(); });
+      return btn;
+    },
+  });
+  window._overviewCtrl = new OverviewControl().addTo(map);
+}
+
+function recenterMap() {
+  if (!map) return;
+  const mob = _isMobile();
+  if (!regionMode) {
+    map.setView(mob ? MAP_CENTER_MOBILE : MAP_CENTER, mob ? MAP_ZOOM_MOBILE : MAP_ZOOM);
+    return;
+  }
+  const rv = REGION_VIEWS[regionMode];
+  if (rv) {
+    const c = (mob && rv.mobile_center) ? rv.mobile_center : rv.center;
+    const z = (mob && rv.mobile_zoom)   ? rv.mobile_zoom   : rv.zoom;
+    map.setView(c, z);
+    return;
+  }
+  const spots = (CFG && CFG.wind_spots || []).filter(ws => ws.buoy_region === regionMode);
+  if (!spots.length) { map.setView(MAP_CENTER, MAP_ZOOM); return; }
+  const lats   = spots.map(s => s.lat);
+  const lons   = spots.map(s => s.lon);
+  const bounds = [[Math.min(...lats), Math.min(...lons)],
+                  [Math.max(...lats), Math.max(...lons)]];
+  map.fitBounds(bounds, { padding: [60, 60] });
+}
+
+
+// ═══ 17. REGIONAL MODE ══════════════════════════════════════
+
+async function enterRegionMode(spotName) {
+  if (regionMode === spotName) { exitRegionMode(); return; }
+  regionMode = spotName;
+  document.querySelector('.map-overview-btn') && document.querySelector('.map-overview-btn').classList.add('visible');
+  document.querySelector('.map-section').classList.add('region-active');
+
+  // If regionWindData is empty (initial fetch failed or hasn't returned), re-fetch now.
+  if (!Object.keys(regionWindData).length) {
+    console.warn('[enterRegionMode] regionWindData empty — re-fetching…');
+    try {
+      const data = await fetch(`/api/region_wind?model=${activeModel}`).then(r => r.json());
+      if (data) regionWindData = data;
+    } catch(e) { console.warn('[enterRegionMode] region_wind re-fetch failed:', e); }
+  }
+
+  buildTable();
+
+  // recenterMap() triggers a zoom/pan animation.  Leaflet's zoomstart handler
+  // calls WindRenderer.stop(), so building wind markers DURING the animation
+  // is pointless — the canvas gets cleared.  Instead, defer wind marker
+  // construction until after the map animation settles.
+  //
+  // Strategy: recenter the map, then use a one-shot moveend listener to build
+  // wind markers once the animation completes.  A 400 ms safety timeout covers
+  // the case where the map view doesn't actually change (no events fired).
+  if (map) {
+    recenterMap();
+    buildSwellArrows(null, 'buoy');
+    buildCoastAngleLines();
+
+    let windBuilt = false;
+    const _buildOnce = () => {
+      if (windBuilt) return;
+      windBuilt = true;
+      buildRegionWindMarkers(_displayTime);
+    };
+    map.once('moveend', _buildOnce);
+    setTimeout(_buildOnce, 400);    // fallback if map didn't move
+  } else {
+    buildSwellArrows(null, 'buoy');
+    buildCoastAngleLines();
+    buildRegionWindMarkers(_displayTime);
+  }
+}
+
+function exitRegionMode() {
+  regionMode = null;
+  document.querySelector('.map-overview-btn') && document.querySelector('.map-overview-btn').classList.remove('visible');
+  document.querySelector('.map-section').classList.remove('region-active');
+  if (regionWindLayer) regionWindLayer.clearLayers();
+  if (coastAngleLayer) coastAngleLayer.clearLayers();
+  // Discard spot data so the renderer is clean before grid data is loaded back.
+  WindRenderer.reset();
+  if (map) {
+    const mob = _isMobile();
+    map.setView(mob ? MAP_CENTER_MOBILE : MAP_CENTER, mob ? MAP_ZOOM_MOBILE : MAP_ZOOM);
+  }
+  buildTable();
+  buildSwellArrows(null, 'buoy');
+  // Restore grid particles.  _resubmitWind checks regionMode (now null) and
+  // re-fires the last saved grid u/v/grid through WindScheduler.
+  _resubmitWind();
+}
+
+
+// ═══ 18. CONTROLS ═══════════════════════════════════════════
+
+function setModel(model, btn) {
+  activeModel = model;
+  document.querySelectorAll('.sw-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _syncMobileModel(model);
+
+  // Preserve the user's current time selection across the model switch.
+  const savedTime = _displayTime;
+
+  // Clear stale wind data and STOP the old animation immediately so the user
+  // never sees old-model particles while the table shows new-model wave data.
+  windByTime = {};
+  _savedU = _savedV = _savedGrid = null;
+  _savedLabel = savedTime ? fmtLabel(savedTime) : 'NOW';
+  WindRenderer.reset();
+
+  // Restore _displayTime so downstream code knows the user's selection.
+  _displayTime = savedTime;
+
+  buildTable();
+  // Keep swell arrows at the same time point if one was selected.
+  if (savedTime) {
+    buildSwellArrows(savedTime, 'forecast');
+  } else {
+    buildSwellArrows(null, 'buoy');
+  }
+
+  // Fetch new current wind and wind forecast for the selected model.
+  // When new data arrives, restore to the user's saved time (or NOW).
+  fetch(`/api/wind?model=${model}`)
+    .then(r => r.json())
+    .then(data => {
+      const g = data.grid || data;
+      if (g && g.u) {
+        windCurrent = g;
+        // If user had a time selected, syncByTime will find the nearest
+        // matching time in the new model's data once wind forecast loads.
+        // For now, show the current snapshot.
+        if (!savedTime) syncToNow();
+      }
+    })
+    .catch(() => {});
+
+  loadWindForecast(model);
+  _refreshStatus();
+
+  // Refresh regional wind data if in region mode
+  if (regionMode) {
+    regionWindData = {};
+    fetch(`/api/region_wind?model=${model}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data) {
+          regionWindData = data;
+          console.log('[setModel] regionWindData refreshed:', Object.keys(data).length, 'spots');
+          buildTable();
+          buildRegionWindMarkers(_displayTime);
+        } else {
+          console.warn('[setModel] region_wind returned null for model:', model);
+        }
+      })
+      .catch(e => { console.warn('[setModel] region_wind fetch error:', e); });
+  }
+}
+
+function setResolution(r, btn) {
+  resolution = r;
+  document.querySelectorAll('.pill-group .pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  // Sync mobile resolution buttons
+  _syncMobileRes(r);
+  buildTable();
+}
+
+// ── Mobile control helpers ──────────────────────────────────────────────────
+
+function _isMobile() {
+  return window.innerWidth <= 600;
+}
+
+function setModelMobile(model) {
+  // Update desktop buttons
+  document.querySelectorAll('.sw-btn').forEach(b => b.classList.remove('active'));
+  const desktopBtn = document.querySelector(`.sw-btn[data-model="${model}"]`);
+  if (desktopBtn) desktopBtn.classList.add('active');
+  // Update mobile buttons
+  const euroBtn = document.getElementById('mob-euro');
+  const gfsBtn  = document.getElementById('mob-gfs');
+  euroBtn.classList.remove('active', 'active-gfs');
+  gfsBtn.classList.remove('active', 'active-gfs');
+  if (model === 'EURO') { euroBtn.classList.add('active'); }
+  else { gfsBtn.classList.add('active-gfs'); }
+  // Trigger the actual model switch (reuse existing logic without btn arg)
+  setModel(model, desktopBtn || document.createElement('button'));
+}
+
+function setResMobile(r) {
+  resolution = r;
+  // Sync desktop buttons
+  document.querySelectorAll('.pill-group .pill').forEach(p => p.classList.remove('active'));
+  const desktopPills = document.querySelectorAll('.pill-group .pill');
+  desktopPills.forEach(p => {
+    if ((r === 1 && p.textContent === 'Hourly') || (r === 3 && p.textContent === '3-Hour'))
+      p.classList.add('active');
+  });
+  // Sync mobile buttons
+  _syncMobileRes(r);
+  buildTable();
+}
+
+function _syncMobileRes(r) {
+  const btn1 = document.getElementById('mob-1hr');
+  const btn3 = document.getElementById('mob-3hr');
+  if (btn1 && btn3) {
+    btn1.classList.toggle('active', r === 1);
+    btn3.classList.toggle('active', r === 3);
+  }
+}
+
+function _syncMobileModel(model) {
+  const euroBtn = document.getElementById('mob-euro');
+  const gfsBtn  = document.getElementById('mob-gfs');
+  if (euroBtn && gfsBtn) {
+    euroBtn.classList.remove('active', 'active-gfs');
+    gfsBtn.classList.remove('active', 'active-gfs');
+    if (model === 'EURO') euroBtn.classList.add('active');
+    else gfsBtn.classList.add('active-gfs');
+  }
+}
+
+// ── Mobile time slider ─────────────────────────────────────────────────────
+// A slider with a draggable handle that controls the table scroll position.
+// The handle maps linearly to the table's horizontal scroll range.
+// The map always shows the time of the leftmost fully-visible column.
+//
+// Bidirectional sync:
+//   Handle drag → scrolls table → detects leftmost column → syncs map
+//   Table scroll (if user scrolls table directly) → moves handle → syncs map
+
+let _sliderTimes = [];       // ISO time strings matching table data columns
+let _sliderActive = null;    // currently highlighted ISO time
+let _sliderDragging = false; // true while handle is being dragged
+
+// ── Velocity-based scrubbing state ──────────────────────────────────────
+let _scrubAnchorX  = 0;   // clientX at drag start (or last anchor reset)
+let _scrubAnchorY  = 0;   // clientY at drag start
+let _scrubAnchorPct = 0;  // slider pct when drag started (or last anchor)
+let _scrubSpeed    = 1;   // current effective speed multiplier
+
+function buildScrubber() {
+  if (!_isMobile()) return;
+  const track = document.getElementById('slider-track');
+  if (!track) return;
+
+  // Gather the time list from the first table row (data columns only).
+  _sliderTimes = [];
+  const cells = document.querySelectorAll('.swell-table tbody tr:first-child td.cell[data-time]');
+  cells.forEach(td => {
+    const t = td.getAttribute('data-time');
+    if (t) _sliderTimes.push(t);
+  });
+
+  // Place date-break tick marks on the track
+  track.querySelectorAll('.slider-date-tick, .slider-date-label').forEach(el => el.remove());
+  if (_sliderTimes.length > 1) {
+    let prevDay = null;
+    _sliderTimes.forEach((t, i) => {
+      const d      = new Date(t.replace('T', ' '));
+      const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      if (prevDay !== null && prevDay !== dayKey) {
+        const tickPct = _pctFromColIndex(i);
+        const tick = document.createElement('div');
+        tick.className = 'slider-date-tick';
+        tick.style.left = (tickPct * 100) + '%';
+        track.appendChild(tick);
+
+        const wd    = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+        const label = document.createElement('div');
+        label.className = 'slider-date-label';
+        label.style.left = (tickPct * 100) + '%';
+        label.textContent = `${wd} ${d.getDate()}`;
+        track.appendChild(label);
+      }
+      prevDay = dayKey;
+    });
+  }
+
+  // Restore to the user's current time selection, or default to buoy (0%).
+  if (_displayTime && _sliderTimes.length) {
+    const idx = _sliderTimes.indexOf(_displayTime);
+    if (idx >= 0) {
+      const pct = _pctFromColIndex(idx);
+      _sliderApplyPct(pct);
+      return;
+    }
+    // Exact match not found (e.g. different model grid) — find nearest time.
+    const target = new Date(_displayTime.replace('T', ' ')).getTime();
+    let bestIdx = 0, bestDiff = Infinity;
+    _sliderTimes.forEach((t, i) => {
+      const diff = Math.abs(new Date(t.replace('T', ' ')).getTime() - target);
+      if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+    });
+    const pct = _pctFromColIndex(bestIdx);
+    _sliderApplyPct(pct);
+  } else {
+    _setSliderPct(0);
+    _updateSliderLabel(_sliderTimes.length ? 'LIVE' : '—');
+  }
+}
+
+// ── Slider ↔ table-scroll mapping helpers ───────────────────────────────
+
+function _tableMaxScroll() {
+  const ts = document.querySelector('.table-scroll');
+  return ts ? ts.scrollWidth - ts.clientWidth : 1;
+}
+
+function _sliderPctFromX(clientX) {
+  const wrap = document.getElementById('slider-track-wrap');
+  if (!wrap) return 0;
+  const rect = wrap.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+
+function _setSliderPct(pct) {
+  const handle = document.getElementById('slider-handle');
+  const fill   = document.getElementById('slider-fill');
+  if (handle) handle.style.left = (pct * 100) + '%';
+  if (fill)   fill.style.width  = (pct * 100) + '%';
+}
+
+function _updateSliderLabel(timeStr) {
+  const el = document.getElementById('slider-label');
+  if (!el) return;
+  if (!timeStr || timeStr === 'LIVE') { el.textContent = 'LIVE'; return; }
+  el.textContent = fmtLabel(timeStr);
+}
+
+/** Map slider percentage to a column index.
+ *  Index -1 = buoy (scrollLeft 0), 0..N-1 = data columns. */
+function _colIndexFromPct(pct) {
+  if (!_sliderTimes.length) return -1;
+  // Reserve the first small slice of the slider for the buoy view.
+  // buoy occupies pct [0, buoyEnd), columns occupy [buoyEnd, 1].
+  const N = _sliderTimes.length;
+  const buoyEnd = 1 / (N + 1);
+  if (pct < buoyEnd) return -1;
+  return Math.min(N - 1, Math.round(((pct - buoyEnd) / (1 - buoyEnd)) * (N - 1)));
+}
+
+/** Map a column index (-1 = buoy, 0..N-1 = data) back to slider pct. */
+function _pctFromColIndex(idx) {
+  const N = _sliderTimes.length;
+  if (!N) return 0;
+  const buoyEnd = 1 / (N + 1);
+  if (idx < 0) return 0;
+  return buoyEnd + (idx / (N - 1)) * (1 - buoyEnd);
+}
+
+// ── Core: apply a slider percentage → scroll table → highlight → sync map ─
+
+function _sliderApplyPct(pct) {
+  const ts = document.querySelector('.table-scroll');
+  if (!ts) return;
+
+  const colIdx = _colIndexFromPct(pct);
+
+  // Update handle + fill
+  _setSliderPct(pct);
+
+  clearHighlight();
+
+  if (colIdx < 0) {
+    // Buoy view — scroll all the way left
+    ts.scrollLeft = 0;
+    _sliderActive = null;
+    _updateSliderLabel('LIVE');
+    return;
+  }
+
+  const t = _sliderTimes[colIdx];
+  _sliderActive = t;
+  _updateSliderLabel(t);
+
+  // Scroll table so the target column is visible (centered if possible)
+  const targetCell = document.querySelectorAll('.swell-table tbody tr:first-child td.cell[data-time]')[colIdx];
+  if (targetCell) {
+    const spotCol  = ts.querySelector('td.spot-cell');
+    const stickyW  = spotCol ? spotCol.offsetWidth : 0;
+    const cellLeft = targetCell.offsetLeft - stickyW;
+    const visibleW = ts.clientWidth - stickyW;
+    // Put the column roughly in the left third of the visible area,
+    // but clamp to [0, maxScroll].
+    const ideal = cellLeft - visibleW * 0.1;
+    const max   = _tableMaxScroll();
+    ts.scrollLeft = Math.max(0, Math.min(max, Math.round(ideal)));
+  }
+
+  // Highlight + sync map
+  document.querySelectorAll(`td.cell[data-time="${t}"]`)
+    .forEach(el => el.classList.add('col-active'));
+  syncByTime(t);
+}
+
+// ── Velocity-based scrubbing helpers ─────────────────────────────────────
+
+/** Compute scrub speed from vertical finger distance (reversed).
+ *  0-10px away  → 0.15× (fine mode, finger on track)
+ *  10-70px      → linear ramp from 0.15× up to 1×
+ *  70px+        → 1× (full speed) */
+function _scrubSpeedFromDy(dy) {
+  const absDy = Math.abs(dy);
+  if (absDy < 10)  return 0.15;
+  if (absDy > 70)  return 1;
+  return 0.15 + (absDy - 10) / (70 - 10) * 0.85;
+}
+
+/** Apply velocity-scaled scrub: finger's horizontal delta is scaled by speed,
+ *  then added to the anchor percentage. */
+function _scrubApply(clientX, clientY) {
+  const wrap = document.getElementById('slider-track-wrap');
+  if (!wrap) return;
+  const rect = wrap.getBoundingClientRect();
+  const trackW = rect.width;
+
+  // Vertical distance from drag-start → controls speed
+  const dy = clientY - _scrubAnchorY;
+  const speed = _scrubSpeedFromDy(dy);
+  _scrubSpeed = speed;
+
+  // Horizontal delta in slider-pct space, scaled by speed
+  const dxPx  = clientX - _scrubAnchorX;
+  const dxPct = (dxPx / trackW) * speed;
+
+  const pct = Math.max(0, Math.min(1, _scrubAnchorPct + dxPct));
+  _sliderApplyPct(pct);
+  _updateScrubSpeedLabel(speed);
+}
+
+function _updateScrubSpeedLabel(speed) {
+  let el = document.getElementById('scrub-speed-label');
+  if (!el) return;
+  if (speed >= 0.95) {
+    el.style.opacity = '0';
+    return;
+  }
+  let label;
+  if (speed < 0.25)      label = 'FINE';
+  else if (speed < 0.5)  label = '¼×';
+  else                    label = '½×';
+  el.textContent = label;
+  el.style.opacity = '1';
+}
+
+function _scrubStart(clientX, clientY) {
+  _sliderDragging  = true;
+  _scrubAnchorX    = clientX;
+  _scrubAnchorY    = clientY;
+  // Capture current slider position as anchor
+  const wrap = document.getElementById('slider-track-wrap');
+  if (wrap) {
+    const rect = wrap.getBoundingClientRect();
+    _scrubAnchorPct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  }
+  _scrubSpeed = 1;
+  _sliderApplyPct(_scrubAnchorPct);
+}
+
+function _scrubEnd() {
+  _sliderDragging = false;
+  _scrubSpeed = 1;
+  const el = document.getElementById('scrub-speed-label');
+  if (el) el.style.opacity = '0';
+}
+
+// ── Attach drag + table-scroll listeners ─────────────────────────────────
+
+function _attachScrubListeners() {
+  const scrubber = document.getElementById('mobile-time-scrubber');
+  const wrap     = document.getElementById('slider-track-wrap');
+  if (!scrubber || !wrap) return;
+
+  // ── Handle drag (touch) — velocity-based scrubbing ─────────────────────
+  scrubber.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+    _scrubStart(t.clientX, t.clientY);
+  }, { passive: false });
+
+  scrubber.addEventListener('touchmove', (e) => {
+    if (!_sliderDragging) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    _scrubApply(t.clientX, t.clientY);
+  }, { passive: false });
+
+  scrubber.addEventListener('touchend',   () => { _scrubEnd(); });
+  scrubber.addEventListener('touchcancel', () => { _scrubEnd(); });
+
+  // ── Handle drag (mouse, for desktop testing) — velocity-based ─────────
+  scrubber.addEventListener('mousedown', (e) => {
+    _scrubStart(e.clientX, e.clientY);
+
+    const onMove = (ev) => {
+      if (!_sliderDragging) return;
+      _scrubApply(ev.clientX, ev.clientY);
+    };
+    const onUp = () => {
+      _scrubEnd();
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// Initialize slider listeners once at startup.
+if (_isMobile()) {
+  _attachScrubListeners();
+}
+
+async function refreshAll() {
+  await fetch('/api/refresh', { method: 'POST' });
+
+  windByTime = {};
+  windForecast = null;
+  _clearWindState();
+
+  WindScheduler.reset();
+  WindRenderer.reset();
+
+  if (swellArrowLayer)  swellArrowLayer.clearLayers();
+  if (regionWindLayer)  regionWindLayer.clearLayers();
+  if (coastAngleLayer)  coastAngleLayer.clearLayers();
+
+  regionMode = null;
+  regionWindData = {};
+  regionTideData = {};
+
+  // Start wind forecast in parallel with loadAll (same as init).
+  const wfPromise = loadWindForecast(activeModel);
+  await loadAll();
+  await wfPromise;
+  _refreshStatus();
+}
+
+
+// ═══ 19. THEME TOGGLE ════════════════════════════════════════
+
+function _updateTileLayer() {
+  if (!map) return;
+  if (tileLayer) { map.removeLayer(tileLayer); tileLayer = null; }
+  tileLayer = L.tileLayer(_tileUrl(), { maxZoom: 12, opacity: _isDark() ? 0.7 : 0.9, detectRetina: true }).addTo(map);
+}
+
+function toggleTheme() {
+  const next = _isDark() ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('wave-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '◑ DARK' : '◑ LIGHT';
+  _updateTileLayer();
+  // Update WindRenderer color scale for new theme, then restart
+  WindRenderer.setColors(_colorScale());
+  WindScheduler.reset();
+  // Rebuild color-coded UI elements
+  buildLegend();
+  buildWindScale();
+  buildTable();
+  // Re-render wind at current target with new colors
+  _resubmitWind();
+}
+
+
+// ═══ 21. SIDE-BY-SIDE MODE ══════════════════════════════════
+
+const SBS_RATIO_THRESHOLD = 1.4;
+
+function shouldBeSbs() {
+  if (window.innerWidth <= 600) return false;   // never SBS on mobile
+  return true;                                  // always SBS on desktop
+}
+
+function setSbsHeight() {
+  const hdr  = document.querySelector('.app-header').offsetHeight;
+  const ctrl = document.querySelector('.controls-bar').offsetHeight;
+  const ftr  = document.querySelector('.app-footer').offsetHeight;
+  document.querySelector('.content').style.height =
+    (window.innerHeight - hdr - ctrl - ftr) + 'px';
+}
+
+function _applySbs(enable) {
+  sbsMode = enable;
+  document.body.classList.toggle('sbs', sbsMode);
+  const btn = document.getElementById('sbs-btn');
+  btn.textContent = sbsMode ? '⊟ SIDE BY SIDE' : '⊞ SIDE BY SIDE';
+  btn.classList.toggle('sbs-active', sbsMode);
+  // Controls are always in fixed positions (time=topright, buttons=bottomright)
+  // so no repositioning needed on SBS toggle.
+  if (sbsMode) setSbsHeight();
+  else document.querySelector('.content').style.height = '';
+  if (map) {
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+      recenterMap();
+      // Destroy and re-create velocity layer at new container dimensions
+      WindScheduler.reset();
+      _resubmitWind();
+    });
+  }
+}
+
+function toggleSbs() {
+  _applySbs(!sbsMode);
+}
+
+let _resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    const want = shouldBeSbs();
+    if (want !== sbsMode) {
+      _applySbs(want);
+    } else if (sbsMode) {
+      setSbsHeight();
+      if (map) {
+        map.invalidateSize();
+        recenterMap();
+        WindScheduler.reset();
+        _resubmitWind();
+      }
+    } else if (_isMobile() && map) {
+      // Mobile resize (e.g. orientation change): re-fit map
+      map.invalidateSize();
+      WindScheduler.reset();
+      _resubmitWind();
+    }
+  }, 150);
+});
+
+
+// ═══ 22. HELPERS ════════════════════════════════════════════
+
+const CARDS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function toCard(deg)  { return CARDS[Math.round(parseFloat(deg) / 22.5) % 16]; }
+function toArrow(deg) {
+  const travel = (parseFloat(deg) + 180) % 360;
+  return ['↑','↗','→','↘','↓','↙','←','↖'][Math.round(travel / 45) % 8];
+}
+
+function fmtLabel(iso) {
+  if (!iso) return '';
+  try {
+    const d  = new Date(iso.replace('T', ' '));
+    const wd = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
+    const h  = d.getHours();
+    return `${wd} ${h % 12 || 12}${h < 12 ? 'a' : 'p'}`;
+  } catch(e) { return iso.slice(11, 16); }
+}
+
+function fmtHeaderHtml(iso) {
+  if (!iso) return '';
+  try {
+    const d   = new Date(iso.replace('T', ' '));
+    const dom = d.getDate();
+    const wd  = ['SUN','MON','TUE','WED','THU','FRI','SAT'][d.getDay()];
+    const h   = d.getHours();
+    return `${dom}<br>${wd} ${h % 12 || 12}${h < 12 ? 'a' : 'p'}`;
+  } catch(e) { return iso.slice(11, 16); }
+}
+
+
+// ═══ 23. STARTUP IIFEs ══════════════════════════════════════
+
+// Resolve theme: saved preference wins; fall back to system preference.
+(function() {
+  const saved   = localStorage.getItem('wave-theme');
+  const sysPref = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  const theme   = saved || sysPref;
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+})();
+
+// Track system preference changes at runtime (only when no saved override).
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+  if (localStorage.getItem('wave-theme')) return;
+  const theme = e.matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+  _updateTileLayer();
+  buildLegend();
+  buildWindScale();
+  buildTable();
+  WindRenderer.setColors(_colorScale());
+  WindScheduler.reset();
+  _resubmitWind();
+});
+
+// Set initial SBS state from window dimensions.
+(function() {
+  sbsMode = shouldBeSbs();
+  if (sbsMode) {
+    document.body.classList.add('sbs');
+    const btn = document.getElementById('sbs-btn');
+    btn.textContent = '⊟ SIDE BY SIDE';
+    btn.classList.add('sbs-active');
+    // Height applied in init() once the map container exists
+  }
+})();
+
+init();
+</script>
+</body>
+</html>

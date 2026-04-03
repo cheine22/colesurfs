@@ -1,0 +1,362 @@
+# ─────────────────────────────────────────────────────────────
+# colesurfs — Region & Spot Configuration
+# ─────────────────────────────────────────────────────────────
+# Each top-level entry is a region (keyed by display name).
+# Add a new region by appending a block — no other files need editing.
+#
+# Fields:
+#   buoy_id        NOAA NDBC buoy station ID
+#   buoy_lat/lon   Buoy coordinates (decimal degrees)
+#   map_center     [lat, lon] for regional map view
+#   map_zoom       Leaflet zoom level for regional view
+#   spots          List of surf spots in this region
+#     name           Display name
+#     lat/lon        Spot coordinates
+#     tide_station   NOAA CO-OPS tide station ID
+#     tide_hi_offset Minutes offset from NOAA predicted high tide (Surfline correction)
+#     tide_lo_offset Minutes offset from NOAA predicted low tide  (Surfline correction)
+#     shore_normal   Direction the beach faces seaward (degrees true)
+#     surfline_url   Surfline report URL
+# ─────────────────────────────────────────────────────────────
+
+NY Harbor Entrance:
+  buoy_id: "44065"
+  buoy_lat: 40.368
+  buoy_lon: -73.701
+  map_center: [40.570, -73.68]
+  map_zoom: 11
+  mobile_map_center: [40.570, -73.70]
+  mobile_map_zoom: 11
+  spots:
+    # NYC region — Long Beach, NY (8516663): ocean-facing south shore LI
+    # Surfline correction vs NOAA: Hi −29 min, Lo −36 min (5-day mean, 2026-04-01→05)
+    # Coast angles: Lido 84°, Pacific 92.78°, Rockaway 64.28°
+    # shore_normal = coast_angle + 90° (or −90° where + points inland)
+    - name: Lido Beach
+      lat: 40.584503
+      lon: -73.630621
+      tide_station: "8516663"
+      tide_hi_offset: -29
+      tide_lo_offset: -36
+      shore_normal: 174.00
+      surfline_url: https://www.surfline.com/surf-report/lido-beach/5842041f4e65fad6a77089e2
+
+    - name: Pacific Blvd.
+      lat: 40.582732
+      lon: -73.641068
+      tide_station: "8516663"
+      tide_hi_offset: -29
+      tide_lo_offset: -36
+      shore_normal: 182.78
+      surfline_url: https://www.surfline.com/surf-report/pacific-blvd/58dd748982d034001252e3dc
+
+    - name: 90th St. Rockaway
+      lat: 40.582838
+      lon: -73.810912
+      tide_station: "8516663"
+      tide_hi_offset: -29
+      tide_lo_offset: -36
+      shore_normal: 154.28
+      surfline_url: https://www.surfline.com/surf-report/rockaways/5842041f4e65fad6a7708852?camId=667cce735b324773e839389f
+
+Block Island Sound:
+  buoy_id: "44097"
+  buoy_lat: 40.969
+  buoy_lon: -71.126
+  map_center: [41.15, -71.65]
+  map_zoom: 9
+  mobile_map_center: [41.20, -71.55]
+  mobile_map_zoom: 8
+  spots:
+    # Hamptons — Shinnecock Inlet Open Coast (8512354)
+    # Surfline correction vs NOAA: Hi −28 min, Lo −9 min (5-day mean, 2026-04-01→05)
+    # Coast angles: Road G 61.63°, Flying Point 62.53°
+    - name: Road G
+      lat: 40.843117
+      lon: -72.461677
+      tide_station: "8512354"
+      tide_hi_offset: -28
+      tide_lo_offset: -9
+      shore_normal: 151.63
+      surfline_url: https://www.surfline.com/surf-report/coopers-beach/584204204e65fad6a770945d
+
+    - name: Flying Point
+      lat: 40.886810
+      lon: -72.338049
+      tide_station: "8512354"
+      tide_hi_offset: -28
+      tide_lo_offset: -9
+      shore_normal: 152.53
+      surfline_url: https://www.surfline.com/surf-report/flys/5842041f4e65fad6a77089ea
+
+    # Radars (Camp Hero, Montauk Point ocean side) — uses Shinnecock (8512354), NOT Montauk Harbor
+    # Montauk Harbor (8510560) is Block Island Sound side — 86–138 min wrong.
+    # Surfline correction vs NOAA 8512354: Hi −7 min, Lo +10 min (5-day mean, 2026-04-01→05)
+    # Coast angle: 50.47°
+    - name: Radars
+      lat: 41.062845
+      lon: -71.863224
+      tide_station: "8512354"
+      tide_hi_offset: -7
+      tide_lo_offset: 10
+      shore_normal: 140.47
+      surfline_url: https://www.surfline.com/surf-report/camp-hero/62e83ee344826a2de65b2a47
+
+    # RI south coast — Point Judith (8455083): open coast RI
+    # Surfline correction vs NOAA: Monahans Hi −25/Lo −16, Matunuck Hi −19/Lo −11 (5-day mean, 2026-04-01→05)
+    # Coast angles: Monahans 176° (N-S coast, faces east → 176−90=86°); Matunuck 87.48°
+    - name: Monahans
+      lat: 41.422341
+      lon: -71.453897
+      tide_station: "8455083"
+      tide_hi_offset: -25
+      tide_lo_offset: -16
+      shore_normal: 88.00
+      surfline_url: https://www.surfline.com/surf-report/monahan-s-narragansett/5842041f4e65fad6a77089cd
+
+    # Newport, RI (8452660): reference for Narragansett Bay area
+    # Surfline correction vs NOAA: Hi +5 min, Lo +42 min (5-day mean, 2026-04-01→05)
+    # Coast angle: 68.09°
+    - name: The Landing
+      lat: 41.475790
+      lon: -71.147951
+      tide_station: "8452660"
+      tide_hi_offset: 5
+      tide_lo_offset: 42
+      shore_normal: 158.09
+      surfline_url: https://www.surfline.com/surf-report/south-shore-beach/61d4c98b58d4169c0d944096
+
+    - name: Matunuck
+      lat: 41.372711
+      lon: -71.538709
+      tide_station: "8455083"
+      tide_hi_offset: -19
+      tide_lo_offset: -11
+      shore_normal: 177.48
+      surfline_url: https://www.surfline.com/surf-report/matunuck/5842041f4e65fad6a7708e40?camId=58349c653421b20545c4b55a
+
+    - name: Mansion Beach (BI)
+      lat: 41.2036140
+      lon: -71.5571137
+      tide_station: "8459681"
+      tide_hi_offset: -8
+      tide_lo_offset: -20
+      shore_normal: 114.8
+      surfline_url: https://www.surfline.com/surf-report/mansion-beach/61d89360292512a9ec939f8e
+
+
+Massachusetts:
+  buoy_id: "44013"
+  buoy_lat: 42.346
+  buoy_lon: -70.651
+  map_center: [42.14, -70.36]
+  map_zoom: 9
+  mobile_map_center: [42.20, -70.40]
+  mobile_map_zoom: 8
+  spots:
+    - name: Marconi
+      lat: 41.9140436
+      lon: -69.9693908
+      tide_station: "8446009"
+      tide_hi_offset: +3
+      tide_lo_offset: +4
+      shore_normal: 75
+      surfline_url: https://www.surfline.com/surf-report/marconi-beach/584204204e65fad6a77099a1
+    
+    - name: Peggotty Beach 
+      lat: 42.1901849
+      lon: -70.7137253
+      tide_station: "8444162"
+      tide_hi_offset: -4
+      tide_lo_offset: +1
+      shore_normal: 89.27
+      surfline_url: https://www.surfline.com/surf-report/scituate/640a4440b6d7695492525f07
+
+    - name: Point Allerton
+      lat: 42.3090779
+      lon: -70.8817424
+      tide_station: "8443970"
+      tide_hi_offset: +5
+      tide_lo_offset: +6
+      shore_normal: 90.36
+      surfline_url: https://www.surfline.com/surf-report/nantasket-beach/5842041f4e65fad6a77089d1
+
+    - name: Devereux
+      lat: 42.4908103
+      lon: -70.8515303
+      tide_station: "8441241"
+      tide_hi_offset: -13
+      tide_lo_offset: -25
+      shore_normal: 0
+      surfline_url: https://www.surfline.com/surf-report/devereux/640a4439606c45f9e6b1c7ff
+    
+    - name: Good Harbor Beach
+      lat: 42.6156547
+      lon: -70.6294192
+      tide_station: "8440466"
+      tide_hi_offset: -20
+      tide_lo_offset: -41
+      shore_normal: 141.35
+      surfline_url: https://www.surfline.com/surf-report/good-harbor-beach/5a1f05fa0f87fe001a0c70da
+
+NH & North Shore, MA:
+  buoy_id: "44098"
+  buoy_lat: 42.800
+  buoy_lon: -70.169
+  map_center: [42.72, -70.60]
+  map_zoom: 10
+  mobile_map_center: [42.65, -70.65]
+  mobile_map_zoom: 9
+  spots:
+    - name: Devereux
+      lat: 42.4908103
+      lon: -70.8515303
+      tide_station: "8441241"
+      tide_hi_offset: -13
+      tide_lo_offset: -25
+      shore_normal: 0
+      surfline_url: https://www.surfline.com/surf-report/devereux/640a4439606c45f9e6b1c7ff
+    
+    - name: Good Harbor Beach
+      lat: 42.6156547
+      lon: -70.6294192
+      tide_station: "8440466"
+      tide_hi_offset: -20
+      tide_lo_offset: -41
+      shore_normal: 141.35
+      surfline_url: https://www.surfline.com/surf-report/good-harbor-beach/5a1f05fa0f87fe001a0c70da
+    
+    - name: Rye Rocks
+      lat: 42.9688026
+      lon: -70.7684227
+      tide_station: "8423898"
+      tide_hi_offset: -9
+      tide_lo_offset: -8
+      shore_normal: 113.47
+      surfline_url: https://www.surfline.com/surf-report/the-wall/5842041f4e65fad6a77089e9
+
+
+Barnegat:
+  buoy_id: "44091"
+  buoy_lat: 39.769
+  buoy_lon: -73.770
+  map_center: [40.10, -73.59]
+  map_zoom: 9
+  mobile_map_center: [40.15, -73.90]
+  mobile_map_zoom: 9
+  spots:
+    - name: Ocean Grove
+      lat: 40.2129279
+      lon: -74.0000267
+      tide_station: "8533615"
+      tide_hi_offset: -24
+      tide_lo_offset: -37
+      shore_normal: 104.79
+      surfline_url: https://www.surfline.com/surf-report/ocean-grove/625611325cd9822674fe5031
+
+    - name: Manasquan Inlet
+      lat: 40.1125948
+      lon: -74.0305921
+      tide_station: "8533615"
+      tide_hi_offset: -24
+      tide_lo_offset: -37
+      shore_normal: 98.2
+      surfline_url: https://www.surfline.com/surf-report/manasquan-inlet/5842041f4e65fad6a7708856
+  
+
+Long Island:
+  buoy_id: "44017"
+  buoy_lat: 40.693
+  buoy_lon: -72.049
+  map_center: [40.65, -72.18]
+  map_zoom: 9
+  mobile_map_center: [40.90, -72.05]
+  mobile_map_zoom: 9
+  spots:
+    # Hamptons — Shinnecock Inlet Open Coast (8512354)
+    # Surfline correction vs NOAA: Hi −28 min, Lo −9 min (5-day mean, 2026-04-01→05)
+    # Coast angles: Road G 61.63°, Flying Point 62.53°
+    - name: Road G
+      lat: 40.843117
+      lon: -72.461677
+      tide_station: "8512354"
+      tide_hi_offset: -28
+      tide_lo_offset: -9
+      shore_normal: 151.63
+      surfline_url: https://www.surfline.com/surf-report/coopers-beach/584204204e65fad6a770945d
+
+    - name: Flying Point
+      lat: 40.886810
+      lon: -72.338049
+      tide_station: "8512354"
+      tide_hi_offset: -28
+      tide_lo_offset: -9
+      shore_normal: 152.53
+      surfline_url: https://www.surfline.com/surf-report/flys/5842041f4e65fad6a77089ea
+
+    # Radars (Camp Hero, Montauk Point ocean side) — uses Shinnecock (8512354), NOT Montauk Harbor
+    # Montauk Harbor (8510560) is Block Island Sound side — 86–138 min wrong.
+    # Surfline correction vs NOAA 8512354: Hi −7 min, Lo +10 min (5-day mean, 2026-04-01→05)
+    # Coast angle: 50.47°
+    - name: Radars
+      lat: 41.062845
+      lon: -71.863224
+      tide_station: "8512354"
+      tide_hi_offset: -7
+      tide_lo_offset: 10
+      shore_normal: 140.47
+      surfline_url: https://www.surfline.com/surf-report/camp-hero/62e83ee344826a2de65b2a47
+
+Cape Cod:
+  buoy_id: "44018"
+  buoy_lat: 42.203
+  buoy_lon: -70.154
+  map_center: [42.14, -70.36]
+  map_zoom: 9
+  mobile_map_center: [42.20, -70.40]
+  mobile_map_zoom: 8
+  spots:
+    - name: Marconi
+      lat: 41.9140436
+      lon: -69.9693908
+      tide_station: "8446009"
+      tide_hi_offset: +3
+      tide_lo_offset: +4
+      shore_normal: 75
+      surfline_url: https://www.surfline.com/surf-report/marconi-beach/584204204e65fad6a77099a1
+    
+    - name: Peggotty Beach 
+      lat: 42.1901849
+      lon: -70.7137253
+      tide_station: "8444162"
+      tide_hi_offset: -4
+      tide_lo_offset: +1
+      shore_normal: 89.27
+      surfline_url: https://www.surfline.com/surf-report/scituate/640a4440b6d7695492525f07
+
+    - name: Point Allerton
+      lat: 42.3090779
+      lon: -70.8817424
+      tide_station: "8443970"
+      tide_hi_offset: +5
+      tide_lo_offset: +6
+      shore_normal: 90.36
+      surfline_url: https://www.surfline.com/surf-report/nantasket-beach/5842041f4e65fad6a77089d1
+
+    - name: Devereux
+      lat: 42.4908103
+      lon: -70.8515303
+      tide_station: "8441241"
+      tide_hi_offset: -13
+      tide_lo_offset: -25
+      shore_normal: 0
+      surfline_url: https://www.surfline.com/surf-report/devereux/640a4439606c45f9e6b1c7ff
+    
+    - name: Good Harbor Beach
+      lat: 42.6156547
+      lon: -70.6294192
+      tide_station: "8440466"
+      tide_hi_offset: -20
+      tide_lo_offset: -41
+      shore_normal: 141.35
+      surfline_url: https://www.surfline.com/surf-report/good-harbor-beach/5a1f05fa0f87fe001a0c70da
