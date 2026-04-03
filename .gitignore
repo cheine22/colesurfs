@@ -1,10 +1,10 @@
 # ─── Setup & deployment docs (private) ───
-setup-instructions.md
-cloudflare-tunnel-setup.md
+hosting.md
 
 # ─── macOS launcher & launchd service ───
-_cole-surfs-launch.command
+_local-launch-command.command
 com.colesurfs.server.plist
+com.colesurfs.autopull.plist
 
 # ─── Python ───
 __pycache__/
