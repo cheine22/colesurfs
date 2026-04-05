@@ -1,4 +1,4 @@
-# colesurfs
+# colesurfs · v1.1.1
 
 A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
@@ -22,6 +22,8 @@ Flask backend, vanilla HTML/CSS/JS frontend. No cloud account or API keys requir
 - **Side-by-side mode** — table + map split; always on for desktop, portrait layout for mobile
 - **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control)
 - **Mobile-specific map centers** — per-region map framing tuned for portrait aspect ratio
+- **Mobile info popup** — tapping the logo on mobile opens a modal with a manual refresh button, current API/swell data summary, and version number
+- **Version display** — version number shown in desktop footer and mobile info popup
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
 
 ---
@@ -78,3 +80,13 @@ Wind direction zones are defined relative to each spot's measured shore normal: 
 - EURO WAM doesn't always return secondary/tertiary swell partitions under wind-dominated conditions; the app falls back to the combined wave height
 - The wind particle field is drawn at the model grid resolution (144 points at 4° spacing), not interpolated to a finer mesh
 - Tide corrections were calibrated on a single date (2026-04-01) against Surfline and are fixed constants
+
+---
+
+## Changelog
+
+### v1.1.1
+- **Wind forecast fix** — `regionWindData` fetch moved outside the `regionMode` guard in `setModel()`, so switching models while in spot view (or before first entering it) no longer returns stale data from the previous model
+- **Version number** — added `v1.1.1` label; displayed in desktop footer and mobile info popup
+- **Mobile info modal** — tapping the header logo on mobile opens a popup with a "Refresh Model Now" button, live API usage/swell data tag, and version string
+- **Loading screen** — content shifted slightly north of center (`padding-bottom: 18%`) for better visual balance
