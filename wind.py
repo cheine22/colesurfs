@@ -30,7 +30,10 @@ from config import (
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 
 # Negative cache: when a request fails, don't retry for this many seconds.
-_NEGATIVE_CACHE_SEC = 600   # 10 min cooldown after API failure (e.g. 429 rate limit)
+_NEGATIVE_CACHE_SEC = 1800  # 30 min cooldown after API failure (e.g. 429 rate limit)
+
+# Sentinel returned by _single_query when rate-limited (vs. mode-not-supported).
+_RATE_LIMITED = object()
 _negative_cache: dict[str, float] = {}   # key → monotonic time of failure
 
 
@@ -150,10 +153,10 @@ def _single_query(params: dict, model_id: str | None,
             raw = r.json()
         except Exception as e:
             print(f"[{label}] ({p.get('models','default')}): {e}")
-            # On rate limit (429), don't retry with fallback model — it will
-            # also be rejected and just wastes quota / extends the cooldown.
+            # On rate limit (429), return sentinel so callers can distinguish
+            # "rate limited" from "mode not supported" and skip fallback requests.
             if "429" in str(e):
-                return None
+                return _RATE_LIMITED
             continue
 
         if isinstance(raw, dict):
@@ -197,7 +200,14 @@ def fetch_wind_grid(model_key: str = "EURO") -> dict | None:
         "wind_speed_unit": "ms", "timezone": TIMEZONE,
     }, model_id, label="wind_grid", n_points=n_pts)
 
-    # If 'current' mode failed or model doesn't support it, try hourly fallback
+    if data is _RATE_LIMITED:
+        # Rate-limited — don't fire a second request; let negative cache handle retry.
+        print("[wind_grid] rate limited, skipping hourly fallback")
+        _set_negative_cache(neg_key)
+        return None
+
+    # If 'current' mode genuinely unsupported (None or missing 'current' key),
+    # try hourly fallback.
     if not data or not data[0].get("current"):
         print("[wind_grid] 'current' mode unavailable, trying hourly fallback…")
         hourly_data = _single_query({
@@ -206,6 +216,10 @@ def fetch_wind_grid(model_key: str = "EURO") -> dict | None:
             "wind_speed_unit": "ms", "timezone": TIMEZONE,
             "forecast_days": 1,
         }, model_id, label="wind_grid_hourly", n_points=n_pts)
+        if hourly_data is _RATE_LIMITED:
+            print("[wind_grid] hourly fallback also rate limited")
+            _set_negative_cache(neg_key)
+            return None
         if hourly_data:
             data = []
             for pt in hourly_data:
@@ -277,7 +291,7 @@ def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
         "timezone": TIMEZONE,
     }, model_id, label="wind_forecast", n_points=n_pts)
 
-    if not data:
+    if data is _RATE_LIMITED or not data:
         print("[wind_forecast] failed — no wind data")
         _set_negative_cache(neg_key)
         return None

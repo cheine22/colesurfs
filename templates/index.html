@@ -482,40 +482,55 @@
       text-align: center;
     }
 
-    /* ─── Outage Banner ──────────────────────────────────────── */
-    .outage-banner {
-      display: none;
-      position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
-      background: #2a2008;
-      border-bottom: 1px solid #5a3e00;
-      padding: 10px 16px;
-      align-items: center; gap: 10px;
-      font-family: var(--font); font-size: 11px;
-      color: #e8c84a;
-      animation: banner-slide-in 0.3s ease;
+    /* ─── Outage Modal ───────────────────────────────────────── */
+    .outage-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(3px);
+      align-items: center; justify-content: center; padding: 16px;
     }
-    .outage-banner.visible { display: flex; }
-    @keyframes banner-slide-in {
-      from { transform: translateY(-100%); opacity: 0; }
-      to   { transform: translateY(0);    opacity: 1; }
+    .outage-modal-overlay.open { display: flex; }
+    .outage-modal {
+      background: #1e1608; border: 1px solid #5a3e00;
+      border-radius: 12px; padding: 22px 20px 18px;
+      min-width: 260px; max-width: 360px; width: 100%;
+      display: flex; flex-direction: column; gap: 14px;
+      position: relative;
+      box-shadow: 0 8px 32px rgba(0,0,0,.55);
+      font-family: var(--font);
+      animation: outage-modal-in 0.25s ease;
     }
-    .outage-banner-icon { font-size: 14px; flex-shrink: 0; }
-    .outage-banner-text { flex: 1; line-height: 1.5; color: #d4b83a; }
-    .outage-banner-text strong { color: #e8c84a; }
-    .outage-banner-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
-    .outage-banner-btn {
-      padding: 4px 10px; border-radius: 4px; cursor: pointer;
-      font-family: var(--font); font-size: 10px; letter-spacing: .05em;
-      border: 1px solid #5a3e00; background: #3a2a08; color: #d4b83a;
-      transition: border-color .15s, color .15s;
+    @keyframes outage-modal-in {
+      from { transform: scale(0.95); opacity: 0; }
+      to   { transform: scale(1);    opacity: 1; }
     }
-    .outage-banner-btn:hover { border-color: #e8c84a; color: #e8c84a; }
-    .outage-banner-dismiss {
-      background: none; border: none; color: #8a7a3a; cursor: pointer;
-      font-family: var(--font); font-size: 16px; line-height: 1; padding: 0 2px;
-      transition: color .15s;
+    .outage-modal-close {
+      position: absolute; top: 10px; right: 12px;
+      background: none; border: none; color: #8a7a3a;
+      font-size: 15px; cursor: pointer; padding: 2px 5px;
+      line-height: 1; font-family: var(--font); transition: color .15s;
     }
-    .outage-banner-dismiss:hover { color: #e8c84a; }
+    .outage-modal-close:hover { color: #e8c84a; }
+    .outage-modal-title {
+      font-size: 13px; font-weight: 700; letter-spacing: .08em;
+      color: #e8c84a; display: flex; align-items: center; gap: 6px;
+    }
+    .outage-modal-title .outage-icon { font-size: 1.3em; line-height: 1; }
+    .outage-modal-body {
+      font-size: 11px; color: #c4a83a; line-height: 1.6;
+    }
+    .outage-modal-body strong { color: #e8c84a; }
+    .outage-modal-link {
+      color: #e8c84a; text-decoration: underline;
+    }
+    .outage-modal-link:hover { color: #fff; }
+    .outage-modal-btn {
+      padding: 7px 16px; border-radius: 6px;
+      border: 1px solid #5a3e00; background: #2a1e08;
+      color: #d4b83a; font-family: var(--font); font-size: 11px;
+      cursor: pointer; transition: border-color .15s, color .15s;
+      letter-spacing: .04em; align-self: flex-start;
+    }
+    .outage-modal-btn:hover { border-color: #e8c84a; color: #e8c84a; }
 
     /* ─── Side-by-side mode ──────────────────────────────────── */
     body.sbs { overflow: hidden; }
@@ -1163,17 +1178,17 @@
   <span class="loading-status" id="loading-status">Initializing…</span>
 </div>
 
-<!-- ══ Outage Banner ══════════════════════════════════════════ -->
-<div class="outage-banner" id="outage-banner" role="alert" aria-live="polite">
-  <span class="outage-banner-icon">⚠</span>
-  <span class="outage-banner-text" id="outage-banner-text">
-    <strong>Open-Meteo is currently experiencing issues.</strong>
-    Forecast data may be temporarily unavailable — showing cached or partial data where possible.
-    <a id="outage-status-link" href="https://github.com/open-meteo/open-meteo/issues" target="_blank" rel="noopener noreferrer" style="color:#e8c84a;text-decoration:underline;white-space:nowrap;">Check status →</a>
-  </span>
-  <div class="outage-banner-actions">
-    <button class="outage-banner-btn" onclick="_retryAfterOutage()">↺ Retry</button>
-    <button class="outage-banner-dismiss" onclick="_dismissOutageBanner()" title="Dismiss">×</button>
+<!-- ══ Outage Modal ═══════════════════════════════════════════ -->
+<div class="outage-modal-overlay" id="outage-modal-overlay" role="alertdialog" aria-live="polite">
+  <div class="outage-modal">
+    <button class="outage-modal-close" onclick="_dismissOutageBanner()" title="Dismiss">✕</button>
+    <div class="outage-modal-title"><span class="outage-icon">⚠</span>DATA UNAVAILABLE</div>
+    <div class="outage-modal-body" id="outage-modal-body">
+      <strong>A service outage upstream of colesurfs may be impacting up-to-date forecast availability.</strong><br>
+      Forecast data may be temporarily unavailable — showing cached or partial data where possible.<br><br>
+      <a id="outage-status-link" class="outage-modal-link" href="https://github.com/open-meteo/open-meteo/issues" target="_blank" rel="noopener noreferrer">Check status on GitHub →</a>
+    </div>
+    <button class="outage-modal-btn" onclick="_retryAfterOutage()">↺ RETRY</button>
   </div>
 </div>
 
@@ -1290,7 +1305,7 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.2.1</span>
+    <span class="info-modal-version">v1.2.3</span>
   </div>
 </div>
 
@@ -1318,7 +1333,7 @@
       <li>clicking the buoy button shows the previous 5 days of buoy data for reference</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.2.1</span>
+    <span class="about-version">v1.2.3</span>
   </div>
 </div>
 
@@ -1353,7 +1368,7 @@
     made by cole &amp; claude &nbsp;·&nbsp; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.2.1</span>
+    <span class="footer-version">v1.2.3</span>
     <span class="footer-api" id="api-usage-tag">—</span>
   </div>
   <div class="footer-btns">
@@ -2095,17 +2110,22 @@ async function loadAll() {
     GFS:  gfs.status  === 'fulfilled' ? (gfs.value  || {}) : {},
   };
 
-  // Detect Open-Meteo outage. The backend returns HTTP 200 with null values per
+  // Detect upstream outage. The backend returns HTTP 200 with null values per
   // spot (e.g. {"Lido Beach": null}) when it can't reach Open-Meteo, so we must
   // check whether all VALUES are null — not just whether there are any keys.
   const _allNull = obj => Object.keys(obj).length > 0 && Object.values(obj).every(v => v === null);
-  const euroEmpty  = !Object.keys(forecastData.EURO).length || _allNull(forecastData.EURO);
-  const gfsEmpty   = !Object.keys(forecastData.GFS).length  || _allNull(forecastData.GFS);
+  const _isNullOrEmpty = obj => !obj || Object.keys(obj).length === 0;
+  const euroEmpty  = _isNullOrEmpty(forecastData.EURO) || _allNull(forecastData.EURO);
+  const gfsEmpty   = _isNullOrEmpty(forecastData.GFS)  || _allNull(forecastData.GFS);
   const windGrid   = wind.status === 'fulfilled' && wind.value && wind.value.grid;
   const windFailed = !windGrid || !windGrid.u;
+  const spotWinds  = wind.status === 'fulfilled' && wind.value && wind.value.spot_winds;
+  const spotWindsFailed  = _isNullOrEmpty(spotWinds) || _allNull(spotWinds);
+  const regionWindFailed = regionWind.status !== 'fulfilled' || _isNullOrEmpty(regionWind.value);
+  const tidesFailed      = tides.status !== 'fulfilled' || _isNullOrEmpty(tides.value);
   // Also show banner if any core fetch timed out.
   const hadTimeout = [euro, gfs, wind].some(r => r.status === 'rejected');
-  if (hadTimeout || (euroEmpty && gfsEmpty && windFailed)) {
+  if (hadTimeout || euroEmpty || gfsEmpty || windFailed || spotWindsFailed || regionWindFailed || tidesFailed) {
     _showOutageBanner();
   }
 
@@ -2705,8 +2725,8 @@ let _outageDismissed = false;
 
 async function _showOutageBanner() {
   if (_outageDismissed) return;
-  const el = document.getElementById('outage-banner');
-  if (el) el.classList.add('visible');
+  const el = document.getElementById('outage-modal-overlay');
+  if (el) el.classList.add('open');
 
   // Best-effort: check GitHub for recent open issues mentioning outage keywords
   try {
@@ -2724,14 +2744,14 @@ async function _showOutageBanner() {
       }
     }
   } catch (e) {
-    // GitHub check failed — banner already visible with default link, nothing to do
+    // GitHub check failed — modal already visible with default link, nothing to do
   }
 }
 
 function _dismissOutageBanner() {
   _outageDismissed = true;
-  const el = document.getElementById('outage-banner');
-  if (el) el.classList.remove('visible');
+  const el = document.getElementById('outage-modal-overlay');
+  if (el) el.classList.remove('open');
 }
 
 async function _retryAfterOutage() {
