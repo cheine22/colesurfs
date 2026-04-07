@@ -568,25 +568,25 @@
 
       /* ── Header: ultra-compact ── */
       .app-header {
-        height: 22px;
-        padding: 0 8px;
+        height: 38px;
+        padding: 0 10px;
         min-height: 0 !important;
-        align-items: flex-start !important;
+        align-items: center !important;
         padding-top: 0 !important;
-        line-height: 16px !important;
       }
-      .header-logo { font-size: 13px; }
-      .header-logo .wave-glyph { font-size: 1.2em; top: 0 !important; }
+      .header-logo { font-size: 18px; }
+      .header-logo .wave-glyph { font-size: 1.3em; top: -1px !important; }
+      .header-about-btn { display: inline-block !important; font-size: 9px !important; padding: 3px 10px !important; }
       #clock { font-size: 7.5px; }
       .live-dot { font-size: 7.5px; }
 
       /* ── Content: vertical stack, fill viewport ── */
-      /* height = viewport − header(22) − scrubber(34) − bottom bar(46) − sig(21) */
+      /* height = viewport − header(38) − scrubber(34) − bottom bar(46) − sig(21) */
       .content {
         padding: 0 !important;
         gap: 0 !important;
         flex-direction: column !important;
-        height: calc(100vh - 22px - 34px - 46px - 21px) !important;
+        height: calc(100vh - 38px - 34px - 46px - 21px) !important;
         overflow: hidden !important;
       }
 
@@ -940,6 +940,180 @@
     }
     /* Make logo tappable */
     .header-logo { cursor: pointer; }
+
+    /* ── Toast notification ─────────────────────────────────── */
+    /* ── Buoy history popup ──────────────────────────────────── */
+    .buoy-popup-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+      justify-content: center; align-items: center; padding: 16px;
+    }
+    .buoy-popup-overlay.open { display: flex; }
+    .buoy-popup {
+      background: var(--bg1); border: 1px solid var(--border1);
+      border-radius: 12px; padding: 18px 20px; position: relative;
+      max-width: 720px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,.45);
+      display: flex; flex-direction: column; gap: 10px;
+      font-family: var(--font);
+    }
+    .buoy-popup-close {
+      position: absolute; top: 10px; right: 12px; background: none;
+      border: none; color: var(--text3); font-size: 15px; cursor: pointer;
+      transition: color .15s;
+    }
+    .buoy-popup-close:hover { color: var(--text0); }
+    .buoy-popup-title {
+      font-size: 12px; font-weight: 700; color: var(--text0);
+      letter-spacing: .04em;
+    }
+    .buoy-popup-title span { color: var(--text3); font-weight: 400; font-size: 10px; }
+    .buoy-popup-select {
+      font-family: var(--font); font-size: 10px; letter-spacing: .04em;
+      background: var(--bg0); color: var(--text1); border: 1px solid var(--border0);
+      border-radius: 6px; padding: 5px 8px; cursor: pointer; outline: none;
+      max-width: 260px;
+    }
+    .buoy-popup-chart-wrap {
+      border-radius: 6px; border: 1px solid var(--border0);
+      background: var(--bg0); overflow: hidden; position: relative;
+    }
+    .buoy-popup-chart-wrap canvas {
+      width: 100%; height: 280px; display: block;
+    }
+    .buoy-scrubber { display: none; }
+    @media (max-width: 600px) {
+      .buoy-popup-overlay { padding: 8px; align-items: center; }
+      .buoy-popup { max-width: 100%; padding: 14px 12px; }
+      .buoy-popup-chart-wrap canvas { height: 180px; }
+      .buoy-popup-title { font-size: 11px; }
+      .buoy-popup-tooltip { font-size: 8px; }
+      .buoy-scrubber {
+        display: flex; align-items: center; gap: 6px;
+        height: 28px; touch-action: none; user-select: none;
+        -webkit-user-select: none;
+      }
+      .buoy-scrub-label {
+        font-size: 8px; font-weight: 700; color: var(--accent);
+        font-family: var(--font); white-space: nowrap; min-width: 44px;
+        text-align: center; letter-spacing: .04em;
+      }
+      .buoy-scrub-track-wrap {
+        flex: 1; height: 100%; display: flex; align-items: center;
+        position: relative; padding: 0 10px;
+      }
+      .buoy-scrub-track {
+        width: 100%; height: 2px; background: var(--border1);
+        border-radius: 1px; position: relative;
+      }
+      .buoy-scrub-fill {
+        position: absolute; left: 0; top: 0; bottom: 0;
+        background: var(--accent); border-radius: 1px;
+        width: 0%; pointer-events: none; opacity: 0.5;
+      }
+      .buoy-scrub-handle {
+        position: absolute; top: 50%; width: 16px; height: 16px;
+        border-radius: 50%; background: var(--accent);
+        border: 2px solid var(--bg1);
+        transform: translate(-50%, -50%); cursor: grab;
+        box-shadow: 0 1px 4px rgba(0,0,0,.3); z-index: 2;
+      }
+      .buoy-scrub-handle:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.15); }
+    }
+    .buoy-popup-tooltip {
+      position: absolute; z-index: 10; pointer-events: none;
+      background: var(--bg3); border: 1px solid var(--border1);
+      border-radius: 6px; padding: 8px 10px; font-size: 9px;
+      color: var(--text1); font-family: var(--font);
+      line-height: 1.55; white-space: nowrap;
+      opacity: 0; transition: opacity .12s;
+      box-shadow: 0 4px 12px rgba(0,0,0,.3);
+    }
+    .buoy-popup-tooltip.visible { opacity: 1; }
+    .buoy-popup-tooltip .tt-label { color: var(--text3); }
+    .buoy-popup-tooltip .tt-comp { color: var(--accent); }
+
+    /* ── Mobile ABOUT button ───────────────────────────────── */
+    .header-about-btn {
+      display: none;   /* shown only on mobile via media query */
+      background: none; border: 1px solid var(--border1); border-radius: 5px;
+      color: var(--text2); font-size: 8px; font-family: var(--font);
+      letter-spacing: .1em; font-weight: 600; padding: 2px 8px;
+      cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .header-about-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+    /* ── About Me modal ────────────────────────────────────── */
+    .about-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+      justify-content: center; align-items: center;
+      padding: 16px;
+    }
+    .about-modal-overlay.open { display: flex; }
+    @media (max-width: 600px) {
+      .about-modal-overlay.open {
+        align-items: flex-start; justify-content: flex-start;
+        padding: 56px 12px 12px 12px;
+      }
+    }
+    .about-modal {
+      background: var(--bg1); border: 1px solid var(--border1);
+      border-radius: 12px; padding: 22px 24px; position: relative;
+      max-width: 420px; width: 100%; max-height: 80vh; overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,.45);
+      display: flex; flex-direction: column; gap: 14px;
+      font-family: var(--font);
+    }
+    .about-modal-close {
+      position: absolute; top: 10px; right: 12px; background: none;
+      border: none; color: var(--text3); font-size: 15px; cursor: pointer;
+      transition: color .15s;
+    }
+    .about-modal-close:hover { color: var(--text0); }
+    .about-modal-title {
+      font-size: 15px; font-weight: 700; color: var(--accent);
+      letter-spacing: .04em;
+    }
+    .about-text {
+      font-size: 10.5px; color: var(--text1); line-height: 1.65;
+      letter-spacing: .02em;
+    }
+    .about-text a { color: var(--accent); text-decoration: none; }
+    .about-text a:hover { text-decoration: underline; }
+    .about-section-title {
+      font-size: 9px; font-weight: 700; color: var(--text2);
+      letter-spacing: .12em; text-transform: uppercase; margin-top: 4px;
+    }
+    .about-legend { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+    .about-legend .legend-pill { font-size: 8.5px; }
+    .about-wind-tier {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 9px; padding: 2px 7px; border-radius: 3px;
+      font-weight: 600; border: 1px solid transparent;
+    }
+    .about-tips {
+      list-style: none; padding: 0; margin: 0;
+    }
+    .about-tips li {
+      font-size: 10px; color: var(--text1); line-height: 1.7;
+      padding-left: 14px; position: relative;
+    }
+    .about-tips li::before {
+      content: '\2192'; position: absolute; left: 0; color: var(--text3);
+    }
+    .about-version {
+      font-size: 8.5px; letter-spacing: .08em; color: var(--text3);
+    }
+
+    .toast {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+      z-index: 3000; padding: 8px 18px; border-radius: 6px;
+      background: var(--bg3); color: var(--text1); border: 1px solid var(--border1);
+      font-size: 10px; font-family: var(--font); letter-spacing: .04em;
+      opacity: 0; pointer-events: none; transition: opacity .25s ease;
+      white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -958,8 +1132,7 @@
 <div class="app-header">
   <span class="header-logo" onclick="openInfoModal()"><span class="wave-glyph">∿</span>colesurfs</span>
   <div class="header-right">
-    <span class="live-dot">LIVE</span>
-    <span id="clock">--:--:--</span>
+    <button class="header-about-btn" onclick="openAboutModal()">ABOUT ME</button>
   </div>
 </div>
 
@@ -970,6 +1143,8 @@
     <button class="sw-btn active EURO" data-model="EURO" onclick="setModel('EURO',this)">EURO</button>
     <button class="sw-btn GFS"         data-model="GFS"  onclick="setModel('GFS',this)">GFS</button>
   </div>
+  <div class="sep"></div>
+  <button class="sw-btn" onclick="openBuoyPicker()" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1)">BUOY HISTORY</button>
   <div class="sep"></div>
   <span class="ctrl-label">Resolution</span>
   <div class="pill-group">
@@ -1045,13 +1220,11 @@
   <div class="mob-section">
     <button class="mob-btn active" id="mob-euro" onclick="setModelMobile('EURO')">EURO</button>
     <button class="mob-btn"        id="mob-gfs"  onclick="setModelMobile('GFS')">GFS</button>
+    <button class="mob-btn"        onclick="openBuoyPicker()">BUOY</button>
   </div>
   <div class="mob-section">
     <button class="mob-btn"        id="mob-1hr" onclick="setResMobile(1)">1hr</button>
     <button class="mob-btn active" id="mob-3hr" onclick="setResMobile(3)">3hr</button>
-  </div>
-  <div class="mob-section">
-    <button class="mob-btn" id="mob-theme" onclick="toggleTheme()">◑</button>
   </div>
   <div class="mob-meta">
     <span class="mob-meta-run" id="mob-run-tag">—</span>
@@ -1065,10 +1238,64 @@
     <button class="info-modal-close" onclick="closeInfoModal()">✕</button>
     <div class="info-modal-title"><span class="wave-glyph">∿</span>colesurfs</div>
     <button class="info-modal-refresh" onclick="refreshAll(); closeInfoModal()">↺ Refresh Model Now</button>
+    <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.1.1</span>
+    <span class="info-modal-version">v1.2</span>
   </div>
 </div>
+
+<!-- ══ About Me Modal ═══════════════════════════════════════ -->
+<div class="about-modal-overlay" id="about-modal-overlay" onclick="closeAboutModalOutside(event)">
+  <div class="about-modal">
+    <button class="about-modal-close" onclick="closeAboutModal()">✕</button>
+    <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs</div>
+    <div class="about-text">
+      welcome to colesurfs<br>
+      i designed this dashboard for staying on top of the swell forecast for the northeast<br><br>
+      it is exactly the data I use for forecasting, consolidated into one interface<br><br>
+      claude helped with the code, it is located here: <a href="https://github.com/cheine22/colesurfs" target="_blank" rel="noopener">github</a>
+    </div>
+    <div class="about-section-title">color coding</div>
+    <div class="about-section-title" style="font-size:8px;margin-top:2px;color:var(--text3)">swell</div>
+    <div class="about-legend" id="about-swell-legend"></div>
+    <div class="about-section-title" style="font-size:8px;margin-top:2px;color:var(--text3)">wind</div>
+    <div class="about-legend" id="about-wind-legend"></div>
+    <div class="about-section-title">tips</div>
+    <ul class="about-tips">
+      <li>tap on a buoy name to reveal associated spot data for that buoy</li>
+      <li>tap on the name of a spot to link to Surfline's live camera</li>
+      <li>compare the GFS and Euro models to get a sense of how reliable the forecast is: model agreement = more reliable forecast</li>
+      <li>clicking the buoy button shows the previous 5 days of buoy data for reference</li>
+      <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
+    </ul>
+    <span class="about-version">v1.2</span>
+  </div>
+</div>
+
+<!-- ══ Buoy History Popup ═══════════════════════════════════ -->
+<div class="buoy-popup-overlay" id="buoy-popup-overlay" onclick="closeBuoyPopupOutside(event)">
+  <div class="buoy-popup">
+    <button class="buoy-popup-close" onclick="closeBuoyPopup()">✕</button>
+    <div class="buoy-popup-title" id="buoy-popup-title">—</div>
+    <select class="buoy-popup-select" id="buoy-popup-select" onchange="switchBuoyPopup(this.value)"></select>
+    <div class="buoy-popup-chart-wrap" id="buoy-popup-chart-wrap">
+      <canvas id="buoy-popup-canvas"></canvas>
+      <div class="buoy-popup-tooltip" id="buoy-popup-tooltip"></div>
+    </div>
+    <div class="buoy-scrubber" id="buoy-scrubber">
+      <span class="buoy-scrub-label" id="buoy-scrub-label">—</span>
+      <div class="buoy-scrub-track-wrap" id="buoy-scrub-track-wrap">
+        <div class="buoy-scrub-track" id="buoy-scrub-track">
+          <div class="buoy-scrub-fill" id="buoy-scrub-fill"></div>
+        </div>
+        <div class="buoy-scrub-handle" id="buoy-scrub-handle"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Toast ════════════════════════════════════════════════ -->
+<div class="toast" id="toast-msg"></div>
 
 <!-- ══ Footer ════════════════════════════════════════════════ -->
 <footer class="app-footer">
@@ -1076,13 +1303,15 @@
     made by cole &amp; claude &nbsp;·&nbsp; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.1.1</span>
+    <span class="footer-version">v1.2</span>
     <span class="footer-api" id="api-usage-tag">—</span>
   </div>
   <div class="footer-btns">
+    <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
+    <span class="footer-divider">·</span>
     <button class="footer-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑ LIGHT</button>
     <span class="footer-divider">·</span>
-    <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
+    <button class="footer-btn" onclick="openAboutModal()" title="About colesurfs">ABOUT ME</button>
   </div>
 </footer>
 
@@ -1156,6 +1385,7 @@ let regionTideData  = {};     // { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, 
 
 // Side-by-side mode
 let sbsMode = false;
+let _lastModelRun = null;   // run_time from /api/status — used by smart refresh
 
 // Tile layer reference (for theme switching)
 let tileLayer = null;
@@ -1176,7 +1406,8 @@ const LIGHT_WIND_COLORS = [
 // ═══ 2. CLOCK ═══════════════════════════════════════════════
 
 (function tick() {
-  document.getElementById('clock').textContent =
+  const el = document.getElementById('clock');
+  if (el) el.textContent =
     new Date().toLocaleTimeString('en-US',
       { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   setTimeout(tick, 1000);
@@ -1215,8 +1446,8 @@ function _colorScale() {
 //   reset()             — halt + clear + discard data
 
 const WindRenderer = (() => {
-  const MAX_AGE   = 180;
-  const FADE      = 0.96;
+  const MAX_AGE   = 80;
+  const TRAIL_LEN = 12;   // positions kept per particle for trail rendering
   const VEL_SCALE = 0.008;
   const PART_MUL  = 0.0018;
   const LINE_W    = 1.6;
@@ -1375,11 +1606,15 @@ const WindRenderer = (() => {
     // The full-extent canvas is typically only ~2–4× the viewport at normal zoom,
     // so performance is fine.  Cap at 25 000 particles as an absolute safety net.
     const n = Math.min(Math.round(_W * _H * PART_MUL), 25000);
-    _particles = Array.from({ length: n }, () => ({
-      x: Math.random() * _W,
-      y: Math.random() * _H,
-      age: Math.floor(Math.random() * MAX_AGE),
-    }));
+    _particles = Array.from({ length: n }, () => {
+      const x = Math.random() * _W, y = Math.random() * _H;
+      return {
+        x, y,
+        age: Math.floor(Math.random() * MAX_AGE),
+        trail: [{ x, y }],   // ring buffer of recent positions
+        color: null,
+      };
+    });
   }
 
   function _step() {
@@ -1388,11 +1623,10 @@ const WindRenderer = (() => {
     const dpr   = window.devicePixelRatio || 1;
     _ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    _ctx.save();
-    _ctx.globalCompositeOperation = 'destination-in';
-    _ctx.globalAlpha = FADE;
-    _ctx.fillRect(0, 0, _W, _H);
-    _ctx.restore();
+    // Full clear each frame — trails are redrawn from particle history.
+    // This eliminates ghost pixels from 8-bit alpha quantization.
+    _ctx.clearRect(0, 0, _W, _H);
+
     // Use viewport size (not canvas size) for velocity scaling so particles
     // move at the same visual speed regardless of canvas extent.
     const vp    = _map ? _map.getSize() : { x: _W, y: _H };
@@ -1407,14 +1641,24 @@ const WindRenderer = (() => {
       const nx = p.x + wind.u * scale;
       const ny = p.y - wind.v * scale;   // v is northward → y decreases
 
-      _ctx.beginPath();
-      _ctx.strokeStyle = _speedToColor(wind.speed);
-      _ctx.globalAlpha = Math.min(p.age / 20, 0.9);
-      _ctx.moveTo(p.x, p.y);
-      _ctx.lineTo(nx, ny);
-      _ctx.stroke();
-
       p.x = nx; p.y = ny; p.age++;
+      p.color = _speedToColor(wind.speed);
+      p.trail.push({ x: nx, y: ny });
+      if (p.trail.length > TRAIL_LEN) p.trail.shift();
+
+      // Draw trail segments with fading alpha
+      const trail = p.trail;
+      if (trail.length > 1) {
+        _ctx.strokeStyle = p.color;
+        for (let i = 1; i < trail.length; i++) {
+          _ctx.globalAlpha = (i / trail.length) * Math.min(p.age / 20, 0.9);
+          _ctx.beginPath();
+          _ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
+          _ctx.lineTo(trail[i].x, trail[i].y);
+          _ctx.stroke();
+        }
+      }
+
       if (p.age > MAX_AGE || nx < -1 || nx > _W + 1 || ny < -1 || ny > _H + 1) {
         _resetParticle(p);
       }
@@ -1427,22 +1671,10 @@ const WindRenderer = (() => {
 
   function _computeSpotBox() {
     if (!_spots || !_spots.length || !_map) { _spotBox = null; return; }
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const s of _spots) {
-      // Convert lat/lng → layer point → canvas pixel
-      const lp = _map.latLngToLayerPoint([s.lat, s.lon]);
-      const cx = lp.x - _origin.x, cy = lp.y - _origin.y;
-      if (cx < minX) minX = cx;
-      if (cx > maxX) maxX = cx;
-      if (cy < minY) minY = cy;
-      if (cy > maxY) maxY = cy;
-    }
-    // Generous padding so particles have room to flow — at least ±150 px
-    const pad = Math.max(150, (maxX - minX + maxY - minY) * 0.6);
-    _spotBox = {
-      x0: minX - pad, y0: minY - pad,
-      x1: maxX + pad, y1: maxY + pad,
-    };
+    // Spawn particles across the full canvas so they cover the entire
+    // visible map area.  The IDW interpolation cutoff (MAX_IDW_DEG) still
+    // resets particles that drift too far from any observation point.
+    _spotBox = { x0: 0, y0: 0, x1: _W, y1: _H };
   }
 
   function _resetParticle(p) {
@@ -1456,6 +1688,8 @@ const WindRenderer = (() => {
       p.y = Math.random() * _H;
     }
     p.age = 0;
+    p.trail = [{ x: p.x, y: p.y }];
+    p.color = null;
   }
 
   // Dispatch to the correct interpolation method based on active mode.
@@ -1494,7 +1728,7 @@ const WindRenderer = (() => {
   // the table.  Direction convention: speed_mph + direction_deg (FROM) → u/v in m/s.
   // MAX_IDW_DEG: if nearest spot is farther than this many degrees, return null so
   // particles outside the region simply reset instead of showing extrapolated wind.
-  const MAX_IDW_DEG = 1.5;   // ~100 mi — generous enough for any regional cluster
+  const MAX_IDW_DEG = 4.0;   // ~275 mi — covers full visible map at regional zoom
   function _interpolateSpots(px, py) {
     if (!_spots || !_map) return null;
     try {
@@ -1640,6 +1874,7 @@ async function _refreshStatus() {
     const data = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
     const runEl = document.getElementById('model-run-tag');
     const apiEl = document.getElementById('api-usage-tag');
+    if (data.model_run) _lastModelRun = data.model_run.run_time || null;
     if (data.model_run && runEl) {
       let datePart = '';
       if (data.model_run.run_date) {
@@ -1661,7 +1896,7 @@ async function _refreshStatus() {
       if (mobNext) mobNext.textContent = next ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h` : '';
     }
     if (data.api_usage && apiEl) {
-      apiEl.textContent = `SWELL DATA PROVIDED BY OPEN-METEO (${data.api_usage.total.toLocaleString()}/10,000 today)`;
+      apiEl.textContent = `SWELL DATA PROVIDED VIA OPEN-METEO (${data.api_usage.total.toLocaleString()}/10,000 today)`;
     }
   } catch(e) { /* silent */ }
 }
@@ -2016,7 +2251,7 @@ function buildTable() {
       : '';
     html += `<tr>
       <td class="spot-cell${activeAttr}"${clickAttr}>${spot.name}</td>
-      ${buildBuoyCell(b)}`;
+      ${buildBuoyCell(b, spot.buoy_id)}`;
     times.forEach(t => {
       const nightClass = ovNightCols.has(t) && !emptyTimes.has(t) ? 'night-col' : '';
       const extraClass = [emptyTimes.has(t) ? 'col-empty' : '', nightClass].filter(Boolean).join(' ');
@@ -2079,7 +2314,7 @@ function buildRegionTable() {
   let html = `<tr>
     <td class="spot-cell region-active" style="cursor:pointer"
         onclick="exitRegionMode()">${buoySpot.name}</td>
-    ${buildBuoyCell(b)}`;
+    ${buildBuoyCell(b, buoySpot.buoy_id)}`;
   times.forEach(t => {
     html += buildWaveCell(buoyByTime[t], t, nightCols.has(t) ? 'night-col' : '', buoySpot.name);
   });
@@ -2109,7 +2344,7 @@ function buildRegionTable() {
 
 // ═══ 10. CELL BUILDERS ══════════════════════════════════════
 
-function buildBuoyCell(b) {
+function buildBuoyCell(b, stationId) {
   if (!b) {
     return `<td class="cell buoy-col buoy-now" style="background:var(--bg2)">
               <div class="null-cell">NO DATA</div></td>`;
@@ -2384,6 +2619,7 @@ function attachHoverListeners() {
 function clearHighlight() {
   document.querySelectorAll('td.cell.col-active').forEach(el => el.classList.remove('col-active'));
 }
+
 
 
 // ═══ 12. SUNRISE / SUNSET ═══════════════════════════════════
@@ -2879,6 +3115,7 @@ async function enterRegionMode(spotName) {
   // wind markers once the animation completes.  A 400 ms safety timeout covers
   // the case where the map view doesn't actually change (no events fired).
   if (map) {
+    map.invalidateSize();
     recenterMap();
     buildSwellArrows(null, 'buoy');
     buildCoastAngleLines();
@@ -3357,7 +3594,498 @@ function closeInfoModalOutside(e) {
   if (e.target === document.getElementById('info-modal-overlay')) closeInfoModal();
 }
 
+// ═══ ABOUT ME MODAL ══════════════════════════════════════════
+
+const _WIND_TIERS = ['Glassy','Groomed','Clean','Textured','Messy','Blown Out'];
+
+function openAboutModal() {
+  const dark = _isDark();
+  // Populate swell legend
+  const swellEl = document.getElementById('about-swell-legend');
+  if (swellEl && CFG) {
+    swellEl.innerHTML = '';
+    CFG.swell_categories.forEach(cat => {
+      const bg  = dark ? cat.dark_bg   : cat.light_bg;
+      const txt = dark ? cat.dark_text : cat.light_text;
+      const p = document.createElement('span');
+      p.className = 'legend-pill';
+      p.style.background = bg;
+      p.style.color = txt;
+      if (cat.name === 'FIRING' || cat.name === 'MONSTRO') p.style.fontWeight = '800';
+      p.textContent = cat.name;
+      swellEl.appendChild(p);
+    });
+  }
+  // Populate wind legend
+  const windEl = document.getElementById('about-wind-legend');
+  if (windEl) {
+    windEl.innerHTML = '';
+    _WIND_TIERS.forEach(tier => {
+      const col = windCondColor(tier);
+      if (!col) return;
+      const p = document.createElement('span');
+      p.className = 'about-wind-tier';
+      p.style.background = col.bg;
+      p.style.color = col.text;
+      p.style.borderColor = col.text + '22';
+      p.textContent = tier;
+      windEl.appendChild(p);
+    });
+  }
+  document.getElementById('about-modal-overlay').classList.add('open');
+}
+function closeAboutModal() {
+  document.getElementById('about-modal-overlay').classList.remove('open');
+}
+function closeAboutModalOutside(e) {
+  if (e.target === document.getElementById('about-modal-overlay')) closeAboutModal();
+}
+
+// ═══ BUOY HISTORY POPUP ══════════════════════════════════════
+
+let _buoyPopupData = null;   // current chart records
+let _buoyPopupMeta = null;   // { minT, maxT, minE, maxE, padLeft, padBottom, padTop, padRight }
+
+function openBuoyPicker() {
+  if (!CFG) return;
+  // If in regional mode, jump directly to that region's buoy
+  if (regionMode) {
+    const spot = CFG.spots.find(s => s.name === regionMode);
+    if (spot) { openBuoyPopup(spot.name, spot.buoy_id); return; }
+  }
+  // Default to NY Harbor Entrance (first spot) in overview mode
+  const defaultSpot = CFG.spots[0];
+  if (defaultSpot) openBuoyPopup(defaultSpot.name, defaultSpot.buoy_id);
+}
+
+function switchBuoyPopup(stationId) {
+  if (!CFG) return;
+  const spot = CFG.spots.find(s => s.buoy_id === stationId);
+  if (!spot) return;
+  enterRegionMode(spot.name);
+  openBuoyPopup(spot.name, spot.buoy_id);
+}
+
+function openBuoyPopup(spotName, stationId) {
+  document.getElementById('buoy-popup-title').innerHTML =
+    `${spotName} <span>· last 5 days · buoy ${stationId}</span>`;
+  // Populate buoy selector
+  if (CFG) {
+    const sel = document.getElementById('buoy-popup-select');
+    sel.innerHTML = '';
+    CFG.spots.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.buoy_id;
+      opt.textContent = `${s.name}  ·  ${s.buoy_id}`;
+      if (s.buoy_id === stationId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+  document.getElementById('buoy-popup-overlay').classList.add('open');
+
+  const canvas = document.getElementById('buoy-popup-canvas');
+  const ctx = canvas.getContext('2d');
+  _buoyPopupData = null;
+  _buoyPopupMeta = null;
+  _drawChartLoading(ctx, canvas);
+
+  fetch(`/api/buoy_history/${stationId}`)
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(data => {
+      if (!document.getElementById('buoy-popup-overlay').classList.contains('open')) return;
+      _buoyPopupData = (data.records || []).filter(r => r.energy != null);
+      if (_buoyPopupData.length === 0) { _drawChartError(ctx, canvas, 'No data'); return; }
+      _drawBuoyChart(ctx, canvas);
+      _attachChartHover(canvas);
+      _initBuoyScrubber();
+    })
+    .catch(err => {
+      _drawChartError(ctx, canvas, 'Failed to load data');
+      console.warn('[buoy_history]', err);
+    });
+}
+
+function closeBuoyPopup() {
+  document.getElementById('buoy-popup-overlay').classList.remove('open');
+  _buoyPopupData = null;
+  _buoyPopupMeta = null;
+  const tooltip = document.getElementById('buoy-popup-tooltip');
+  if (tooltip) tooltip.classList.remove('visible');
+}
+function closeBuoyPopupOutside(e) {
+  if (e.target === document.getElementById('buoy-popup-overlay')) closeBuoyPopup();
+}
+
+function _drawChartLoading(ctx, canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = canvas.clientWidth  * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text3');
+  ctx.font = '11px JetBrains Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText('Loading…', w / 2, h / 2);
+}
+
+function _drawChartError(ctx, canvas, msg) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = canvas.clientWidth  * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text3');
+  ctx.font = '11px JetBrains Mono';
+  ctx.textAlign = 'center';
+  ctx.fillText(msg, w / 2, h / 2);
+}
+
+function _drawBuoyChart(ctx, canvas) {
+  const recs = _buoyPopupData;
+  if (!recs || recs.length === 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = canvas.clientWidth  * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+
+  const dark = _isDark();
+  const style = getComputedStyle(document.documentElement);
+
+  // Padding
+  const padLeft = 24, padRight = 16, padTop = 16, padBottom = 28;
+  const cw = W - padLeft - padRight;
+  const ch = H - padTop - padBottom;
+
+  // Data ranges
+  const timestamps = recs.map(r => new Date(r.timestamp).getTime());
+  const minT = timestamps[0], maxT = timestamps[timestamps.length - 1];
+  const energies = recs.map(r => r.energy);
+  const maxE = Math.max(...energies) * 1.1;
+  const minE = 0;
+
+  _buoyPopupMeta = { minT, maxT, minE, maxE, padLeft, padBottom, padTop, padRight, cw, ch };
+
+  function xOf(t) { return padLeft + ((t - minT) / (maxT - minT)) * cw; }
+  function yOf(e) { return padTop + ch - ((e - minE) / (maxE - minE)) * ch; }
+
+  // ── Background: colored vertical strips per data point ──
+  let prevCat = null;
+  for (let i = 0; i < recs.length; i++) {
+    const r = recs[i];
+    const [bg, , catName] = swellColor(r.wave_height_ft, r.wave_period_s);
+    const x0 = i === 0 ? padLeft : xOf((timestamps[i - 1] + timestamps[i]) / 2);
+    const x1 = i === recs.length - 1 ? padLeft + cw : xOf((timestamps[i] + timestamps[i + 1]) / 2);
+    ctx.fillStyle = bg;
+    ctx.globalAlpha = 1.0;
+    ctx.fillRect(x0, padTop, x1 - x0, ch);
+    // Border between different swell categories
+    if (prevCat !== null && prevCat !== catName) {
+      ctx.strokeStyle = dark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x0, padTop); ctx.lineTo(x0, padTop + ch); ctx.stroke();
+    }
+    prevCat = catName;
+  }
+  ctx.globalAlpha = 1.0;
+
+  // ── Grid lines ──
+  const gridColor = style.getPropertyValue('--border0');
+  const textColor = style.getPropertyValue('--text3');
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 0.5;
+  ctx.font = '9px JetBrains Mono';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = textColor;
+
+  // Y-axis grid lines (no numbers)
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const e = minE + (maxE - minE) * (i / yTicks);
+    const y = yOf(e);
+    ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(W - padRight, y); ctx.stroke();
+  }
+
+  // Y-axis label
+  ctx.save();
+  ctx.translate(10, padTop + ch / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = textColor;
+  ctx.font = '8px JetBrains Mono';
+  ctx.fillText('energy (ft·s²)', 0, 0);
+  ctx.restore();
+
+  // X-axis: day boundaries
+  ctx.textAlign = 'center';
+  ctx.fillStyle = textColor;
+  ctx.font = '9px JetBrains Mono';
+  const dayMs = 86400000;
+  const firstDay = new Date(minT);
+  firstDay.setUTCHours(0, 0, 0, 0);
+  let dayStart = firstDay.getTime() + dayMs; // first full midnight after data start
+  while (dayStart < maxT) {
+    const x = xOf(dayStart);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x, padTop); ctx.lineTo(x, padTop + ch); ctx.stroke();
+    const d = new Date(dayStart);
+    const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    ctx.fillText(label, x, H - padBottom + 14);
+    dayStart += dayMs;
+  }
+
+  // ── Energy line ──
+  const lineColor = dark ? style.getPropertyValue('--text0') : '#333';
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < recs.length; i++) {
+    const x = xOf(timestamps[i]);
+    const y = yOf(recs[i].energy);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // ── Dots at each data point ──
+  ctx.fillStyle = lineColor;
+  for (let i = 0; i < recs.length; i++) {
+    const x = xOf(timestamps[i]);
+    const y = yOf(recs[i].energy);
+    ctx.beginPath();
+    ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function _attachChartHover(canvas) {
+  const wrap = document.getElementById('buoy-popup-chart-wrap');
+  const tooltip = document.getElementById('buoy-popup-tooltip');
+  if (!wrap || !tooltip) return;
+
+  function _handleMove(clientX, clientY) {
+    const recs = _buoyPopupData;
+    const meta = _buoyPopupMeta;
+    if (!recs || !meta) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+
+    // Map mouse X to time
+    const t = meta.minT + ((mx - meta.padLeft) / meta.cw) * (meta.maxT - meta.minT);
+
+    // Find nearest record
+    let best = 0, bestDist = Infinity;
+    for (let i = 0; i < recs.length; i++) {
+      const rt = new Date(recs[i].timestamp).getTime();
+      const d = Math.abs(rt - t);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    const r = recs[best];
+    const ts = new Date(r.timestamp);
+    const timeStr = ts.toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      hour12: false, timeZone: 'America/New_York'
+    }) + ' EST';
+
+    let html = `<div class="tt-label">${timeStr}</div>`;
+    if (r.components && r.components.length > 0) {
+      r.components.forEach(c => {
+        const dir = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+        const arrow = c.direction_deg != null ? toArrow(c.direction_deg) : '';
+        html += `<div class="tt-comp">${c.height_ft}ft @ ${c.period_s}s ${arrow}${dir}</div>`;
+      });
+    } else {
+      html += `<div>${r.wave_height_ft != null ? r.wave_height_ft + 'ft' : '—'} @ ${r.wave_period_s != null ? r.wave_period_s + 's' : '—'}`;
+      if (r.wave_direction_deg != null) html += ` ${toArrow(r.wave_direction_deg)}${toCard(r.wave_direction_deg)}`;
+      html += `</div>`;
+    }
+    tooltip.innerHTML = html;
+    tooltip.classList.add('visible');
+
+    // Position tooltip
+    const wrapRect = wrap.getBoundingClientRect();
+    let tx = mx + 14;
+    let ty = my - 10;
+    // Keep within bounds
+    if (tx + tooltip.offsetWidth > wrapRect.width - 8) tx = mx - tooltip.offsetWidth - 14;
+    if (ty < 4) ty = 4;
+    if (ty + tooltip.offsetHeight > wrapRect.height - 4) ty = wrapRect.height - tooltip.offsetHeight - 4;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top  = ty + 'px';
+  }
+
+  canvas.addEventListener('mousemove', e => _handleMove(e.clientX, e.clientY));
+  canvas.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    _handleMove(touch.clientX, touch.clientY);
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => tooltip.classList.remove('visible'));
+}
+
+// ── Buoy chart mobile scrubber ─────────────────────────────────────────────
+let _buoyScrubDragging = false;
+
+function _initBuoyScrubber() {
+  if (!_isMobile() || !_buoyPopupData || _buoyPopupData.length === 0) return;
+  const handle = document.getElementById('buoy-scrub-handle');
+  const fill   = document.getElementById('buoy-scrub-fill');
+  const label  = document.getElementById('buoy-scrub-label');
+  if (handle) handle.style.left = '0%';
+  if (fill)   fill.style.width  = '0%';
+  if (label)  label.textContent = '—';
+}
+
+function _buoyScrubPctFromX(clientX) {
+  const wrap = document.getElementById('buoy-scrub-track-wrap');
+  if (!wrap) return 0;
+  const rect = wrap.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+
+function _buoyScrubApply(pct) {
+  const handle = document.getElementById('buoy-scrub-handle');
+  const fill   = document.getElementById('buoy-scrub-fill');
+  const label  = document.getElementById('buoy-scrub-label');
+  if (handle) handle.style.left = (pct * 100) + '%';
+  if (fill)   fill.style.width  = (pct * 100) + '%';
+
+  const recs = _buoyPopupData;
+  const meta = _buoyPopupMeta;
+  if (!recs || !recs.length || !meta) return;
+
+  const idx = Math.min(recs.length - 1, Math.round(pct * (recs.length - 1)));
+  const r = recs[idx];
+
+  // Update label
+  const ts = new Date(r.timestamp);
+  const timeStr = ts.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: false, timeZone: 'America/New_York'
+  });
+  if (label) label.textContent = timeStr;
+
+  // Show tooltip
+  const tooltip = document.getElementById('buoy-popup-tooltip');
+  if (tooltip) {
+    let html = `<div class="tt-label">${timeStr} EST</div>`;
+    if (r.components && r.components.length > 0) {
+      r.components.forEach(c => {
+        const dir = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+        const arrow = c.direction_deg != null ? toArrow(c.direction_deg) : '';
+        html += `<div class="tt-comp">${c.height_ft}ft @ ${c.period_s}s ${arrow}${dir}</div>`;
+      });
+    } else {
+      html += `<div>${r.wave_height_ft != null ? r.wave_height_ft + 'ft' : '—'} @ ${r.wave_period_s != null ? r.wave_period_s + 's' : '—'}`;
+      if (r.wave_direction_deg != null) html += ` ${toArrow(r.wave_direction_deg)}${toCard(r.wave_direction_deg)}`;
+      html += `</div>`;
+    }
+    tooltip.innerHTML = html;
+    tooltip.classList.add('visible');
+
+    // Position tooltip near the data point on the chart
+    const canvas = document.getElementById('buoy-popup-canvas');
+    const wrap   = document.getElementById('buoy-popup-chart-wrap');
+    if (canvas && wrap) {
+      const rt = new Date(r.timestamp).getTime();
+      const px = meta.padLeft + ((rt - meta.minT) / (meta.maxT - meta.minT)) * meta.cw;
+      let tx = px + 14;
+      if (tx + tooltip.offsetWidth > wrap.clientWidth - 8) tx = px - tooltip.offsetWidth - 14;
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top  = '4px';
+    }
+  }
+
+  // Draw vertical indicator line on chart
+  _drawBuoyChartIndicator(idx);
+}
+
+function _drawBuoyChartIndicator(activeIdx) {
+  const canvas = document.getElementById('buoy-popup-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const recs = _buoyPopupData;
+  const meta = _buoyPopupMeta;
+  if (!recs || !meta) return;
+
+  // Redraw the chart first, then overlay the indicator
+  _drawBuoyChart(ctx, canvas);
+
+  const r = recs[activeIdx];
+  const rt = new Date(r.timestamp).getTime();
+  const px = meta.padLeft + ((rt - meta.minT) / (meta.maxT - meta.minT)) * meta.cw;
+
+  ctx.save();
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent');
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(px, meta.padTop);
+  ctx.lineTo(px, canvas.clientHeight - meta.padBottom);
+  ctx.stroke();
+  ctx.restore();
+}
+
+(function _initBuoyScrubEvents() {
+  document.addEventListener('touchstart', e => {
+    if (e.target.id === 'buoy-scrub-handle' || e.target.closest('.buoy-scrub-track-wrap')) {
+      e.preventDefault();
+      _buoyScrubDragging = true;
+      const pct = _buoyScrubPctFromX(e.touches[0].clientX);
+      _buoyScrubApply(pct);
+    }
+  }, { passive: false });
+  document.addEventListener('touchmove', e => {
+    if (!_buoyScrubDragging) return;
+    e.preventDefault();
+    const pct = _buoyScrubPctFromX(e.touches[0].clientX);
+    _buoyScrubApply(pct);
+  }, { passive: false });
+  document.addEventListener('touchend', () => { _buoyScrubDragging = false; });
+
+  // Mouse fallback (for testing on desktop with narrow viewport)
+  document.addEventListener('mousedown', e => {
+    if (e.target.id === 'buoy-scrub-handle' || e.target.closest('.buoy-scrub-track-wrap')) {
+      _buoyScrubDragging = true;
+      _buoyScrubApply(_buoyScrubPctFromX(e.clientX));
+    }
+  });
+  document.addEventListener('mousemove', e => {
+    if (!_buoyScrubDragging) return;
+    _buoyScrubApply(_buoyScrubPctFromX(e.clientX));
+  });
+  document.addEventListener('mouseup', () => { _buoyScrubDragging = false; });
+})();
+
+function showToast(msg, ms = 2500) {
+  const el = document.getElementById('toast-msg');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._tid);
+  el._tid = setTimeout(() => el.classList.remove('show'), ms);
+}
+
 async function refreshAll() {
+  // Smart refresh: check if a new model run is available before doing the
+  // expensive full cache-clear + re-fetch cycle.
+  try {
+    const st = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
+    const newRun = st.model_run && st.model_run.run_time;
+    if (newRun && newRun === _lastModelRun) {
+      showToast('No new model data available');
+      return;
+    }
+  } catch (_) { /* on failure, fall through to full refresh */ }
+
   await fetch('/api/refresh', { method: 'POST' });
 
   windByTime = {};
@@ -3395,7 +4123,11 @@ function toggleTheme() {
   const next = _isDark() ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('wave-theme', next);
-  document.getElementById('theme-btn').textContent = next === 'light' ? '◑ DARK' : '◑ LIGHT';
+  const label = next === 'light' ? '◑ DARK' : '◑ LIGHT';
+  const deskBtn = document.getElementById('theme-btn');
+  const mobBtn  = document.getElementById('mob-theme-btn');
+  if (deskBtn) deskBtn.textContent = label;
+  if (mobBtn)  mobBtn.textContent  = label;
   _updateTileLayer();
   // Update WindRenderer color scale for new theme, then restart
   WindRenderer.setColors(_colorScale());
@@ -3406,6 +4138,8 @@ function toggleTheme() {
   buildTable();
   // Re-render wind at current target with new colors
   _resubmitWind();
+  // Close buoy popup to avoid stale chart colors
+  closeBuoyPopup();
 }
 
 
@@ -3515,8 +4249,11 @@ function fmtHeaderHtml(iso) {
   const sysPref = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   const theme   = saved || sysPref;
   document.documentElement.setAttribute('data-theme', theme);
+  const label = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
   const btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+  if (btn) btn.textContent = label;
+  const mobBtn = document.getElementById('mob-theme-btn');
+  if (mobBtn) mobBtn.textContent = label;
 })();
 
 // Track system preference changes at runtime (only when no saved override).
@@ -3524,8 +4261,11 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e =
   if (localStorage.getItem('wave-theme')) return;
   const theme = e.matches ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', theme);
+  const label = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
   const btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+  if (btn) btn.textContent = label;
+  const mobBtn = document.getElementById('mob-theme-btn');
+  if (mobBtn) mobBtn.textContent = label;
   _updateTileLayer();
   buildLegend();
   buildWindScale();

@@ -1,4 +1,4 @@
-# colesurfs · v1.1.1
+# colesurfs · v1.2
 
 A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
@@ -22,8 +22,12 @@ Flask backend, vanilla HTML/CSS/JS frontend. No cloud account or API keys requir
 - **Side-by-side mode** — table + map split; always on for desktop, portrait layout for mobile
 - **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control)
 - **Mobile-specific map centers** — per-region map framing tuned for portrait aspect ratio
+- **Historical buoy popup** — BUOY HISTORY button opens a 5-day wave energy graph with spectral component tooltips, swell-category background coloring, and a buoy selector dropdown; in regional mode jumps directly to the active region's buoy
+- **Mobile buoy scrubber** — draggable slider below the buoy chart on mobile for scrubbing through the 5-day history with tooltip and vertical indicator line
+- **About Me modal** — accessible from mobile header and desktop footer; includes swell/wind color legend and usage tips
+- **Smart refresh** — refresh button checks for new model data before clearing caches; shows toast if no new data available
 - **Mobile info popup** — tapping the logo on mobile opens a modal with a manual refresh button, current API/swell data summary, and version number
-- **Version display** — version number shown in desktop footer and mobile info popup
+- **Version display** — version number shown in desktop footer, mobile info popup, and About modal
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
 
 ---
@@ -84,6 +88,17 @@ Wind direction zones are defined relative to each spot's measured shore normal: 
 ---
 
 ## Changelog
+
+### v1.2
+- **Smart refresh** — refresh button checks `/api/status` for new model data before clearing caches; shows toast notification if no new run is available
+- **Historical buoy popup** — BUOY HISTORY button (desktop controls bar + mobile bottom bar) opens a 5-day wave energy graph (height × period²) with full-opacity swell-category background coloring, category border lines, spectral component tooltips on hover, and an in-popup buoy selector dropdown; in regional mode jumps directly to the active region's buoy; changing buoy in selector also enters regional mode for that buoy
+- **Mobile buoy scrubber** — draggable slider below the buoy chart on mobile for scrubbing through the 5-day history with timestamp label, tooltip, and vertical indicator line on the chart
+- **About Me modal** — new modal accessible from mobile header button and desktop footer; includes welcome text, GitHub link, swell/wind color legend, and usage tips
+- **Mobile header** — replaced LIVE clock with larger ABOUT ME button (75% taller header)
+- **Theme toggle moved** — light/dark toggle moved from mobile bottom bar to the info modal (logo tap); desktop footer reordered to: side-by-side, dark/light, about me
+- **Wind particle rendering** — replaced `destination-in` alpha compositing with explicit per-particle trail history; eliminates ghost trail artifacts on dark backgrounds caused by 8-bit alpha quantization floor
+- **Wind particle coverage** — particles in regional mode now spawn across the full visible map area (was limited to a small bounding box around observation points); IDW interpolation cutoff increased to 4° for full-map coverage
+- **Backend: buoy history API** — new `GET /api/buoy_history/<station_id>` endpoint returns 5 days of historical buoy readings with spectral swell components, cached for 30 minutes
 
 ### v1.1.1
 - **Wind forecast fix** — `regionWindData` fetch moved outside the `regionMode` guard in `setModel()`, so switching models while in spot view (or before first entering it) no longer returns stale data from the previous model

@@ -13,6 +13,7 @@ Routes:
   /api/config                    Spots, swell categories, wind bands, region views
   /api/status?model=             Model run estimate + daily API usage
   /api/debug/spectral/<id>       Diagnostic: raw spectral parse (COLESURFS_DEBUG=1 only)
+  /api/buoy_history/<station_id>  5-day historical buoy data with spectral components
   /api/refresh (POST)            Clear caches + reload swell rules
 """
 import os
@@ -23,7 +24,7 @@ from waitress import serve
 
 from config import SPOTS, WIND_SPOTS, MODEL_COLORS, WIND_BANDS, REGION_VIEWS
 import swell_rules
-from buoy  import fetch_buoy, _parse_spectral_file, _spectral_components
+from buoy  import fetch_buoy, fetch_buoy_history, _parse_spectral_file, _spectral_components
 import requests as _req_buoy
 from waves import fetch_wave_forecast
 from wind  import (fetch_wind_grid, fetch_spot_wind,
@@ -211,6 +212,16 @@ def api_refresh():
     return jsonify({"status": "cache cleared, swell rules reloaded"})
 
 
+@app.route("/api/buoy_history/<station_id>")
+def api_buoy_history(station_id):
+    """5-day historical buoy data with spectral swell components."""
+    valid_ids = {s["buoy_id"] for s in SPOTS}
+    if station_id not in valid_ids:
+        return jsonify({"error": "unknown station"}), 404
+    data = fetch_buoy_history(station_id)
+    if data is None:
+        return jsonify({"error": "data unavailable"}), 503
+    return jsonify(data)
 
 
 @app.route("/")

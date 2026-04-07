@@ -375,6 +375,158 @@ def _parse_spec(text: str) -> list:
     return components
 
 
+def _parse_spectral_file_all_rows(text: str, value_offset: int) -> dict:
+    """
+    Parse ALL rows from an NDBC spectral file (.data_spec or .swdir).
+    Returns {iso_timestamp: [(freq, value), ...], ...} keyed by UTC timestamp.
+    """
+    lines = [l.rstrip() for l in text.strip().split("\n")]
+    data_lines = [l for l in lines if l.strip() and not l.startswith("#")]
+    result = {}
+    offset = 5 + value_offset  # skip YY MM DD hh mm [sep_freq]
+    for line in data_lines:
+        parts = line.split()
+        if len(parts) < offset + 2:
+            continue
+        try:
+            yr = int(parts[0])
+            if yr < 100:
+                yr += 2000
+            ts = datetime(yr, int(parts[1]), int(parts[2]),
+                          int(parts[3]), int(parts[4]),
+                          tzinfo=timezone.utc)
+        except (ValueError, IndexError):
+            continue
+        bins = []
+        i = offset
+        while i + 1 < len(parts):
+            try:
+                val  = float(parts[i])
+                freq = float(parts[i + 1].strip("()"))
+                bins.append((freq, val))
+            except ValueError:
+                pass
+            i += 2
+        if bins:
+            result[ts.isoformat()] = bins
+    return result
+
+
+def _fetch_historical_spectral(station_id: str, cutoff_dt: datetime) -> dict:
+    """
+    Fetch .data_spec + .swdir for all available rows and compute spectral
+    components for each timestamp after cutoff_dt.
+    Returns {iso_timestamp: [component_dicts], ...}.
+    """
+    try:
+        rds = requests.get(NDBC_DATA_SPEC_URL.format(station_id=station_id),
+                           timeout=20, headers={"User-Agent": "ColeSurfs/1.0"})
+        rsw = requests.get(NDBC_SWDIR_URL.format(station_id=station_id),
+                           timeout=20, headers={"User-Agent": "ColeSurfs/1.0"})
+        if rds.status_code != 200 or rsw.status_code != 200:
+            return {}
+    except Exception:
+        return {}
+
+    spec_all  = _parse_spectral_file_all_rows(rds.text, value_offset=1)
+    swdir_all = _parse_spectral_file_all_rows(rsw.text, value_offset=0)
+    cutoff_iso = cutoff_dt.isoformat()
+
+    result = {}
+    for ts_key in spec_all:
+        if ts_key < cutoff_iso:
+            continue
+        if ts_key not in swdir_all:
+            continue
+        comps = _spectral_components(spec_all[ts_key], swdir_all[ts_key])
+        if comps:
+            result[ts_key] = comps
+    return result
+
+
+@ttl_cache(ttl_seconds=1800, skip_none=True)
+def fetch_buoy_history(station_id: str, days: int = 5) -> dict | None:
+    """
+    Fetch the last `days` of hourly buoy observations from NDBC realtime2,
+    plus spectral swell components for each timestamp where spectral data exists.
+
+    Energy is computed as height_ft * period_s**2 (wave energy proxy specified
+    for the historical chart — intentionally differs from the height**2 * period
+    scoring used elsewhere in the app).
+    """
+    from datetime import timedelta
+    url = NDBC_URL.format(station_id=station_id)
+    try:
+        r = requests.get(url, timeout=15, headers={"User-Agent": "ColeSurfs/1.0"})
+        r.raise_for_status()
+    except Exception as e:
+        print(f"[buoy_history] {station_id}: fetch failed — {type(e).__name__}: {e}")
+        return None
+
+    lines = [l.rstrip() for l in r.text.strip().split("\n")]
+    headers = None
+    data_lines = []
+    for line in lines:
+        if line.startswith("#"):
+            if headers is None:
+                headers = line.lstrip("# ").split()
+        elif line.strip():
+            data_lines.append(line)
+
+    if not headers or not data_lines:
+        return None
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    records = []
+    for line in data_lines:
+        parts = line.split()
+        row = dict(zip(headers, parts))
+        try:
+            yr = int(row.get("YY", row.get("#YY", "24")))
+            if yr < 100:
+                yr += 2000
+            ts = datetime(yr, int(row.get("MM", 1)), int(row.get("DD", 1)),
+                          int(row.get("hh", 0)), int(row.get("mm", 0)),
+                          tzinfo=timezone.utc)
+        except Exception:
+            continue
+        if ts < cutoff:
+            break  # file is newest-first
+
+        wvht_m = _safe(row.get("WVHT"))
+        dpd    = _safe(row.get("DPD"))
+        mwd    = _safe_dir(row.get("MWD"))
+        wvht_ft = m_to_ft(wvht_m)
+
+        energy = round(wvht_ft * dpd ** 2, 1) if (wvht_ft and dpd) else None
+
+        records.append({
+            "timestamp":     ts.isoformat(),
+            "wave_height_ft": wvht_ft,
+            "wave_period_s":  dpd,
+            "wave_direction_deg": mwd,
+            "energy":        energy,
+            "components":    [],  # filled below if spectral data available
+        })
+
+    records.reverse()  # oldest-first for charting
+
+    # Merge spectral components
+    try:
+        spec_map = _fetch_historical_spectral(station_id, cutoff)
+        for rec in records:
+            ts_key = rec["timestamp"]
+            if ts_key in spec_map:
+                rec["components"] = spec_map[ts_key]
+    except Exception as e:
+        print(f"[buoy_history] {station_id}: spectral merge error — {type(e).__name__}: {e}")
+
+    from cache import record_api_calls
+    record_api_calls("NOAA_buoy_history", 1)
+
+    return {"station_id": station_id, "records": records}
+
+
 @ttl_cache(ttl_seconds=1800, skip_none=True)
 def fetch_buoy(station_id: str) -> dict | None:
     """Try realtime2 first, fall back to latest_obs if that fails or parses empty."""
