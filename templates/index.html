@@ -482,6 +482,41 @@
       text-align: center;
     }
 
+    /* ─── Outage Banner ──────────────────────────────────────── */
+    .outage-banner {
+      display: none;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10000;
+      background: #2a2008;
+      border-bottom: 1px solid #5a3e00;
+      padding: 10px 16px;
+      align-items: center; gap: 10px;
+      font-family: var(--font); font-size: 11px;
+      color: #e8c84a;
+      animation: banner-slide-in 0.3s ease;
+    }
+    .outage-banner.visible { display: flex; }
+    @keyframes banner-slide-in {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    .outage-banner-icon { font-size: 14px; flex-shrink: 0; }
+    .outage-banner-text { flex: 1; line-height: 1.5; color: #d4b83a; }
+    .outage-banner-text strong { color: #e8c84a; }
+    .outage-banner-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+    .outage-banner-btn {
+      padding: 4px 10px; border-radius: 4px; cursor: pointer;
+      font-family: var(--font); font-size: 10px; letter-spacing: .05em;
+      border: 1px solid #5a3e00; background: #3a2a08; color: #d4b83a;
+      transition: border-color .15s, color .15s;
+    }
+    .outage-banner-btn:hover { border-color: #e8c84a; color: #e8c84a; }
+    .outage-banner-dismiss {
+      background: none; border: none; color: #8a7a3a; cursor: pointer;
+      font-family: var(--font); font-size: 16px; line-height: 1; padding: 0 2px;
+      transition: color .15s;
+    }
+    .outage-banner-dismiss:hover { color: #e8c84a; }
+
     /* ─── Side-by-side mode ──────────────────────────────────── */
     body.sbs { overflow: hidden; }
     body.sbs .content {
@@ -1126,6 +1161,20 @@
   </div>
   <span class="loading-pct" id="loading-pct">0%</span>
   <span class="loading-status" id="loading-status">Initializing…</span>
+</div>
+
+<!-- ══ Outage Banner ══════════════════════════════════════════ -->
+<div class="outage-banner" id="outage-banner" role="alert" aria-live="polite">
+  <span class="outage-banner-icon">⚠</span>
+  <span class="outage-banner-text" id="outage-banner-text">
+    <strong>Open-Meteo is currently experiencing issues.</strong>
+    Forecast data may be temporarily unavailable — showing cached or partial data where possible.
+    <a id="outage-status-link" href="https://github.com/open-meteo/open-meteo/issues" target="_blank" rel="noopener noreferrer" style="color:#e8c84a;text-decoration:underline;white-space:nowrap;">Check status →</a>
+  </span>
+  <div class="outage-banner-actions">
+    <button class="outage-banner-btn" onclick="_retryAfterOutage()">↺ Retry</button>
+    <button class="outage-banner-dismiss" onclick="_dismissOutageBanner()" title="Dismiss">×</button>
+  </div>
 </div>
 
 <!-- ══ Header ════════════════════════════════════════════════ -->
@@ -1897,7 +1946,7 @@ async function _refreshStatus() {
       if (mobNext) mobNext.textContent = next ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h` : '';
     }
     if (data.api_usage && apiEl) {
-      apiEl.innerHTML = `SWELL DATA PROVIDED VIA OPEN-METEO<br>(${data.api_usage.total.toLocaleString()}/10,000 today)`;
+      apiEl.innerHTML = `SWELL DATA PROVIDED VIA OPEN-METEO &nbsp;&nbsp;(${data.api_usage.total.toLocaleString()}/10,000 today)`;
     }
   } catch(e) { /* silent */ }
 }
@@ -1999,6 +2048,15 @@ async function init() {
   _refreshStatus();
 }
 
+// Fetch with AbortController timeout. Rejects with an AbortError if ms elapses.
+function _fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal })
+    .then(r => r.json())
+    .finally(() => clearTimeout(tid));
+}
+
 async function loadAll() {
   document.getElementById('table-body').innerHTML =
     '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2);font-size:11px">Loading…</td></tr>';
@@ -2006,13 +2064,16 @@ async function loadAll() {
   // Wrap each fetch so we can report progress as each one resolves.
   const track = (promise, label) => promise.then(v => { _loader.step(label); return v; });
 
+  // Abort any fetch that doesn't respond within 9 s so the loading screen
+  // doesn't block indefinitely when Open-Meteo is down.
+  const T = 9000;
   const [buoys, euro, gfs, wind, regionWind, tides] = await Promise.allSettled([
-    track(fetch('/api/buoys').then(r => r.json()),                        'Buoy data loaded'),
-    track(fetch('/api/forecast/EURO').then(r => r.json()),                'EURO forecast loaded'),
-    track(fetch('/api/forecast/GFS').then(r => r.json()),                 'GFS forecast loaded'),
-    track(fetch(`/api/wind?model=${activeModel}`).then(r => r.json()),    'Wind grid loaded'),
-    track(fetch(`/api/region_wind?model=${activeModel}`).then(r => r.json()), 'Regional wind loaded'),
-    track(fetch('/api/tides').then(r => r.json()),                        'Tide data loaded'),
+    track(_fetchWithTimeout('/api/buoys', T),                        'Buoy data loaded'),
+    track(_fetchWithTimeout('/api/forecast/EURO', T),                'EURO forecast loaded'),
+    track(_fetchWithTimeout('/api/forecast/GFS', T),                 'GFS forecast loaded'),
+    track(_fetchWithTimeout(`/api/wind?model=${activeModel}`, T),    'Wind grid loaded'),
+    track(_fetchWithTimeout(`/api/region_wind?model=${activeModel}`, T), 'Regional wind loaded'),
+    track(_fetchWithTimeout('/api/tides', T),                        'Tide data loaded'),
   ]);
 
   buoyData = buoys.status === 'fulfilled' ? (buoys.value || {}) : {};
@@ -2033,6 +2094,20 @@ async function loadAll() {
     EURO: euro.status === 'fulfilled' ? (euro.value || {}) : {},
     GFS:  gfs.status  === 'fulfilled' ? (gfs.value  || {}) : {},
   };
+
+  // Detect Open-Meteo outage. The backend returns HTTP 200 with null values per
+  // spot (e.g. {"Lido Beach": null}) when it can't reach Open-Meteo, so we must
+  // check whether all VALUES are null — not just whether there are any keys.
+  const _allNull = obj => Object.keys(obj).length > 0 && Object.values(obj).every(v => v === null);
+  const euroEmpty  = !Object.keys(forecastData.EURO).length || _allNull(forecastData.EURO);
+  const gfsEmpty   = !Object.keys(forecastData.GFS).length  || _allNull(forecastData.GFS);
+  const windGrid   = wind.status === 'fulfilled' && wind.value && wind.value.grid;
+  const windFailed = !windGrid || !windGrid.u;
+  // Also show banner if any core fetch timed out.
+  const hadTimeout = [euro, gfs, wind].some(r => r.status === 'rejected');
+  if (hadTimeout || (euroEmpty && gfsEmpty && windFailed)) {
+    _showOutageBanner();
+  }
 
   if (wind.status === 'fulfilled' && wind.value) {
     const g = wind.value.grid || wind.value;
@@ -2066,7 +2141,7 @@ async function loadAll() {
 async function loadWindForecast(model) {
   const m = model || activeModel;
   try {
-    windForecast = await fetch(`/api/wind_forecast?model=${m}`).then(r => r.json());
+    windForecast = await _fetchWithTimeout(`/api/wind_forecast?model=${m}`, 9000);
     if (!windForecast || !windForecast.times) {
       console.warn('[wind_forecast] backend returned null (rate limited or unavailable)');
       return;
@@ -2625,11 +2700,67 @@ function clearHighlight() {
 
 // ═══ 12. SUNRISE / SUNSET ═══════════════════════════════════
 
+// ─── Outage detection ────────────────────────────────────────
+let _outageDismissed = false;
+
+async function _showOutageBanner() {
+  if (_outageDismissed) return;
+  const el = document.getElementById('outage-banner');
+  if (el) el.classList.add('visible');
+
+  // Best-effort: check GitHub for recent open issues mentioning outage keywords
+  try {
+    const q = encodeURIComponent('repo:open-meteo/open-meteo is:open outage OR down OR "500" OR "429" OR unavailable sort:created-desc');
+    const res = await fetch(`https://api.github.com/search/issues?q=${q}&per_page=5`, {
+      headers: { Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(5000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const count = data.total_count || 0;
+      const link = document.getElementById('outage-status-link');
+      if (link && count > 0) {
+        link.textContent = `${count} reported issue${count === 1 ? '' : 's'} on GitHub →`;
+      }
+    }
+  } catch (e) {
+    // GitHub check failed — banner already visible with default link, nothing to do
+  }
+}
+
+function _dismissOutageBanner() {
+  _outageDismissed = true;
+  const el = document.getElementById('outage-banner');
+  if (el) el.classList.remove('visible');
+}
+
+async function _retryAfterOutage() {
+  _dismissOutageBanner();
+  _outageDismissed = false;
+  await loadAll();
+  const lidoSpot = (CFG && CFG.wind_spots || []).find(ws => ws.name === 'Lido Beach')
+                   || (CFG && CFG.spots && CFG.spots[0]);
+  if (lidoSpot) await fetchSunData(lidoSpot.lat, lidoSpot.lon);
+}
+
 async function fetchSunData(lat, lon) {
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
                 `&daily=sunrise,sunset&forecast_days=10&timezone=America%2FNew_York`;
-    const d = await fetch(url).then(r => r.json());
+    const r = await fetch(url);
+    if (!r.ok) {
+      console.warn('[sun] fetch failed — HTTP', r.status);
+      if (r.status === 429 || r.status === 502 || r.status === 503 || r.status >= 500) {
+        _showOutageBanner();
+      }
+      return;
+    }
+    const d = await r.json();
+    if (d && d.error) {
+      console.warn('[sun] API error:', d.reason);
+      _showOutageBanner();
+      return;
+    }
     const dates    = d.daily && d.daily.time    || [];
     const sunrises = d.daily && d.daily.sunrise || [];
     const sunsets  = d.daily && d.daily.sunset  || [];
@@ -2642,7 +2773,11 @@ async function fetchSunData(lat, lon) {
       };
     });
     sunData = result;
-  } catch(e) { console.warn('[sun] fetch failed', e); }
+  } catch(e) {
+    console.warn('[sun] fetch failed', e);
+    // Network failure (SSL error, timeout, DNS) — likely an outage
+    _showOutageBanner();
+  }
 }
 
 function isNightCol(isoTime, colIntervalMs) {
