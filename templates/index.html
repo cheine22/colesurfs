@@ -1182,10 +1182,10 @@
 <div class="outage-modal-overlay" id="outage-modal-overlay" role="alertdialog" aria-live="polite">
   <div class="outage-modal">
     <button class="outage-modal-close" onclick="_dismissOutageBanner()" title="Dismiss">✕</button>
-    <div class="outage-modal-title"><span class="outage-icon">⚠</span>DATA UNAVAILABLE</div>
+    <div class="outage-modal-title"><span class="outage-icon">⚠</span><span id="outage-modal-title-text">DATA UNAVAILABLE</span></div>
     <div class="outage-modal-body" id="outage-modal-body">
       <strong>A service outage upstream of colesurfs may be impacting up-to-date forecast availability.</strong><br>
-      Forecast data may be temporarily unavailable — showing cached or partial data where possible.<br><br>
+      <span id="outage-affected-types">Forecast data may be temporarily unavailable — showing cached or partial data where possible.</span><br><br>
       <a id="outage-status-link" class="outage-modal-link" href="https://github.com/open-meteo/open-meteo/issues" target="_blank" rel="noopener noreferrer">Check status on GitHub →</a>
     </div>
     <button class="outage-modal-btn" onclick="_retryAfterOutage()">↺ RETRY</button>
@@ -1305,7 +1305,7 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.2.3</span>
+    <span class="info-modal-version">v1.2.4</span>
   </div>
 </div>
 
@@ -1333,7 +1333,7 @@
       <li>clicking the buoy button shows the previous 5 days of buoy data for reference</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.2.3</span>
+    <span class="about-version">v1.2.4</span>
   </div>
 </div>
 
@@ -1368,7 +1368,7 @@
     made by cole &amp; claude &nbsp;·&nbsp; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.2.3</span>
+    <span class="footer-version">v1.2.4</span>
     <span class="footer-api" id="api-usage-tag">—</span>
   </div>
   <div class="footer-btns">
@@ -2126,7 +2126,12 @@ async function loadAll() {
   // Also show banner if any core fetch timed out.
   const hadTimeout = [euro, gfs, wind].some(r => r.status === 'rejected');
   if (hadTimeout || euroEmpty || gfsEmpty || windFailed || spotWindsFailed || regionWindFailed || tidesFailed) {
-    _showOutageBanner();
+    _showOutageBanner({
+      forecast:   hadTimeout || euroEmpty || gfsEmpty,
+      wind:       windFailed || spotWindsFailed,
+      regionWind: regionWindFailed,
+      tides:      tidesFailed,
+    });
   }
 
   if (wind.status === 'fulfilled' && wind.value) {
@@ -2723,10 +2728,31 @@ function clearHighlight() {
 // ─── Outage detection ────────────────────────────────────────
 let _outageDismissed = false;
 
-async function _showOutageBanner() {
+async function _showOutageBanner(failures) {
   if (_outageDismissed) return;
   const el = document.getElementById('outage-modal-overlay');
   if (el) el.classList.add('open');
+
+  // Build dynamic title and affected-types message
+  if (failures) {
+    const types = [];
+    if (failures.forecast)    types.push('Swell/wave');
+    if (failures.wind)        types.push('Wind');
+    if (failures.regionWind)  types.push('Region wind');
+    if (failures.tides)       types.push('Tide');
+
+    const titleEl = document.getElementById('outage-modal-title-text');
+    const typesEl = document.getElementById('outage-affected-types');
+
+    const allMajorDown = failures.forecast && failures.wind && failures.tides;
+    if (titleEl) titleEl.textContent = allMajorDown ? 'FULL DATA OUTAGE' : 'PARTIAL DATA OUTAGE';
+
+    if (typesEl && types.length > 0) {
+      const last = types.pop();
+      const typeStr = types.length > 0 ? types.join(', ') + ', and ' + last : last;
+      typesEl.textContent = typeStr + ' forecast data may be temporarily unavailable — showing cached or partial data where possible.';
+    }
+  }
 
   // Best-effort: check GitHub for recent open issues mentioning outage keywords
   try {
