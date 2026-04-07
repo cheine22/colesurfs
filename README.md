@@ -1,4 +1,4 @@
-# colesurfs · v1.2
+# colesurfs · v1.2.1
 
 A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 

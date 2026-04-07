@@ -1237,10 +1237,11 @@
   <div class="info-modal">
     <button class="info-modal-close" onclick="closeInfoModal()">✕</button>
     <div class="info-modal-title"><span class="wave-glyph">∿</span>colesurfs</div>
-    <button class="info-modal-refresh" onclick="refreshAll(); closeInfoModal()">↺ Refresh Model Now</button>
+    <button class="info-modal-refresh" onclick="refreshAll(); closeInfoModal()">↺ REFRESH MODEL NOW</button>
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
+    <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.2</span>
+    <span class="info-modal-version">v1.2.1</span>
   </div>
 </div>
 
@@ -1268,7 +1269,7 @@
       <li>clicking the buoy button shows the previous 5 days of buoy data for reference</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.2</span>
+    <span class="about-version">v1.2.1</span>
   </div>
 </div>
 
@@ -1303,7 +1304,7 @@
     made by cole &amp; claude &nbsp;·&nbsp; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.2</span>
+    <span class="footer-version">v1.2.1</span>
     <span class="footer-api" id="api-usage-tag">—</span>
   </div>
   <div class="footer-btns">
@@ -1896,7 +1897,7 @@ async function _refreshStatus() {
       if (mobNext) mobNext.textContent = next ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h` : '';
     }
     if (data.api_usage && apiEl) {
-      apiEl.textContent = `SWELL DATA PROVIDED VIA OPEN-METEO (${data.api_usage.total.toLocaleString()}/10,000 today)`;
+      apiEl.innerHTML = `SWELL DATA PROVIDED VIA OPEN-METEO<br>(${data.api_usage.total.toLocaleString()}/10,000 today)`;
     }
   } catch(e) { /* silent */ }
 }
@@ -3584,7 +3585,7 @@ if (_isMobile()) {
 function openInfoModal() {
   const src = document.getElementById('api-usage-tag');
   const dst = document.getElementById('mob-info-api-tag');
-  if (src && dst) dst.textContent = src.textContent;
+  if (src && dst) dst.innerHTML = src.innerHTML;
   document.getElementById('info-modal-overlay').classList.add('open');
 }
 function closeInfoModal() {
