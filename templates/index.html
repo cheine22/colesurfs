@@ -1305,7 +1305,7 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.3</span>
+    <span class="info-modal-version">v1.3.1</span>
   </div>
 </div>
 
@@ -1333,7 +1333,7 @@
       <li>clicking the buoy button shows the previous 5 days of buoy data for reference</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.3</span>
+    <span class="about-version">v1.3.1</span>
   </div>
 </div>
 
@@ -1368,7 +1368,7 @@
     made by cole &amp; claude &nbsp;·&nbsp; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.3</span>
+    <span class="footer-version">v1.3.1</span>
     <span class="footer-api" id="api-usage-tag">—</span>
   </div>
   <div class="footer-btns">
@@ -3279,7 +3279,9 @@ async function enterRegionMode(spotName) {
     } catch(e) { console.warn('[enterRegionMode] region_wind re-fetch failed:', e); }
   }
 
+  const scrollAnchor = _getScrollAnchor();
   buildTable();
+  _scrollTableToTime(scrollAnchor);
 
   // recenterMap() triggers a zoom/pan animation.  Leaflet's zoomstart handler
   // calls WindRenderer.stop(), so building wind markers DURING the animation
@@ -3322,7 +3324,9 @@ function exitRegionMode() {
     const mob = _isMobile();
     map.setView(mob ? MAP_CENTER_MOBILE : MAP_CENTER, mob ? MAP_ZOOM_MOBILE : MAP_ZOOM);
   }
+  const scrollAnchor = _getScrollAnchor();
   buildTable();
+  _scrollTableToTime(scrollAnchor);
   buildSwellArrows(null, 'buoy');
   // Restore grid particles.  _resubmitWind checks regionMode (now null) and
   // re-fires the last saved grid u/v/grid through WindScheduler.
@@ -3332,6 +3336,43 @@ function exitRegionMode() {
 
 // ═══ 18. CONTROLS ═══════════════════════════════════════════
 
+// Returns { time, offset } where time is the data-time of the first at-least-partially
+// visible time column and offset is the pixel distance of its left border from the
+// sticky column's right edge (negative means it starts under the sticky header).
+function _getScrollAnchor() {
+  const wrap = document.querySelector('.table-scroll');
+  if (!wrap) return null;
+  const spotTh = document.querySelector('th.th-spot');
+  const stickyRight = spotTh
+    ? spotTh.getBoundingClientRect().right
+    : wrap.getBoundingClientRect().left;
+  const cells = document.querySelectorAll('#table-body tr:first-child td.cell[data-time]');
+  for (const cell of cells) {
+    const rect = cell.getBoundingClientRect();
+    if (rect.right > stickyRight) {
+      return { time: cell.getAttribute('data-time'), offset: rect.left - stickyRight };
+    }
+  }
+  return null;
+}
+
+// Scrolls the table so the column for anchor.time lands with its left border exactly
+// anchor.offset pixels from the sticky column's right edge (preserving exact position).
+function _scrollTableToTime(anchor) {
+  if (!anchor) return;
+  const time   = typeof anchor === 'string' ? anchor : anchor.time;
+  const offset = typeof anchor === 'string' ? 0       : (anchor.offset || 0);
+  const wrap = document.querySelector('.table-scroll');
+  if (!wrap) return;
+  const spotTh = document.querySelector('th.th-spot');
+  const stickyWidth = spotTh ? spotTh.getBoundingClientRect().width : 0;
+  const cell = document.querySelector(`#table-body tr:first-child td.cell[data-time="${time}"]`);
+  if (!cell) return;
+  const wrapRect = wrap.getBoundingClientRect();
+  const cellContentOffset = cell.getBoundingClientRect().left - wrapRect.left + wrap.scrollLeft;
+  wrap.scrollLeft = cellContentOffset - stickyWidth - offset;
+}
+
 function setModel(model, btn) {
   activeModel = model;
   document.querySelectorAll('.sw-btn').forEach(b => b.classList.remove('active'));
@@ -3340,6 +3381,9 @@ function setModel(model, btn) {
 
   // Preserve the user's current time selection across the model switch.
   const savedTime = _displayTime;
+  // Capture the leftmost visible date/time column so we can restore scroll position
+  // after the table rebuilds (GFS and EURO can have different column widths).
+  const scrollAnchor = _getScrollAnchor();
 
   // Clear stale wind data and STOP the old animation immediately so the user
   // never sees old-model particles while the table shows new-model wave data.
@@ -3352,6 +3396,7 @@ function setModel(model, btn) {
   _displayTime = savedTime;
 
   buildTable();
+  _scrollTableToTime(scrollAnchor);
   // Keep swell arrows at the same time point if one was selected.
   if (savedTime) {
     buildSwellArrows(savedTime, 'forecast');

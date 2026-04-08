@@ -1,4 +1,4 @@
-# colesurfs · v1.2.1
+# colesurfs · v1.3.1
 
 A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
@@ -88,6 +88,44 @@ Wind direction zones are defined relative to each spot's measured shore normal: 
 ---
 
 ## Changelog
+
+### v1.3.1
+- **Scroll preservation on model switch** — switching between EURO and GFS now keeps the same date/time column at the left edge of the visible table area; previously the table would jump to a different date because column widths differ between models
+
+### v1.3
+- **Batched wave forecast API** — all spot forecasts fetched in a single multi-location Open-Meteo call (7 calls → 1); cold-cache load time dropped from ~14 s to ~2–3 s
+- **Server-side sunrise/sunset** — computed via `astral` on the backend; eliminates the browser-side Open-Meteo dependency for day/night column shading
+- **Parallel backend fetches** — `ThreadPoolExecutor` for buoy and spot wind fetches
+- **Response compression** — `flask-compress` adds gzip/brotli on all responses; Cache-Control + stale-while-revalidate headers for Cloudflare edge caching
+- **Background cache warming** — server pre-fetches all data every 30 min so user requests always hit warm cache
+- **Disk-based cache persistence** — cache survives server restarts
+- **Inlined `/api/config`** — config embedded in the HTML template at render time, saving one round-trip on load
+- **Batch fallback** — if the batched wave API call fails, falls back to per-spot fetches
+
+### v1.2.5
+- **Outage banner auto-clear** — banner is dismissed automatically on a successful `loadAll` so stale outage warnings don't persist
+- **Smart-refresh bypass** — manual refresh skips the "no new data" check when an outage banner is visible, allowing immediate retry
+- **Outage dismissed flag reset** — `_outageDismissed` resets on each manual refresh
+- **Backend: wind cache retry** — `skip_none=True` added to `fetch_spot_wind` and `fetch_spot_wind_forecasts` so failed wind lookups are retried on the next request rather than serving a cached `None`
+
+### v1.2.4
+- **Dynamic outage modal** — modal now shows PARTIAL or FULL DATA OUTAGE based on severity, and dynamically lists which data types are affected (Swell/wave, Wind, Region wind, Tide) based on actual failure conditions
+- **Structured failure info** — `_showOutageBanner()` accepts structured failure details from `loadAll()`; graceful fallback when called without arguments
+
+### v1.2.3
+- **Broadened outage detection** — outage modal now triggers when any data source fails (spot winds, region wind, swell, tides, wind grid, or timeouts) for any model
+- **Outage modal → centered popup** — outage indicator converted from a top banner to a centered modal popup
+- **GitHub issue auto-check** — outage modal auto-fetches open open-meteo/open-meteo issues and shows count + link
+- **Wind API: double-request fix** — `_RATE_LIMITED` sentinel in `fetch_wind_grid` prevents wasteful hourly fallback on 429 responses
+- **Wind API: negative cache TTL** — increased from 10 min to 30 min for rate-limited responses
+- **Footer layout** — API usage and swell data text consolidated on one line (desktop)
+
+### v1.2.2
+- **Outage banner** — fixed amber top banner appears when any upstream data source fails; includes retry button, dismiss button, and link to Open-Meteo issues
+
+### v1.2.1
+- **Photography link** — COLE HEINE PHOTOGRAPHY button linking to coleheine.com added to the logo info modal
+- **Info modal polish** — refresh button text standardized to all caps; API call count moved to its own line below swell data attribution
 
 ### v1.2
 - **Smart refresh** — refresh button checks `/api/status` for new model data before clearing caches; shows toast notification if no new run is available
