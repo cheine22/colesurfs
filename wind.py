@@ -333,7 +333,7 @@ def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
 
 
 # ─── Per-spot current wind ────────────────────────────────────────────────────
-@ttl_cache(ttl_seconds=3600)
+@ttl_cache(ttl_seconds=3600, skip_none=True)
 def fetch_spot_wind(lat: float, lon: float) -> dict | None:
     params = {
         "latitude": lat, "longitude": lon,
@@ -363,7 +363,7 @@ def fetch_spot_wind(lat: float, lon: float) -> dict | None:
 
 
 # ─── Per-spot hourly wind forecast (for WIND table row) ───────────────────────
-@ttl_cache(ttl_seconds=3600)
+@ttl_cache(ttl_seconds=3600, skip_none=True)
 def fetch_spot_wind_forecasts() -> dict | None:
     """
     Hourly wind forecast for all configured SPOTS via a single multi-location request.

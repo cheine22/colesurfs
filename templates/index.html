@@ -2132,6 +2132,8 @@ async function loadAll() {
       regionWind: regionWindFailed,
       tides:      tidesFailed,
     });
+  } else {
+    _clearOutageBanner();
   }
 
   if (wind.status === 'fulfilled' && wind.value) {
@@ -2776,6 +2778,12 @@ async function _showOutageBanner(failures) {
 
 function _dismissOutageBanner() {
   _outageDismissed = true;
+  const el = document.getElementById('outage-modal-overlay');
+  if (el) el.classList.remove('open');
+}
+
+function _clearOutageBanner() {
+  _outageDismissed = false;
   const el = document.getElementById('outage-modal-overlay');
   if (el) el.classList.remove('open');
 }
@@ -4257,16 +4265,20 @@ function showToast(msg, ms = 2500) {
 }
 
 async function refreshAll() {
+  _outageDismissed = false;
   // Smart refresh: check if a new model run is available before doing the
   // expensive full cache-clear + re-fetch cycle.
-  try {
-    const st = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
-    const newRun = st.model_run && st.model_run.run_time;
-    if (newRun && newRun === _lastModelRun) {
-      showToast('No new model data available');
-      return;
-    }
-  } catch (_) { /* on failure, fall through to full refresh */ }
+  const outageVisible = document.getElementById('outage-modal-overlay')?.classList.contains('open');
+  if (!outageVisible) {
+    try {
+      const st = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
+      const newRun = st.model_run && st.model_run.run_time;
+      if (newRun && newRun === _lastModelRun) {
+        showToast('No new model data available');
+        return;
+      }
+    } catch (_) { /* on failure, fall through to full refresh */ }
+  }
 
   await fetch('/api/refresh', { method: 'POST' });
 
