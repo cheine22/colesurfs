@@ -1305,7 +1305,7 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.2.4</span>
+    <span class="info-modal-version">v1.3</span>
   </div>
 </div>
 
@@ -1333,7 +1333,7 @@
       <li>clicking the buoy button shows the previous 5 days of buoy data for reference</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.2.4</span>
+    <span class="about-version">v1.3</span>
   </div>
 </div>
 
@@ -1368,7 +1368,7 @@
     made by cole &amp; claude &nbsp;·&nbsp; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.2.4</span>
+    <span class="footer-version">v1.3</span>
     <span class="footer-api" id="api-usage-tag">—</span>
   </div>
   <div class="footer-btns">
@@ -1380,6 +1380,7 @@
   </div>
 </footer>
 
+{% if inline_config %}<script>window.__INLINE_CFG={{ inline_config | safe }};</script>{% endif %}
 <script>
 /* ═══════════════════════════════════════════════════════════
    colesurfs v3
@@ -2039,7 +2040,8 @@ function syncByTime(timeStr) {
 // ═══ 7. DATA LOADING ════════════════════════════════════════
 
 async function init() {
-  CFG = await fetch('/api/config').then(r => r.json());
+  // Use server-inlined config if available (saves one round-trip), else fetch
+  CFG = window.__INLINE_CFG || await fetch('/api/config').then(r => r.json());
   // Populate REGION_VIEWS from YAML-derived config
   if (CFG.region_views) REGION_VIEWS = CFG.region_views;
   _loader.step('Building interface…');
@@ -2156,8 +2158,7 @@ async function loadAll() {
 
   // Fetch sunrise/sunset data (await so night markers render on first build).
   if (!Object.keys(sunData).length) {
-    const lidoSpot = (CFG.wind_spots || []).find(ws => ws.name === 'Lido Beach') || CFG.spots && CFG.spots[0];
-    if (lidoSpot) await fetchSunData(lidoSpot.lat, lidoSpot.lon);
+    await fetchSunData();
   }
   _loader.step('Building table…');
 
@@ -2792,45 +2793,29 @@ async function _retryAfterOutage() {
   _dismissOutageBanner();
   _outageDismissed = false;
   await loadAll();
-  const lidoSpot = (CFG && CFG.wind_spots || []).find(ws => ws.name === 'Lido Beach')
-                   || (CFG && CFG.spots && CFG.spots[0]);
-  if (lidoSpot) await fetchSunData(lidoSpot.lat, lidoSpot.lon);
+  await fetchSunData();
 }
 
-async function fetchSunData(lat, lon) {
+async function fetchSunData() {
+  // Sunrise/sunset is now computed server-side (no external API dependency).
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-                `&daily=sunrise,sunset&forecast_days=10&timezone=America%2FNew_York`;
-    const r = await fetch(url);
+    const r = await fetch('/api/sun');
     if (!r.ok) {
       console.warn('[sun] fetch failed — HTTP', r.status);
-      if (r.status === 429 || r.status === 502 || r.status === 503 || r.status >= 500) {
-        _showOutageBanner();
-      }
       return;
     }
     const d = await r.json();
-    if (d && d.error) {
-      console.warn('[sun] API error:', d.reason);
-      _showOutageBanner();
-      return;
-    }
-    const dates    = d.daily && d.daily.time    || [];
-    const sunrises = d.daily && d.daily.sunrise || [];
-    const sunsets  = d.daily && d.daily.sunset  || [];
-    const THIRTY   = 30 * 60 * 1000;
-    const result   = {};
-    dates.forEach((dateStr, i) => {
+    const THIRTY = 30 * 60 * 1000;
+    const result = {};
+    for (const [dateStr, times] of Object.entries(d)) {
       result[dateStr] = {
-        first_light_ms: new Date(sunrises[i].replace('T', ' ')).getTime() - THIRTY,
-        last_light_ms:  new Date(sunsets[i].replace('T',  ' ')).getTime() + THIRTY,
+        first_light_ms: new Date(times.sunrise.replace('T', ' ')).getTime() - THIRTY,
+        last_light_ms:  new Date(times.sunset.replace('T',  ' ')).getTime() + THIRTY,
       };
-    });
+    }
     sunData = result;
   } catch(e) {
     console.warn('[sun] fetch failed', e);
-    // Network failure (SSL error, timeout, DNS) — likely an outage
-    _showOutageBanner();
   }
 }
 

@@ -1,17 +1,26 @@
 """
 colesurfs — Thread-safe TTL cache utility + API call counter.
 Drop-in replacement for @st.cache_data for Flask usage.
+
+v1.3: Added disk persistence (write-through on set, restore on startup).
 """
+import hashlib
+import json
+import os
 import time
 import threading
 from datetime import datetime, timezone
 from functools import wraps
 
 
+_DISK_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+
+
 class _TTLStore:
     def __init__(self):
         self._data: dict = {}
         self._lock = threading.Lock()
+        self._restore_from_disk()
 
     def get(self, key):
         with self._lock:
@@ -27,10 +36,23 @@ class _TTLStore:
     def set(self, key, value, ttl):
         with self._lock:
             self._data[key] = (value, time.monotonic(), ttl)
+        # Write-through to disk (fire-and-forget, don't block the caller)
+        try:
+            self._write_disk(key, value, ttl)
+        except Exception:
+            pass
 
     def clear(self):
         with self._lock:
             self._data.clear()
+        # Also clear disk cache
+        try:
+            if os.path.isdir(_DISK_CACHE_DIR):
+                for f in os.listdir(_DISK_CACHE_DIR):
+                    if f.endswith(".json"):
+                        os.unlink(os.path.join(_DISK_CACHE_DIR, f))
+        except Exception:
+            pass
 
     def get_age(self, key) -> float | None:
         """Return seconds since this key was cached, or None if missing/expired."""
@@ -43,6 +65,56 @@ class _TTLStore:
             if age >= ttl:
                 return None
             return age
+
+    # ─── Disk persistence helpers ────────────────────────────────────────────
+
+    @staticmethod
+    def _disk_path(key: str) -> str:
+        safe = hashlib.md5(key.encode()).hexdigest()
+        return os.path.join(_DISK_CACHE_DIR, f"{safe}.json")
+
+    def _write_disk(self, key: str, value, ttl: int):
+        """Write a cache entry to disk as JSON."""
+        os.makedirs(_DISK_CACHE_DIR, exist_ok=True)
+        path = self._disk_path(key)
+        try:
+            with open(path, "w") as f:
+                json.dump({"key": key, "value": value, "ttl": ttl,
+                           "wall_ts": time.time()}, f, separators=(',', ':'))
+        except (TypeError, ValueError):
+            # Value not JSON-serializable — skip disk cache for this entry
+            pass
+
+    def _restore_from_disk(self):
+        """Restore cache entries from disk on startup. Skips expired entries."""
+        if not os.path.isdir(_DISK_CACHE_DIR):
+            return
+        now = time.time()
+        restored = 0
+        for fname in os.listdir(_DISK_CACHE_DIR):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(_DISK_CACHE_DIR, fname)
+            try:
+                with open(path) as f:
+                    entry = json.load(f)
+                age = now - entry["wall_ts"]
+                # Use generous TTL for disk restore: up to 6 hours (21600s)
+                # even if the in-memory TTL is shorter. The background warmer
+                # will refresh before this matters.
+                max_disk_age = max(entry["ttl"], 21600)
+                if age < max_disk_age:
+                    # Reconstruct monotonic timestamp
+                    mono_ts = time.monotonic() - age
+                    self._data[entry["key"]] = (entry["value"], mono_ts, entry["ttl"])
+                    restored += 1
+                else:
+                    # Expired on disk — clean up
+                    os.unlink(path)
+            except Exception:
+                pass
+        if restored:
+            print(f"[cache] restored {restored} entries from disk")
 
 
 _store = _TTLStore()

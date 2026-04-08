@@ -31,5 +31,11 @@ venv/
 *.swo
 *~
 
+# ─── Cache ───
+.cache/
+
+# ─── Research (temporary) ───
+research_run_*.md
+
 # ─── Logs ───
 *.log

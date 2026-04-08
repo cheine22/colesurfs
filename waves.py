@@ -7,11 +7,13 @@ GFS uses a fallback chain of known model identifiers (API name has changed over 
 GFS fix: correct identifier is ncep_gfswave025 (0.25° resolution suffix required).
 Previous attempts with ncep_gfswave / gfswave / gfs_wave all returned errors because
 the Open-Meteo Marine API requires the resolution suffix in the model name.
+
+v1.3: Batch all spots into a single multi-location API call (matching wind.py pattern).
 """
 import requests
 import math
 from cache import ttl_cache, record_api_calls
-from config import FORECAST_DAYS, TIMEZONE, MODELS, m_to_ft
+from config import FORECAST_DAYS, TIMEZONE, MODELS, SPOTS, m_to_ft
 
 MARINE_API = "https://marine-api.open-meteo.com/v1/marine"
 
@@ -164,11 +166,8 @@ def _parse_response(data) -> list:
 @ttl_cache(ttl_seconds=3600)
 def fetch_wave_forecast(lat: float, lon: float, model_key: str) -> list | None:
     """
-    Fetch hourly wave forecast from Open-Meteo Marine API.
-
-    Outer loop: model ID candidates (GFS tries multiple known names).
-    Inner loop: variable set (full w/ _2/_3 first, base 9 on 400).
-    Returns list of per-timestep dicts with 'components' list (up to 3 swells).
+    Fetch hourly wave forecast from Open-Meteo Marine API (single location).
+    Kept as fallback for individual spot retries; primary path is fetch_all_wave_forecasts().
     """
     model_ids = _GFS_MODEL_IDS if model_key == "GFS" else _EURO_MODEL_IDS
 
@@ -219,3 +218,102 @@ def fetch_wave_forecast(lat: float, lon: float, model_key: str) -> list | None:
 
     print(f"[models] {model_key} all attempts exhausted for ({lat},{lon})")
     return None
+
+
+# ─── Batch multi-location wave forecast ──────────────────────────────────────
+
+@ttl_cache(ttl_seconds=3600, skip_none=True)
+def fetch_all_wave_forecasts(model_key: str) -> dict | None:
+    """
+    Fetch wave forecasts for ALL buoy spots in a single multi-location API call.
+    Returns {spot_name: [per-timestep records]} or None on total failure.
+
+    Uses comma-separated lat/lon — same pattern as wind.py's batched calls.
+    Falls back to per-spot sequential calls if the batch request fails,
+    so a single-spot error (e.g. one location over land) doesn't break everything.
+    """
+    model_ids = _GFS_MODEL_IDS if model_key == "GFS" else _EURO_MODEL_IDS
+
+    lats = ",".join(str(s["lat"]) for s in SPOTS)
+    lons = ",".join(str(s["lon"]) for s in SPOTS)
+    n_spots = len(SPOTS)
+
+    for model_id in model_ids:
+        for var_list in [_WAVE_VARS_FULL, _WAVE_VARS_BASE]:
+            params = {
+                "latitude":      lats,
+                "longitude":     lons,
+                "hourly":        ",".join(var_list),
+                "models":        model_id,
+                "forecast_days": FORECAST_DAYS,
+                "timezone":      TIMEZONE,
+            }
+            try:
+                record_api_calls("wave_forecast_batch", n_spots)
+                r = requests.get(MARINE_API, params=params, timeout=60,
+                                 headers={"User-Agent": "ColeSurfs/1.0"})
+                if r.status_code == 400:
+                    tag = 'full' if len(var_list) > 7 else 'base'
+                    print(f"[wave_batch] {model_key}/{model_id} 400 with {tag} vars — next attempt…")
+                    continue
+                r.raise_for_status()
+                data = r.json()
+            except requests.exceptions.HTTPError as e:
+                print(f"[wave_batch] {model_key}/{model_id} HTTP {e.response.status_code}: "
+                      f"{e.response.text[:200]}")
+                break  # try next model_id
+            except Exception as e:
+                print(f"[wave_batch] {model_key}/{model_id}: {e}")
+                # On any network error, fall back to per-spot
+                return _fallback_per_spot(model_key)
+
+            # Open-Meteo returns a dict for 1 location, list for N>1
+            if isinstance(data, dict):
+                data = [data]
+
+            if not data or not isinstance(data, list):
+                continue
+
+            # Check for API-level error
+            if data[0].get("error"):
+                reason = data[0].get("reason", "?")
+                print(f"[wave_batch] API error {model_key}/{model_id}: {reason}")
+                if any(k in reason for k in ("secondary", "tertiary", "not available", "not exist", "swell")):
+                    continue   # retry with base vars
+                break  # try next model_id
+
+            # Verify we got data with time steps
+            if not data[0].get("hourly", {}).get("time"):
+                continue
+
+            # Parse each location's response
+            result = {}
+            for i, spot in enumerate(SPOTS):
+                if i < len(data):
+                    try:
+                        result[spot["name"]] = _parse_response(data[i])
+                    except Exception as e:
+                        print(f"[wave_batch] parse error for {spot['name']}: {e}")
+                        result[spot["name"]] = None
+                else:
+                    result[spot["name"]] = None
+
+            print(f"[wave_batch] {model_key} OK via {model_id}, "
+                  f"{len(var_list)} vars, {n_spots} spots in 1 call")
+            return result
+
+    # All model IDs exhausted — fall back to per-spot
+    print(f"[wave_batch] {model_key} batch exhausted, trying per-spot fallback…")
+    return _fallback_per_spot(model_key)
+
+
+def _fallback_per_spot(model_key: str) -> dict | None:
+    """Fall back to individual per-spot fetches (sequential, each independently cached)."""
+    result = {}
+    any_success = False
+    for s in SPOTS:
+        data = fetch_wave_forecast(s["lat"], s["lon"], model_key)
+        result[s["name"]] = data
+        if data is not None:
+            any_success = True
+    return result if any_success else None

@@ -11,32 +11,44 @@ Routes:
   /api/region_wind?model=        Hourly wind per surf spot (regional mode)
   /api/tides                     Per-spot tide predictions with Surfline corrections
   /api/config                    Spots, swell categories, wind bands, region views
+  /api/sun                       Sunrise/sunset (computed locally, no external API)
   /api/status?model=             Model run estimate + daily API usage
   /api/debug/spectral/<id>       Diagnostic: raw spectral parse (COLESURFS_DEBUG=1 only)
   /api/buoy_history/<station_id>  5-day historical buoy data with spectral components
   /api/refresh (POST)            Clear caches + reload swell rules
+
+v1.3: Batched wave forecasts, parallel buoy fetches, server-side sunrise/sunset,
+      flask-compress, Cache-Control headers, background cache warming, disk persistence.
 """
+import json as _json
 import os
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask_compress import Compress
 from waitress import serve
 
 from config import SPOTS, WIND_SPOTS, MODEL_COLORS, WIND_BANDS, REGION_VIEWS
 import swell_rules
 from buoy  import fetch_buoy, fetch_buoy_history, _parse_spectral_file, _spectral_components
 import requests as _req_buoy
-from waves import fetch_wave_forecast
+from waves import fetch_wave_forecast, fetch_all_wave_forecasts
 from wind  import (fetch_wind_grid, fetch_spot_wind,
                     fetch_wind_forecast_grid, fetch_spot_wind_forecasts,
                     fetch_region_wind_forecasts, estimate_model_run)
 from tide  import fetch_tide_predictions
+from sun   import compute_sun_data
 import cache as _cache
 
 app = Flask(__name__)
+Compress(app)   # gzip/brotli compression for all responses > 500 bytes
 PORT = int(os.environ.get("COLESURFS_PORT", 5151))
 HOST = os.environ.get("COLESURFS_HOST", "127.0.0.1")
 DEBUG_MODE = os.environ.get("COLESURFS_DEBUG", "").strip() == "1"
+
+# Thread pool for parallel buoy fetches (reused across requests)
+_buoy_pool = ThreadPoolExecutor(max_workers=8)
 
 
 # ─── Rate limiter ────────────────────────────────────────────────────────────
@@ -70,17 +82,28 @@ def _check_api_rate_limit():
 
 @app.route("/api/buoys")
 def api_buoys():
-    return jsonify({s["name"]: fetch_buoy(s["buoy_id"]) for s in SPOTS})
+    """Live NOAA buoy readings — fetched in parallel for speed."""
+    futures = {
+        _buoy_pool.submit(fetch_buoy, s["buoy_id"]): s["name"]
+        for s in SPOTS
+    }
+    result = {}
+    for future in as_completed(futures):
+        name = futures[future]
+        try:
+            result[name] = future.result(timeout=20)
+        except Exception as e:
+            print(f"[buoys] {name} parallel fetch error: {e}")
+            result[name] = None
+    return jsonify(result)
 
 
 @app.route("/api/forecast/<model_key>")
 def api_forecast(model_key: str):
     if model_key not in ("EURO", "GFS"):
         return jsonify({"error": "unknown model"}), 400
-    return jsonify({
-        s["name"]: fetch_wave_forecast(s["lat"], s["lon"], model_key)
-        for s in SPOTS
-    })
+    result = fetch_all_wave_forecasts(model_key)
+    return jsonify(result or {})
 
 
 @app.route("/api/wind")
@@ -88,9 +111,21 @@ def api_wind():
     model_key = request.args.get("model", "EURO").upper()
     if model_key not in ("EURO", "GFS"):
         model_key = "EURO"
+    # Fetch spot winds in parallel to avoid sequential 429 waits
+    spot_futures = {
+        _buoy_pool.submit(fetch_spot_wind, s["lat"], s["lon"]): s["name"]
+        for s in SPOTS
+    }
+    spot_winds = {}
+    for future in as_completed(spot_futures, timeout=15):
+        name = spot_futures[future]
+        try:
+            spot_winds[name] = future.result(timeout=12)
+        except Exception:
+            spot_winds[name] = None
     return jsonify({
         "grid":       fetch_wind_grid(model_key),
-        "spot_winds": {s["name"]: fetch_spot_wind(s["lat"], s["lon"]) for s in SPOTS},
+        "spot_winds": spot_winds,
     })
 
 
@@ -134,6 +169,15 @@ def api_status():
         "model_run": estimate_model_run(model_key),
         "api_usage": _cache.get_api_usage(),
     })
+
+
+@app.route("/api/sun")
+def api_sun():
+    """Sunrise/sunset for the forecast period, computed locally via astral."""
+    # Use first spot's coordinates — all East Coast spots are close enough
+    # that sunrise/sunset times differ by at most ~5 minutes.
+    spot = SPOTS[0] if SPOTS else {"lat": 40.58, "lon": -73.63}
+    return jsonify(compute_sun_data(spot["lat"], spot["lon"]))
 
 
 @app.route("/api/config")
@@ -226,7 +270,34 @@ def api_buoy_history(station_id):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    # Inline /api/config data into the HTML to save one round-trip on initial load.
+    bands = swell_rules.load_bands()
+    config_data = {
+        "spots": SPOTS,
+        "swell_categories": [
+            {
+                "name":       cat,
+                "dark_bg":    swell_rules.COLORS[cat]["dark_bg"],
+                "dark_text":  swell_rules.COLORS[cat]["dark_text"],
+                "light_bg":   swell_rules.COLORS[cat]["light_bg"],
+                "light_text": swell_rules.COLORS[cat]["light_text"],
+            }
+            for cat in swell_rules.CATEGORIES
+        ],
+        "swell_bands": [
+            {"period_ub": b["period_ub"], "rules": b["rules"]}
+            for b in bands
+        ],
+        "wind_bands": [
+            {"min": b[0], "max": b[1], "bg": b[2], "text": b[3]}
+            for b in WIND_BANDS
+        ],
+        "model_colors": MODEL_COLORS,
+        "wind_spots":   WIND_SPOTS,
+        "region_views": REGION_VIEWS,
+    }
+    return render_template("index.html",
+                           inline_config=_json.dumps(config_data, separators=(',', ':')))
 
 @app.route("/favicon.svg")
 def favicon():
@@ -235,6 +306,104 @@ def favicon():
 @app.route("/apple-touch-icon.png")
 def apple_touch_icon():
     return send_from_directory(app.root_path, "apple-touch-icon.png", mimetype="image/png")
+
+
+# ─── Cache-Control headers for Cloudflare edge caching ──────────────────────
+@app.after_request
+def _add_cache_headers(response):
+    """Add Cache-Control headers so Cloudflare caches API responses at the edge.
+    stale-while-revalidate: serve stale while refreshing in background.
+    stale-if-error: serve stale if origin errors (e.g. during Open-Meteo outages).
+    """
+    if request.method != "GET" or response.status_code != 200:
+        return response
+    path = request.path
+
+    if path == "/api/config":
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=3600, stale-while-revalidate=7200, stale-if-error=86400"
+    elif path == "/api/sun":
+        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=43200, stale-while-revalidate=43200"
+    elif path.startswith("/api/forecast/"):
+        response.headers["Cache-Control"] = "public, max-age=120, s-maxage=1800, stale-while-revalidate=7200, stale-if-error=14400"
+    elif path in ("/api/wind", "/api/wind_forecast", "/api/region_wind"):
+        response.headers["Cache-Control"] = "public, max-age=120, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=7200"
+    elif path == "/api/buoys":
+        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=600, stale-while-revalidate=1800, stale-if-error=3600"
+    elif path == "/api/tides":
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=7200, stale-while-revalidate=14400, stale-if-error=86400"
+
+    return response
+
+
+# ─── Background cache warming ─────────────────────────────────────────────────
+_WARM_INTERVAL = 1800   # 30 minutes — well within TTL of 3600s
+
+
+def _warm_all_caches():
+    """Pre-fetch all data so user requests always hit warm cache."""
+    t0 = time.monotonic()
+    errors = []
+
+    # Wave forecasts (batched — 1 API call per model)
+    for model in ("EURO", "GFS"):
+        try:
+            fetch_all_wave_forecasts(model)
+        except Exception as e:
+            errors.append(f"wave/{model}: {e}")
+
+    # Wind (already batched internally)
+    for model in ("EURO", "GFS"):
+        try:
+            fetch_wind_grid(model)
+        except Exception as e:
+            errors.append(f"wind_grid/{model}: {e}")
+        try:
+            fetch_wind_forecast_grid(model)
+        except Exception as e:
+            errors.append(f"wind_forecast/{model}: {e}")
+
+    # Region wind
+    for model in ("EURO", "GFS"):
+        try:
+            fetch_region_wind_forecasts(model)
+        except Exception as e:
+            errors.append(f"region_wind/{model}: {e}")
+
+    # Buoys (parallel)
+    try:
+        futures = {_buoy_pool.submit(fetch_buoy, s["buoy_id"]): s["name"] for s in SPOTS}
+        for f in as_completed(futures, timeout=30):
+            f.result()
+    except Exception as e:
+        errors.append(f"buoys: {e}")
+
+    # Tides
+    try:
+        fetch_tide_predictions()
+    except Exception as e:
+        errors.append(f"tides: {e}")
+
+    elapsed = time.monotonic() - t0
+    if errors:
+        print(f"[cache-warm] done in {elapsed:.1f}s with {len(errors)} errors: "
+              + "; ".join(errors))
+    else:
+        print(f"[cache-warm] all caches refreshed in {elapsed:.1f}s")
+
+
+def _cache_warmer_loop():
+    """Background thread: warm caches on startup and then every WARM_INTERVAL seconds."""
+    # Initial warm on startup (wait a few seconds for Flask to be ready)
+    time.sleep(3)
+    print("[cache-warm] initial cache warm starting…")
+    _warm_all_caches()
+
+    while True:
+        time.sleep(_WARM_INTERVAL)
+        try:
+            _warm_all_caches()
+        except Exception as e:
+            print(f"[cache-warm] loop error: {e}")
 
 
 if __name__ == "__main__":
@@ -260,5 +429,11 @@ if __name__ == "__main__":
     else:
         print(f"  Local   → http://{HOST}:{PORT}")
     print(f"  Debug   → {'on' if DEBUG_MODE else 'off'}")
+    print(f"  Warmer  → every {_WARM_INTERVAL}s")
     print(f"  Press Ctrl+C to stop.\n")
+
+    # Start background cache warmer
+    _warmer = threading.Thread(target=_cache_warmer_loop, daemon=True)
+    _warmer.start()
+
     serve(app, host=HOST, port=PORT, threads=8)
