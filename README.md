@@ -1,4 +1,4 @@
-# colesurfs · v1.3.1
+# colesurfs · v1.3.2
 
 A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
@@ -88,6 +88,10 @@ Wind direction zones are defined relative to each spot's measured shore normal: 
 ---
 
 ## Changelog
+
+### v1.3.2
+- **Fix:** Long Island buoy updated to active buoy 44025 (44017 was decommissioned Feb 2023)
+- **Fix:** Buoy "Now" reading now matches the most recent buoy history point — `_parse()` prefers rows with both valid WVHT and DPD (matching the history chart's energy filter)
 
 ### v1.3.1
 - **Scroll preservation on model switch** — switching between EURO and GFS now keeps the same date/time column at the left edge of the visible table area; previously the table would jump to a different date because column widths differ between models

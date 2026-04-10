@@ -84,18 +84,25 @@ def _parse(text: str) -> dict | None:
     if not headers or not data_lines:
         return None
 
-    # Find the most recent row that has a valid (non-MM) wave height.
-    # The realtime2 file has ~45 days of hourly rows, newest first.
-    # Surfline and other services show the latest valid reading, not strictly
-    # the top row — so we do the same rather than surfacing a stale MM.
+    # Find the most recent row that has valid WVHT *and* DPD.  Requiring both
+    # keeps "Buoy Now" in sync with the history chart, which filters on
+    # energy != null (energy = wvht_ft × dpd²) — same criterion.
+    # Falls back to a WVHT-only row if no row has DPD, and to the top row
+    # if the file has no wave data at all.
     row = None
+    wvht_fallback = None
     for line in data_lines:
         parts = line.split()
         candidate = dict(zip(headers, parts))
         if _safe(candidate.get("WVHT")) is not None:
-            row = candidate
-            break
+            if wvht_fallback is None:
+                wvht_fallback = candidate   # first row with valid WVHT
+            if _safe(candidate.get("DPD")) is not None:
+                row = candidate             # prefer row with both WVHT and DPD
+                break
 
+    if row is None:
+        row = wvht_fallback
     # Fall back to the top row if no row has wave height (all-MM file)
     if row is None:
         row = dict(zip(headers, data_lines[0].split()))

@@ -265,9 +265,9 @@ Barnegat:
   
 
 Long Island:
-  buoy_id: "44017"
-  buoy_lat: 40.693
-  buoy_lon: -72.049
+  buoy_id: "44025"
+  buoy_lat: 40.258
+  buoy_lon: -73.175
   map_center: [40.65, -72.18]
   map_zoom: 9
   mobile_map_center: [40.90, -72.05]
