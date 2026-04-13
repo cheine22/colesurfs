@@ -1,5 +1,7 @@
 # colesurfs · v1.3.3
 
+© 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
+
 A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
 Flask backend, vanilla HTML/CSS/JS frontend. No cloud account or API keys required — all data sources (NOAA, Open-Meteo) are free and unauthenticated.
