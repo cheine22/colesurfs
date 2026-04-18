@@ -262,6 +262,13 @@
       background: var(--bg2); color: var(--text1);
       border-left: 1px solid var(--border1); min-width: 80px; text-align: center;
     }
+    .buoy-update-time {
+      display: block;
+      font-size: 8px; font-weight: 500;
+      color: var(--text2);
+      letter-spacing: normal; text-transform: none;
+      margin-top: 2px;
+    }
     th.th-time { text-align: center; min-width: 66px; }
     th.th-time.col-empty { min-width: 24px; width: 24px; padding: 4px 2px; }
     td.cell.col-empty    { min-width: 24px; }
@@ -2328,9 +2335,11 @@ function buildTable() {
     : 3 * 3600 * 1000;
   const ovNightCols = new Set(times.filter(t => isNightCol(t, ovColIntervalMs)));
 
+  // Overview mode: subtitle shows NY Harbor Entrance buoy's last-update time.
+  const nyhBuoy = buoyData['NY Harbor Entrance'];
   let hrow = `<tr>
     <th class="th-spot">SPOT</th>
-    <th class="th-buoy">BUOY NOW</th>`;
+    <th class="th-buoy">BUOY NOW${buoyUpdateHtml(nyhBuoy)}</th>`;
   times.forEach(t => {
     if (emptyTimes.has(t)) {
       hrow += `<th class="th-time col-empty">—</th>`;
@@ -2399,9 +2408,11 @@ function buildRegionTable() {
     : 3 * 3600 * 1000;
   const nightCols = new Set(times.filter(t => isNightCol(t, colIntervalMs)));
 
+  // Regional mode: subtitle shows the current region's buoy last-update time.
+  const regionBuoy = buoyData[buoySpot.name];
   let hrow = `<tr>
     <th class="th-spot">SPOT</th>
-    <th class="th-buoy">BUOY NOW</th>`;
+    <th class="th-buoy">BUOY NOW${buoyUpdateHtml(regionBuoy)}</th>`;
   times.forEach(t => {
     const night = nightCols.has(t);
     const moon  = night ? `<span class="night-moon">🌙</span>` : '';
@@ -4457,6 +4468,26 @@ function fmtHeaderHtml(iso) {
     const h   = d.getHours();
     return `${dom}<br>${wd} ${h % 12 || 12}${h < 12 ? 'a' : 'p'}`;
   } catch(e) { return iso.slice(11, 16); }
+}
+
+// Buoy observation timestamp (from NDBC) → local "4:23p" style for the
+// BUOY NOW header subtitle. NDBC timestamps arrive in UTC ISO format;
+// new Date(iso) handles the TZ conversion to the user's local time.
+function fmtBuoyUpdate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const h = d.getHours();
+    const m = String(d.getMinutes()).padStart(2, '0');
+    return `${h % 12 || 12}:${m}${h < 12 ? 'a' : 'p'}`;
+  } catch(e) { return ''; }
+}
+
+function buoyUpdateHtml(buoyRecord) {
+  if (!buoyRecord || buoyRecord._offline) return '';
+  const t = fmtBuoyUpdate(buoyRecord.timestamp);
+  return t ? `<span class="buoy-update-time">upd ${t}</span>` : '';
 }
 
 

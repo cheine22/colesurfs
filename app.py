@@ -328,7 +328,11 @@ def _add_cache_headers(response):
     elif path in ("/api/wind", "/api/wind_forecast", "/api/region_wind"):
         response.headers["Cache-Control"] = "public, max-age=120, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=7200"
     elif path == "/api/buoys":
-        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=600, stale-while-revalidate=1800, stale-if-error=3600"
+        # No stale-while-revalidate: SWR caused reloads to serve stale buoy
+        # readings while a background revalidation ran, so the *next* reload
+        # still saw stale data. Short max-age with no SWR → every reload past
+        # the max-age window pulls fresh readings synchronously from origin.
+        response.headers["Cache-Control"] = "public, max-age=30, s-maxage=60, stale-if-error=1800"
     elif path == "/api/tides":
         response.headers["Cache-Control"] = "public, max-age=300, s-maxage=7200, stale-while-revalidate=14400, stale-if-error=86400"
 

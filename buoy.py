@@ -534,7 +534,7 @@ def fetch_buoy_history(station_id: str, days: int = 5) -> dict | None:
     return {"station_id": station_id, "records": records}
 
 
-@ttl_cache(ttl_seconds=1800, skip_none=True)
+@ttl_cache(ttl_seconds=600, skip_none=True)
 def fetch_buoy(station_id: str) -> dict | None:
     """Try realtime2 first, fall back to latest_obs if that fails or parses empty."""
     for url_tmpl in [NDBC_URL, NDBC_LATEST_URL]:
