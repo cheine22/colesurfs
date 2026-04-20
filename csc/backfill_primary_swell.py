@@ -16,6 +16,11 @@ Sources, in priority order:
      bootstraps the tail end for stations lacking both archives.
   4. CDIP THREDDS historic.nc (`cdip_thredds`) — for the two
      CDIP-operated buoys (46221, 46268) not in NDBC's swden catalog.
+     Reads the raw 2D spectral tables (waveEnergyDensity +
+     waveMeanDirection) and pipes them through the same
+     `_spectral_components` decomposer used by the live dashboard, so the
+     training label and the dashboard's buoy-components row agree
+     bit-for-bit (modulo the buoy's own measurement grid).
 
 This module intentionally *reuses* `buoy._spectral_components` so the
 historical primary-swell values are bit-for-bit consistent with what the
@@ -411,23 +416,39 @@ def _decompose_ndbc_thredds(station: str, years: list[int]
                         continue
                     e_row = swd_block[k]
                     d_row = dir_block[k]
+                    # Feed ALL frequency bins to _spectral_components to
+                    # preserve bin-width geometry (bw(i) uses freqs[i±1]).
+                    # The live text path never drops bins — it keeps 999.0
+                    # fills inline. Dropping them here would shorten the
+                    # freqs list and widen Δf for the surviving bins,
+                    # changing Hm0 = 4·√Σ E Δf. Instead, substitute fill /
+                    # NaN energies with 0.0 (below NOISE_FLOOR, so they
+                    # cannot become peaks and contribute zero energy to any
+                    # partition integral). Direction value for a
+                    # zero-energy bin is irrelevant because the circular
+                    # mean is energy-weighted.
+                    #
+                    # Fill-value conventions per NDBC CF: 999.0 for energy,
+                    # 999 for direction. NaN can also appear after
+                    # netCDF4 auto-masking.
                     spec_bins: list[tuple[float, float]] = []
                     dir_bins: list[tuple[float, float]] = []
+                    finite_count = 0
                     for j in range(n_freq):
+                        f_val = float(freqs[j])
                         e_val = float(e_row[j])
                         d_val = float(d_row[j])
-                        # Fill values per NDBC CF: 999.0 for energy,
-                        # 999 for direction. NaNs can also appear after
-                        # netCDF4 auto-masking.
                         if not np.isfinite(e_val) or e_val >= 999.0:
-                            continue
-                        if not np.isfinite(d_val) or d_val >= 990.0:
-                            continue
-                        f_val = float(freqs[j])
+                            e_val = 0.0
+                            d_val = 0.0
+                        else:
+                            finite_count += 1
+                            if not np.isfinite(d_val) or d_val >= 990.0:
+                                d_val = 0.0
                         spec_bins.append((f_val, e_val))
                         dir_bins.append((f_val, d_val))
-                    # Drop timestamp if too few finite bins survive.
-                    if len(spec_bins) < 8:
+                    # Drop timestamp if too few finite energy bins survive.
+                    if finite_count < 8:
                         continue
                     try:
                         comps = _spectral_components(spec_bins, dir_bins)
@@ -480,11 +501,29 @@ CDIP_HISTORIC_URL = (
 
 def _decompose_cdip(station: str, years: list[int]) -> list[dict[str, Any]]:
     """Pull CDIP historic.nc for the mapped station and emit primary-swell
-    rows using CDIP's summary wave params (Hs, Tp, Dp) as a proxy for the
-    dominant swell partition. CDIP's waveHs is full-spectrum Hs, not a true
-    primary-partition Hm0 — good enough for training signal at these
-    offshore stations where the sea state is swell-dominated. We mark
-    source='cdip_thredds' so downstream code can distinguish."""
+    rows using the SAME spectral decomposer that `buoy.py` runs on live
+    NDBC realtime2 pulls — so the historical label and the dashboard's
+    buoy-components row agree on a bit-for-bit basis at 46221 and 46268.
+
+    Inputs read from the CDIP p1_historic.nc file:
+      waveTime[time]                 UTC seconds
+      waveFrequency[frequency]       Hz
+      waveEnergyDensity[time, freq]  m² Hz⁻¹   (== NDBC spectral_wave_density)
+      waveMeanDirection[time, freq]  deg true, FROM
+                                       (== NDBC mean_wave_dir α1)
+
+    When waveMeanDirection is absent we fall back to the directional
+    Fourier coefficients:
+      alpha1(f) = (atan2(-b1, -a1)) mod 360, in degrees     (FROM convention)
+    CDIP stores waveA1Value and waveB1Value with the TO-wave convention; the
+    sign flip yields the FROM direction NDBC uses.
+
+    The summary-param row (Hs, Tp, Dp) used previously produced
+    dashboard-divergent training labels because `waveHs` is a full-spectrum
+    significant wave height (not a primary-partition Hm0) and `waveTp` is
+    the peak period (not the energy-weighted mean Tm that
+    `_spectral_components` returns). This function now matches the live
+    path exactly, modulo the input grid."""
     cdip = CDIP_STATIONS.get(station)
     if not cdip:
         return []
@@ -493,9 +532,11 @@ def _decompose_cdip(station: str, years: list[int]) -> list[dict[str, Any]]:
     except ImportError:
         print(f"  [!] {station}: netCDF4 not installed — skipping CDIP")
         return []
+    import math
+    import numpy as np
     import tempfile, urllib.request
     url = CDIP_HISTORIC_URL.format(cdip=cdip)
-    print(f"  {station} → CDIP {cdip}: downloading historic.nc (large, ~{{1.16 GB, 133 MB}})")
+    print(f"  {station} → CDIP {cdip}: downloading historic.nc (large)")
     try:
         with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
             # Stream to temp file to avoid loading everything in RAM
@@ -512,37 +553,115 @@ def _decompose_cdip(station: str, years: list[int]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     try:
         ds = netCDF4.Dataset(tmp_path, "r")
-        # CDIP conventions: waveTime (UTC seconds), waveHs, waveTp, waveDp.
         time_var = ds.variables.get("waveTime")
-        hs_var = ds.variables.get("waveHs")
-        tp_var = ds.variables.get("waveTp")
-        dp_var = ds.variables.get("waveDp")
-        if time_var is None or hs_var is None:
-            print(f"  [!] {station}: CDIP file missing expected vars")
+        freq_var = ds.variables.get("waveFrequency")
+        ed_var = ds.variables.get("waveEnergyDensity")
+        mdir_var = ds.variables.get("waveMeanDirection")
+        a1_var = ds.variables.get("waveA1Value")
+        b1_var = ds.variables.get("waveB1Value")
+        if time_var is None or freq_var is None or ed_var is None:
+            print(f"  [!] {station}: CDIP file missing waveTime/Frequency/"
+                  "EnergyDensity — skipping")
+            return []
+        if mdir_var is None and (a1_var is None or b1_var is None):
+            print(f"  [!] {station}: CDIP file missing both waveMeanDirection "
+                  "and waveA1Value/waveB1Value — cannot decompose")
+            return []
+        freqs = np.asarray(freq_var[:], dtype="float64")
+        n_freq = len(freqs)
+        n_time = time_var.shape[0]
+        if n_time == 0 or n_freq == 0:
             return []
         yrs_set = set(years)
         ingest_s = datetime.now(timezone.utc).isoformat()
-        for idx in range(time_var.shape[0]):
-            epoch = int(time_var[idx])
-            ts = datetime.fromtimestamp(epoch, tz=timezone.utc)
-            if ts.year not in yrs_set:
+        # Chunk by calendar year to avoid pulling the full time × freq array
+        # at once (historic.nc can be 1+ GB).
+        times = np.asarray(time_var[:], dtype="int64")
+        idx_years = np.array(
+            [datetime.fromtimestamp(int(t), tz=timezone.utc).year
+             for t in times],
+            dtype="int32",
+        )
+        for y in sorted({int(yy) for yy in idx_years.tolist()}):
+            if y not in yrs_set:
                 continue
-            hs = float(hs_var[idx]) if hs_var is not None else None
-            tp = float(tp_var[idx]) if tp_var is not None else None
-            dp = float(dp_var[idx]) if dp_var is not None else None
-            if hs is None or hs <= 0:
+            mask = np.where(idx_years == y)[0]
+            if mask.size == 0:
                 continue
-            rows.append({
-                "buoy_id": station,
-                "valid_utc": ts.isoformat(),
-                "partition": 1,
-                "hm0_m": hs,
-                "tm_s": tp if tp is not None and tp > 0 else float("nan"),
-                "dir_deg": dp if dp is not None and 0 <= dp <= 360 else float("nan"),
-                "energy": None,
-                "source": "cdip_thredds",
-                "ingest_utc": ingest_s,
-            })
+            i0, i1 = int(mask.min()), int(mask.max()) + 1
+            try:
+                ed_block = np.asarray(ed_var[i0:i1, :], dtype="float64")
+                if mdir_var is not None:
+                    dir_block = np.asarray(mdir_var[i0:i1, :],
+                                           dtype="float64")
+                else:
+                    a1_block = np.asarray(a1_var[i0:i1, :], dtype="float64")
+                    b1_block = np.asarray(b1_var[i0:i1, :], dtype="float64")
+                    # CDIP a1/b1 are the TO-wave Fourier moments; flip sign
+                    # for FROM convention matching NDBC α1.
+                    dir_block = (
+                        np.degrees(np.arctan2(-b1_block, -a1_block)) % 360.0
+                    )
+            except Exception as e:
+                print(f"  [!] {station}: CDIP slice {y} failed: {e}",
+                      file=sys.stderr)
+                continue
+            n_block = ed_block.shape[0]
+            emitted = 0
+            for k in range(n_block):
+                global_i = i0 + k
+                ts = datetime.fromtimestamp(int(times[global_i]),
+                                            tz=timezone.utc)
+                if ts.year != y:
+                    continue
+                e_row = ed_block[k]
+                d_row = dir_block[k]
+                spec_bins: list[tuple[float, float]] = []
+                dir_bins: list[tuple[float, float]] = []
+                for j in range(n_freq):
+                    e_val = float(e_row[j])
+                    d_val = float(d_row[j])
+                    # CDIP fill values: typically -999 or NaN after
+                    # auto-masking. Also reject absurd positives (>= 999)
+                    # mirroring the NDBC THREDDS path.
+                    if not math.isfinite(e_val) or e_val < 0 or e_val >= 999.0:
+                        continue
+                    if not math.isfinite(d_val):
+                        continue
+                    f_val = float(freqs[j])
+                    if not math.isfinite(f_val) or f_val <= 0:
+                        continue
+                    spec_bins.append((f_val, e_val))
+                    dir_bins.append((f_val, d_val % 360.0))
+                if len(spec_bins) < 8:
+                    continue
+                try:
+                    comps = _spectral_components(spec_bins, dir_bins)
+                except Exception:
+                    continue
+                if not comps:
+                    continue
+                for i, c in enumerate(comps, start=1):
+                    h_ft = c.get("height_ft")
+                    tm = c.get("period_s")
+                    dp = c.get("direction_deg")
+                    energy = c.get("energy")
+                    if h_ft is None or tm is None or dp is None:
+                        continue
+                    rows.append({
+                        "buoy_id": station,
+                        "valid_utc": ts.isoformat(),
+                        "partition": int(i),
+                        "hm0_m": float(h_ft) / FT_PER_M,
+                        "tm_s": float(tm),
+                        "dir_deg": float(dp),
+                        "energy": float(energy) if energy is not None else None,
+                        "source": "cdip_thredds",
+                        "ingest_utc": ingest_s,
+                    })
+                    emitted += 1
+            print(f"    {station} {y}: {emitted:>7} component rows "
+                  f"from {n_block} obs")
         ds.close()
     except Exception:
         traceback.print_exc()

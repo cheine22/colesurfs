@@ -18,6 +18,39 @@ from csc.features import add_engineered
 from csc.models import load_model
 from csc.schema import BUOYS, CSC_MODELS_DIR
 
+try:
+    from config import TIMEZONE as _DASHBOARD_TZ
+except Exception:
+    _DASHBOARD_TZ = "America/New_York"
+
+
+def _parse_dashboard_time(t) -> pd.Timestamp | None:
+    """Parse a waves.py / dashboard timestamp into a tz-aware UTC Timestamp.
+
+    Open-Meteo honors the `timezone=` param by emitting bare ISO strings
+    (e.g. ``2026-04-20T00:00``) in that zone with no offset suffix.
+    The dashboard uses `TIMEZONE='America/New_York'` (see waves.py), so a
+    bare string "2026-04-20T00:00" physically means 00:00 NY-local which
+    is UTC 04:00 (or 05:00 in EST). The CSC training archive uses
+    `timezone=UTC` in the logger, so its bare strings ARE already UTC.
+
+    Train/serve parity requires localizing dashboard strings to NY then
+    converting to UTC — otherwise features land 4 h off target. See
+    predict.py history + csc/docs/timezone_audit.md.
+    """
+    if t is None:
+        return None
+    try:
+        ts = pd.Timestamp(t)
+    except (ValueError, TypeError):
+        return None
+    if ts.tzinfo is None:
+        try:
+            ts = ts.tz_localize(_DASHBOARD_TZ, ambiguous="NaT", nonexistent="shift_forward")
+        except Exception:
+            return None
+    return ts.tz_convert("UTC")
+
 
 # ─── Artifact cache (hot-reload on symlink mtime change) ──────────────────
 
@@ -68,48 +101,66 @@ def current_manifest() -> dict[str, Any] | None:
 # ─── Live-forecast → wide feature frame ───────────────────────────────────
 
 def _rename_model_frame(records: list[dict], prefix: str) -> pd.DataFrame:
-    """Project a live-forecast record list onto the column schema the
-    trained CSC model expects.
+    """Project a live-forecast record list onto the training feature schema.
 
-    The v1 training frame used Open-Meteo's raw hourly keys (wave_height,
-    wave_period, wave_direction) which are the COMBINED sea-state values.
-    The v2 training frame additionally uses swell_wave_* partitions when
-    available (GFS only — ECMWF WAM has no partitions). Waves.py records
-    carry:
-      - `combined_wave_height_m` etc. (combined wave field, m)
-      - `wave_height_ft` etc.  (primary-swell partition, ft, filtered >6s)
-      - `components: [{height_ft, period_s, direction_deg}, ...]`
-    We map both combined AND primary-swell onto the training schema so
-    multi_serve.py can display whichever quantity the currently-active
-    CSC target expects.
+    waves.py records are already dashboardified (`_parse_response` output):
+      - `wave_height_ft` / `wave_period_s` / `wave_direction_deg` = primary
+        swell partition (period ≥ 6 s, highest energy) — the value the
+        main dashboard's GFS/EURO cell displays at that hour.
+      - `components: [{height_ft, period_s, direction_deg, energy}, ...]`
+        with secondary partition at `components[1]` if present.
+
+    The training frame (csc/data.py::_wide_forecasts) uses the SAME
+    dashboardified primary partition for its `{prefix}_wave_height`
+    feature (in meters). We mirror that exactly here so train-time and
+    serve-time features align bit-for-bit.
+
+    The unregistered-buoy path (csc.serve._fetch_csc_for_unregistered_buoy)
+    lacks a waves.py-style record and emits raw `wave_height_m` etc.
+    directly; we fall back to that when the dashboardified fields are
+    missing.
     """
     df = pd.DataFrame(records)
-    # Combined (v1 training target)
-    rename_combined = {
-        "combined_wave_height_m":   f"{prefix}_wave_height",
-        "combined_wave_period_s":   f"{prefix}_wave_period",
-        "combined_wave_direction_deg": f"{prefix}_wave_direction",
-    }
-    rename_raw = {
+    FT_TO_M = 1.0 / 3.28084
+
+    # Primary partition — the value the dashboard shows.
+    if "wave_height_ft" in df.columns:
+        df[f"{prefix}_wave_height"] = df["wave_height_ft"] * FT_TO_M
+    if "wave_period_s" in df.columns:
+        df[f"{prefix}_wave_period"] = df["wave_period_s"]
+    if "wave_direction_deg" in df.columns:
+        df[f"{prefix}_wave_direction"] = df["wave_direction_deg"]
+    # Redundant swell_wave_* columns for features.py backwards compat.
+    for tail in ("wave_height", "wave_period", "wave_direction"):
+        col = f"{prefix}_{tail}"
+        df[f"{prefix}_swell_{tail}"] = df[col] if col in df.columns else None
+
+    # Secondary partition — components[1] if present.
+    def _comp_at(row, idx, key):
+        comps = row.get("components") or []
+        return comps[idx].get(key) if idx < len(comps) else None
+    if "components" in df.columns:
+        df[f"{prefix}_secondary_swell_wave_height"] = df.apply(
+            lambda r: (_comp_at(r, 1, "height_ft") * FT_TO_M
+                       if _comp_at(r, 1, "height_ft") is not None else None),
+            axis=1)
+        df[f"{prefix}_secondary_swell_wave_period"] = df.apply(
+            lambda r: _comp_at(r, 1, "period_s"), axis=1)
+        df[f"{prefix}_secondary_swell_wave_direction"] = df.apply(
+            lambda r: _comp_at(r, 1, "direction_deg"), axis=1)
+
+    # Unregistered-buoy-path fallback (raw Open-Meteo dict with no
+    # dashboardify). Use raw values as both primary and combined.
+    raw_fallback = {
         "wave_height_m":   f"{prefix}_wave_height",
         "wave_period_s":   f"{prefix}_wave_period",
         "wave_direction_deg": f"{prefix}_wave_direction",
     }
-    for src, dst in rename_combined.items():
-        if src in df.columns:
+    for src, dst in raw_fallback.items():
+        if src in df.columns and (dst not in df.columns or df[dst].isna().all()):
             df[dst] = df[src]
-    for src, dst in rename_raw.items():
-        if src in df.columns and dst not in df.columns:
-            df[dst] = df[src]
-    # Primary-swell partition (v2 training target). waves.py stores it as
-    # `wave_height_ft` at top-level (pulled from components[0]) — convert
-    # back to meters so the column aligns with the training frame.
-    if "wave_height_ft" in df.columns:
-        df[f"{prefix}_swell_wave_height"] = df["wave_height_ft"] / 3.28084
-    if "wave_period_s" in df.columns:
-        df[f"{prefix}_swell_wave_period"] = df["wave_period_s"]
-    if "wave_direction_deg" in df.columns:
-        df[f"{prefix}_swell_wave_direction"] = df["wave_direction_deg"]
+
+    # Time column normalization.
     if "time" in df.columns and "valid_utc" not in df.columns:
         df.rename(columns={"time": "valid_utc"}, inplace=True)
     return df
@@ -132,11 +183,8 @@ def _primary_swell_lookup(records: list[dict]) -> dict[pd.Timestamp, dict]:
     out: dict[pd.Timestamp, dict] = {}
     for r in records:
         t = r.get("time") or r.get("valid_utc")
-        if t is None:
-            continue
-        try:
-            ts = pd.to_datetime(t, utc=True)
-        except (ValueError, TypeError):
+        ts = _parse_dashboard_time(t)
+        if ts is None:
             continue
         out[ts] = {
             "hs_ft":  r.get("wave_height_ft"),
@@ -171,7 +219,11 @@ def _records_to_frame(buoy_id: str,
     g = g[[c for c in g.columns if c.startswith("gfs_") or c == "valid_utc"]]
     e = e[[c for c in e.columns if c.startswith("euro_") or c == "valid_utc"]]
     merged = pd.merge(g, e, on="valid_utc", how="inner")
-    merged["valid_utc"] = pd.to_datetime(merged["valid_utc"], utc=True)
+    # waves.py records carry NY-local time strings; training archive uses
+    # UTC. Localize to dashboard TZ then convert to UTC so physical-hour
+    # features (hour-of-day, seasonality) align with training semantics.
+    merged["valid_utc"] = merged["valid_utc"].apply(_parse_dashboard_time)
+    merged = merged.dropna(subset=["valid_utc"])
     merged["buoy_id"] = buoy_id
     # fill obs_* with NaN so add_engineered's obs_sin/cos_dp don't blow up
     merged["obs_hs_m"] = np.nan

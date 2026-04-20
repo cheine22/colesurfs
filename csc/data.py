@@ -117,11 +117,47 @@ def read_observations(include_live_log: bool = True) -> pd.DataFrame:
 
 # ─── Wide-frame join for training ─────────────────────────────────────────
 
+_RAW_OM_VARS = (
+    "wave_height", "wave_period", "wave_peak_period", "wave_direction",
+    "swell_wave_height", "swell_wave_period", "swell_wave_direction",
+    "secondary_swell_wave_height", "secondary_swell_wave_period",
+    "secondary_swell_wave_direction",
+    "tertiary_swell_wave_height", "tertiary_swell_wave_period",
+    "tertiary_swell_wave_direction",
+)
+
+
 def _wide_forecasts(forecasts: pd.DataFrame) -> pd.DataFrame:
-    """Pivot long forecast rows → wide, one row per (buoy, valid_utc, lead_days)
-    with columns like gfs_wave_height, euro_swell_wave_period, etc."""
+    """Pivot long forecast rows → wide, then REPLACE the raw Open-Meteo
+    columns with the exact values the live dashboard would display
+    (`waves.py::_parse_response` output, via `csc.dashboardify`).
+
+    Non-negotiable: training features at every (buoy, valid_utc) must
+    equal what the dashboard shows for that (buoy, valid_utc). Feeding
+    the ML layer raw Open-Meteo `wave_height` (combined, contaminated by
+    wind chop on EURO) when the dashboard shows primary-swell partition
+    height produces train/serve skew and hallucinated big-swell
+    predictions. This function is the single integration point that
+    guarantees dashboard-identity for every GFS/EURO feature CSC sees.
+
+    Resulting per-row per-model columns (e.g. `gfs_*`):
+      gfs_wave_height     — PRIMARY-swell Hs in meters (dashboard's
+                             wave_height_ft / 3.28084)
+      gfs_wave_period     — PRIMARY-swell period in seconds
+      gfs_wave_direction  — PRIMARY-swell direction in degrees
+      gfs_swell_wave_*    — same as above (redundant by design;
+                             kept for features.py backwards-compat)
+      gfs_secondary_swell_wave_*  — dashboard's components[1], if any
+      gfs_combined_wave_height    — original combined Hs (m), kept as a
+                             DIAGNOSTIC, NOT used as a feature by default
+    Rows become NaN for all model-derived columns when the dashboard
+    would display nothing (e.g. EURO wind-chop hours with peak period
+    < 6 s). LightGBM handles NaN natively; Ridge uses its imputer.
+    """
     if forecasts.empty:
         return forecasts
+    from csc.dashboardify import dashboardify
+
     df = forecasts.copy()
     df["colname"] = df["model"].str.lower() + "_" + df["variable"]
     wide = df.pivot_table(
@@ -131,6 +167,72 @@ def _wide_forecasts(forecasts: pd.DataFrame) -> pd.DataFrame:
         aggfunc="last",
     ).reset_index()
     wide.columns.name = None
+
+    # For each row, reconstruct the raw Open-Meteo-shaped dict per model,
+    # pass through dashboardify, and overwrite the feature columns with
+    # the dashboard-transformed values.
+    for prefix in ("gfs", "euro"):
+        # Gather source columns present in this frame (graceful degradation
+        # for archives that predate the 13-var schema).
+        raw_cols = {v: f"{prefix}_{v}" for v in _RAW_OM_VARS
+                    if f"{prefix}_{v}" in wide.columns}
+        if not raw_cols:
+            continue
+
+        # Display columns we'll populate per row. Keep combined height
+        # as a diagnostic column (suffixed _combined) so we can debug
+        # divergences later without ever feeding it to the model.
+        display_cols = {
+            "wave_height", "wave_period", "wave_direction",
+            "swell_wave_height", "swell_wave_period", "swell_wave_direction",
+            "secondary_swell_wave_height", "secondary_swell_wave_period",
+            "secondary_swell_wave_direction",
+        }
+        # Pre-stash the raw combined wave_height under a diagnostic name
+        # before we overwrite the feature column.
+        if f"{prefix}_wave_height" in wide.columns:
+            wide[f"{prefix}_combined_wave_height"] = wide[f"{prefix}_wave_height"]
+            wide[f"{prefix}_combined_wave_period"] = wide.get(f"{prefix}_wave_period")
+            wide[f"{prefix}_combined_wave_direction"] = wide.get(f"{prefix}_wave_direction")
+
+        # Row-wise dashboardify. pandas DataFrame.apply(axis=1) here —
+        # volume is ~1M rows, call is cheap (dashboardify wraps one dict,
+        # delegates to waves._parse_response).
+        def _transform(row):
+            raw = {"time": row["valid_utc"].isoformat()
+                   if hasattr(row["valid_utc"], "isoformat") else str(row["valid_utc"])}
+            for om_var, col in raw_cols.items():
+                raw[om_var] = row.get(col)
+            disp = dashboardify(raw) or {}
+            FT_TO_M = 1.0 / 3.28084
+            out = {}
+            # Primary partition → wave_height (m), wave_period (s), wave_direction (°)
+            hs_ft = disp.get("wave_height_ft")
+            out[f"{prefix}_wave_height"] = (hs_ft * FT_TO_M) if hs_ft is not None else None
+            out[f"{prefix}_wave_period"] = disp.get("wave_period_s")
+            out[f"{prefix}_wave_direction"] = disp.get("wave_direction_deg")
+            # Redundant swell_wave_* kept for features.py compat; same values.
+            out[f"{prefix}_swell_wave_height"] = out[f"{prefix}_wave_height"]
+            out[f"{prefix}_swell_wave_period"] = out[f"{prefix}_wave_period"]
+            out[f"{prefix}_swell_wave_direction"] = out[f"{prefix}_wave_direction"]
+            # Secondary partition → components[1] if present
+            comps = disp.get("components") or []
+            if len(comps) >= 2:
+                c2 = comps[1]
+                out[f"{prefix}_secondary_swell_wave_height"] = (
+                    c2["height_ft"] * FT_TO_M if c2.get("height_ft") is not None else None)
+                out[f"{prefix}_secondary_swell_wave_period"] = c2.get("period_s")
+                out[f"{prefix}_secondary_swell_wave_direction"] = c2.get("direction_deg")
+            else:
+                out[f"{prefix}_secondary_swell_wave_height"] = None
+                out[f"{prefix}_secondary_swell_wave_period"] = None
+                out[f"{prefix}_secondary_swell_wave_direction"] = None
+            return pd.Series(out)
+
+        transformed = wide.apply(_transform, axis=1)
+        for col in transformed.columns:
+            wide[col] = transformed[col]
+
     return wide
 
 

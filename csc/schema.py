@@ -110,13 +110,16 @@ CYCLES_PER_DAY = {
     "EURO": [0, 12],
 }
 
-# Marine-API "bulk" variables per query. Combined (wave_*) + three swell
-# partitions. The logger requests these plus their `*_previous_day1..7`
-# companions to build a lead-time-indexed archive going forward.
+# Marine-API "bulk" variables per query. Must be the EXACT same set
+# waves.py::_parse_response consumes so that dashboardify() can replay
+# the dashboard transformation on every historical row.
+# Includes: combined wave, peak period, 3 swell partitions (primary +
+# secondary + tertiary). Matches `waves.py::_parse_response` line for line.
 OM_WAVE_VARS = [
-    "wave_height", "wave_period", "wave_direction",
+    "wave_height", "wave_period", "wave_peak_period", "wave_direction",
     "swell_wave_height", "swell_wave_period", "swell_wave_direction",
     "secondary_swell_wave_height", "secondary_swell_wave_period", "secondary_swell_wave_direction",
+    "tertiary_swell_wave_height", "tertiary_swell_wave_period", "tertiary_swell_wave_direction",
 ]
 
 # The `_previous_dayN` rolling window — 1..7 d back from today, matching
