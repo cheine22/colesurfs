@@ -355,18 +355,23 @@ def run_bakeoff_primary(out_dir: Path | None = None,
     print(f"[exp-v3 {scope}] {before_scope} → {len(df)} rows after scope filter")
 
     df = add_engineered(df)
-    # For v2 we want primary-swell features to be present — don't drop rows
-    # that have a valid primary-swell observation but a NaN in combined cols.
-    # Keep the same core-required gate though (gfs/euro combined must exist
-    # because features.add_engineered uses them for disagreement features).
+    # Core required: GFS primary-swell + observation target. EURO cols
+    # are OPTIONAL because the dashboard-identity quality gate in
+    # csc/data.py drops pre-2025-11 EURO rows (no wave_peak_period → no
+    # dashboard-identical Hs). Keeping those rows with NaN EURO features
+    # lets LightGBM learn from GFS-only training samples; cross-model
+    # disagreement features go NaN and LGBM handles natively.
+    # (Ridge and other imputer-less candidates will still skip those
+    # rows automatically since they can't handle NaN.)
     drop_cols = [
         "gfs_wave_height", "gfs_wave_period", "gfs_wave_direction",
-        "euro_wave_height", "euro_wave_period", "euro_wave_direction",
         "obs_hs_m", "obs_tp_s", "obs_dp_deg",
     ]
     before = len(df)
     df = df.dropna(subset=drop_cols).reset_index(drop=True)
-    print(f"[exp-v3 {scope}] {before} → {len(df)} rows after dropping rows with missing core inputs")
+    euro_present = df["euro_wave_height"].notna().sum() if "euro_wave_height" in df.columns else 0
+    print(f"[exp-v3 {scope}] {before} → {len(df)} rows after dropping rows with missing core inputs "
+          f"(EURO features present in {euro_present}/{len(df)} rows)")
 
     folds = kfold_month_split(df, n_folds=n_folds)
     for _, _, meta in folds:

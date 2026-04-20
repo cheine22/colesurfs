@@ -20,7 +20,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from csc.schema import FORECASTS_DIR, LIVE_LOG_DIR, OBSERVATIONS_DIR
+from csc.schema import CSC_DATA_DIR, FORECASTS_DIR, LIVE_LOG_DIR, OBSERVATIONS_DIR
 
 
 # ─── Readers ──────────────────────────────────────────────────────────────
@@ -32,6 +32,16 @@ def _read_all_parquets(root: Path, glob: str) -> pd.DataFrame:
     if not paths:
         return pd.DataFrame()
     return pd.concat([pd.read_parquet(p) for p in paths], ignore_index=True)
+
+
+# Note: a CMEMS partitioned-WAM reader was prototyped here and reverted
+# once it became clear CMEMS reports a different quantity (true primary-
+# swell partition) than what the live dashboard renders for EURO (OM
+# combined Hs filtered by wave_peak_period). Wiring CMEMS into training
+# alone would reintroduce train/serve drift. Shards written by
+# `csc/cmems_backfill.py` remain on disk under `.csc_data/euro_partitions/`
+# as a reserved future source — they'd only make sense to consume if the
+# dashboard itself switches to CMEMS for EURO rendering.
 
 
 def read_forecasts(lead_days: int | Iterable[int] = 0,
@@ -66,6 +76,37 @@ def read_forecasts(lead_days: int | Iterable[int] = 0,
     df = pd.concat(frames, ignore_index=True)
     df = df[df["lead_days"].isin(wanted)]
     df["valid_utc"] = pd.to_datetime(df["valid_utc"], utc=True)
+
+    # EURO quality gate — "if data does not meet quality, it cannot be used".
+    # Open-Meteo EURO exposes no swell partitions, so dashboardify falls
+    # back to combined Hs filtered by wave_peak_period ≥ 6s. That peak_period
+    # variable only became available from Open-Meteo on 2025-11-01; before
+    # that date, dashboardify's fallback uses mean period instead, which is
+    # a DIFFERENT filter than what the live dashboard applies today.
+    # Dropping those rows so training features are bit-identical to live
+    # dashboard rendering for every hour we keep.
+    peak_hours = df[
+        (df["model"] == "EURO") & (df["variable"] == "wave_peak_period")
+    ][["buoy_id", "valid_utc"]].drop_duplicates()
+    if not peak_hours.empty:
+        peak_keys = set(zip(
+            peak_hours["buoy_id"].astype(str),
+            peak_hours["valid_utc"].astype("int64"),
+        ))
+        euro_mask = df["model"] == "EURO"
+        euro_rows = df[euro_mask]
+        keep_euro_idx = euro_rows.index[
+            [(b, t) in peak_keys for b, t in
+             zip(euro_rows["buoy_id"].astype(str),
+                 euro_rows["valid_utc"].astype("int64"))]
+        ]
+        drop_euro_idx = euro_rows.index.difference(keep_euro_idx)
+        if len(drop_euro_idx):
+            df = df.drop(index=drop_euro_idx)
+    else:
+        # No peak_period anywhere → all EURO rows fail the quality gate.
+        df = df[df["model"] != "EURO"]
+
     df = df.sort_values(["buoy_id", "model", "valid_utc", "lead_days", "variable"])
     df = df.drop_duplicates(
         subset=["buoy_id", "model", "valid_utc", "lead_days", "variable"],
