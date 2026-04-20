@@ -34,6 +34,13 @@ venv/
 # ─── Cache ───
 .cache/
 
+# ─── CSC (Colesurfs Correction) — training archive & model artifacts ───
+.csc_data/
+.csc_models/
+
+# ─── Claude Code local config ───
+.claude/
+
 # ─── Research (temporary) ───
 research_run_*.md
 

@@ -599,6 +599,12 @@ def fetch_buoy(station_id: str) -> dict | None:
 
         result["components"] = comps
 
+        try:
+            from csc.logger import log_observation
+            log_observation(station_id, result)
+        except Exception as _e:
+            print(f"[buoy] {station_id} csc.log_observation: {type(_e).__name__}: {_e}")
+
         return result
 
     print(f"[buoy] {station_id}: all URLs exhausted, returning offline marker")

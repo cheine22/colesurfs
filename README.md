@@ -1,4 +1,4 @@
-# colesurfs · v1.3.3
+# colesurfs · v1.4
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -39,9 +39,27 @@ Flask backend, vanilla HTML/CSS/JS frontend. No cloud account or API keys requir
 All data is fetched from free, unauthenticated public APIs:
 
 - **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min)
+- **NDBC THREDDS** — historical full-spectrum NetCDFs per station (used by CSC backfill; 2017 → today where available)
 - **Open-Meteo Marine API** — ECMWF WAM and GFS wave model forecasts (10-day hourly)
 - **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts (matched to the selected wave model)
 - **NOAA CO-OPS** — harmonic tide predictions per spot with Surfline-calibrated time corrections
+
+---
+
+## CSC — Colesurfs Correction (bias-corrected swell model)
+
+CSC is a statistical correction layer trained on years of paired (GFS/EURO
+model analysis, NDBC buoy spectral observation) records. It learns the
+regional biases of each raw model and emits a single bias-corrected
+primary-swell forecast at each CSC buoy — directly comparable to the
+GFS and EURO columns shown on the main dashboard.
+
+- **v3 East Coast** — 3 buoys (Boston, NY Harbor Entrance, Block Island Sound), ~950 k training rows spanning 2017 → today. CV-averaged Hs MAE of **0.134 m (~0.44 ft)** vs raw GFS's 0.25 m — a ~47 % reduction on primary-swell height. Barnegat (NJ) and Jeffrey's Ledge (NH) will auto-promote into the East scope once their archives cross 24 months (mid-2027).
+- **West Coast** — Santa Monica Basin, Santa Monica Bay, Topanga Nearshore — trains silently in parallel to East; artifacts kept under `.csc_models_west/`; not surfaced on the main dashboard.
+- **Head-to-head dashboard** — [`/csc`](http://localhost:5151/csc) shows every trained variant against raw GFS, raw EURO, and the 50/50 mean on a live 10-day forecast overlay plus a verification-metric suite (MAE, RMSE, SI, HH, POD/FAR/CSI, Taylor diagram, etc.). Linked from the logo modal on the main dashboard.
+- **Automation** — three launchd plists: hourly forecast logger, seasonal retrain (equinoxes + solstices) with Pushover notification, weekly continuous evaluation.
+
+See [`csc/docs/README.md`](./csc/docs/README.md) for the full architecture, file map, strategy notes, and performance report.
 
 ---
 

@@ -1,0 +1,1521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSC · head-to-head — colesurfs</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg0: #0d0d0f; --bg1: #131316; --bg2: #1a1a1f; --bg3: #222228;
+    --bd0: #1e1e24; --bd1: #2e2e38; --bd2: #3e3e4e;
+    --fg0: #e8e8f0; --fg1: #a0a0b8; --fg2: #606075; --fg3: #404055;
+    --accent: #7c6af7; --accent_dim: #4a3faa; --accent_glow: #7c6af733;
+    --green: #3fb950; --amber: #d29922; --red: #f85149;
+    --csc: #e8e8f0;
+    --gfs: #3fb950;
+    --euro: #7c6af7;
+    --mean: #d29922;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg0); color: var(--fg0);
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .page { max-width: 1200px; margin: 0 auto; padding: 20px 24px 80px; }
+  .top {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding-bottom: 12px; border-bottom: 1px solid var(--bd1);
+  }
+  .logo { font-size: 20px; color: var(--fg0); letter-spacing: 0.02em; }
+  .logo .wave-glyph { color: var(--accent); margin-right: 2px; font-weight: 700; }
+  .crumb { color: var(--fg2); font-size: 12px; }
+  .crumb a { color: var(--fg1); }
+  .spacer { flex: 1; }
+  .btn-home {
+    padding: 5px 11px; border: 1px solid var(--bd2); border-radius: 5px;
+    color: var(--fg1); background: var(--bg1); font: inherit; cursor: pointer;
+  }
+  .btn-home:hover { border-color: var(--accent); color: var(--fg0); }
+
+  .header {
+    display: flex; align-items: baseline; gap: 18px;
+    padding: 14px 0 10px; flex-wrap: wrap;
+  }
+  .title { font-size: 18px; color: var(--accent); }
+  .subtitle { color: var(--fg1); font-size: 12px; }
+
+  .controls {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 10px 0 16px;
+  }
+  select {
+    background: var(--bg2); color: var(--fg0); border: 1px solid var(--bd2);
+    padding: 5px 10px; font: inherit; border-radius: 4px; min-width: 260px;
+  }
+  select:hover { border-color: var(--accent); }
+
+  .version-tag {
+    padding: 3px 8px; background: var(--bg2); color: var(--fg1);
+    border: 1px solid var(--bd1); border-radius: 4px; font-size: 11px;
+  }
+  .version-tag b { color: var(--accent); }
+
+  section { margin: 22px 0; }
+  h2 {
+    font-size: 14px; color: var(--fg1); margin: 0 0 10px 0;
+    padding-bottom: 5px; border-bottom: 1px dashed var(--bd1);
+    letter-spacing: 0.05em; text-transform: uppercase; font-weight: 500;
+  }
+
+  .legend {
+    display: inline-flex; gap: 10px 14px; align-items: center; flex-wrap: wrap;
+    font-size: 12px; color: var(--fg1); margin-left: 16px;
+  }
+  .legend span.sw { display: inline-flex; align-items: center; gap: 5px; }
+  .legend span.sw::before {
+    content: ""; display: inline-block;
+    width: 10px; height: 10px; border-radius: 2px;
+    background: var(--bd2);
+  }
+
+  .panel-grid {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+  .panel-card {
+    background: var(--bg1); border: 1px solid var(--bd1); border-radius: 5px;
+    padding: 10px 12px;
+  }
+  .panel-card h3 {
+    font-size: 11px; color: var(--fg1); margin: 0 0 6px 0;
+    letter-spacing: 0.06em; text-transform: uppercase; font-weight: 500;
+  }
+
+  canvas.chart {
+    width: 100%; height: 180px;
+    background: var(--bg1); border: 1px solid var(--bd1); border-radius: 5px;
+    display: block;
+  }
+  .chart-row + .chart-row { margin-top: 10px; }
+  .chart-row { position: relative; }
+  .chart-row .crosshair {
+    position: absolute; left: 0; bottom: 0; width: 100%; height: 180px;
+    pointer-events: none;
+  }
+  .chart-label {
+    font-size: 11px; color: var(--fg2); padding: 0 2px 4px;
+    letter-spacing: 0.04em;
+  }
+
+  .live-forecast-group { position: relative; }
+  .live-forecast-tooltip {
+    position: absolute; z-index: 20; pointer-events: none;
+    background: var(--bg2); border: 1px solid var(--bd2);
+    border-radius: 5px; padding: 7px 9px; font-size: 11px;
+    color: var(--fg0); line-height: 1.5;
+    box-shadow: 0 4px 14px rgba(0,0,0,.5);
+    opacity: 0; transition: opacity .1s;
+    white-space: nowrap;
+    font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .live-forecast-tooltip.visible { opacity: 1; }
+  .live-forecast-tooltip .tt-head {
+    color: var(--fg1); border-bottom: 1px solid var(--bd1);
+    padding-bottom: 3px; margin-bottom: 4px; font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+  .live-forecast-tooltip table { border-collapse: collapse; }
+  .live-forecast-tooltip td {
+    padding: 1px 6px 1px 0; vertical-align: baseline;
+  }
+  .live-forecast-tooltip td.tt-sw {
+    padding-right: 4px;
+  }
+  .live-forecast-tooltip td.tt-sw span {
+    display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  }
+  .live-forecast-tooltip td.tt-name { color: var(--fg0); }
+  .live-forecast-tooltip td.tt-val  { color: var(--fg1); text-align: right;
+    font-variant-numeric: tabular-nums; }
+
+  table.stats {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    background: var(--bg1); border: 1px solid var(--bd1); border-radius: 5px;
+    overflow: hidden;
+  }
+  table.stats th, table.stats td {
+    padding: 6px 9px; text-align: right; border-bottom: 1px solid var(--bd0);
+    white-space: nowrap;
+  }
+  table.stats th:first-child, table.stats td:first-child {
+    text-align: left;
+  }
+  table.stats thead th {
+    background: var(--bg2); color: var(--fg1);
+    border-bottom: 1px solid var(--bd1); font-weight: 500;
+    position: sticky; top: 0; cursor: help;
+  }
+  table.stats tbody tr:hover { background: var(--bg2); }
+  table.stats .tag {
+    padding: 1px 6px; border-radius: 3px; background: var(--bg3);
+    color: var(--fg1); font-size: 10px; margin-left: 6px;
+  }
+  .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  details {
+    background: var(--bg1); border: 1px solid var(--bd1); border-radius: 5px;
+    padding: 10px 14px; margin: 12px 0;
+  }
+  details summary {
+    cursor: pointer; color: var(--fg1); font-size: 12px; letter-spacing: 0.04em;
+    text-transform: uppercase; user-select: none;
+  }
+  details summary:hover { color: var(--fg0); }
+  details[open] summary { color: var(--fg0); }
+  .guide { display: grid; grid-template-columns: 220px 1fr; gap: 4px 14px;
+    margin-top: 10px; font-size: 12px; }
+  .guide dt { color: var(--fg0); font-weight: 500; }
+  .guide dd { color: var(--fg1); margin: 0 0 8px 0; }
+
+  .glossary-groups {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px; margin-top: 12px;
+  }
+  .glossary-group h4 {
+    font-size: 11px; color: var(--accent); margin: 0 0 6px 0;
+    letter-spacing: 0.06em; text-transform: uppercase; font-weight: 500;
+  }
+  .glossary-group dl { margin: 0; display: grid;
+    grid-template-columns: 150px 1fr; gap: 3px 10px; font-size: 12px; }
+  .glossary-group dt { color: var(--fg0); font-weight: 500; }
+  .glossary-group dd { color: var(--fg1); margin: 0 0 4px 0; }
+
+  /* Taylor container: full-width, centred, intentionally square canvas */
+  .taylor-wrap {
+    display: grid; grid-template-columns: minmax(320px, 560px) 1fr;
+    gap: 20px; align-items: start;
+  }
+  @media (max-width: 820px) {
+    .taylor-wrap { grid-template-columns: 1fr; }
+  }
+  .taylor-wrap canvas { width: 100%; aspect-ratio: 1 / 1;
+    background: var(--bg1); border: 1px solid var(--bd1); border-radius: 5px; }
+  .taylor-caption { color: var(--fg1); font-size: 12px; line-height: 1.55; }
+  .taylor-caption b { color: var(--fg0); }
+
+  /* POD/FAR: keep square; centre in column */
+  .podfar-wrap {
+    display: flex; justify-content: center; padding: 4px 0;
+  }
+  .podfar-wrap canvas {
+    width: 100%; max-width: 520px; aspect-ratio: 1 / 1;
+    background: var(--bg1); border: 1px solid var(--bd1); border-radius: 5px;
+  }
+
+  /* Category strip (item 4) */
+  .cat-strip {
+    display: grid; grid-template-columns: 110px repeat(7, 1fr);
+    gap: 1px; background: var(--bd0);
+    border: 1px solid var(--bd0); border-radius: 3px;
+    margin-bottom: 2px;
+  }
+  .cat-cell, .cat-head {
+    padding: 4px 6px; font-size: 11px; background: var(--bg2);
+    text-align: center; color: var(--fg1);
+  }
+  .cat-cell.model { text-align: left; color: var(--fg0); font-weight: 500;
+    background: var(--bg1); }
+  .cat-cell.val { color: #000; font-weight: 500; }
+  .cat-cell.val.empty { background: var(--bg2); color: var(--fg2); font-weight: 400; }
+  .cat-head { font-size: 10px; letter-spacing: 0.04em; }
+  .cat-head.FLAT    { color: #707080; }
+  .cat-head.WEAK    { color: #3d7ab5; }
+  .cat-head.FUN     { color: #3fb950; }
+  .cat-head.SOLID   { color: #f5c518; }
+  .cat-head.FIRING  { color: #ff5a4e; }
+  .cat-head.HECTIC  { color: #7c6af7; }
+  .cat-head.MONSTRO { color: #c084fc; }
+
+  .footer { color: var(--fg2); font-size: 11px; margin-top: 32px;
+    padding-top: 16px; border-top: 1px solid var(--bd1); line-height: 1.6; }
+  .err { color: var(--red); }
+  .muted { color: var(--fg2); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top">
+    <div class="logo"><span class="wave-glyph">∿</span>colesurfs</div>
+    <div class="crumb">/ <a href="/">dashboard</a> / <b>csc</b></div>
+    <div class="spacer"></div>
+    <a class="btn-home" href="/">← back to dashboard</a>
+  </div>
+
+  <div class="header">
+    <div class="title">CSC · head-to-head</div>
+    <div class="subtitle">analysis-level bias correction of GFS &amp; ECMWF wave forecasts
+      against NDBC observations · v1 (no lead-time dimension yet)</div>
+  </div>
+
+  <div class="controls">
+    <label for="buoy-pick" class="muted">buoy</label>
+    <select id="buoy-pick"></select>
+    <div class="version-tag">current CSC: <b id="current-version">–</b></div>
+    <div class="version-tag">winner: <b id="current-winner">–</b></div>
+  </div>
+
+  <!-- ═══ Glossary (item 2) ═══ -->
+  <details id="glossary-details">
+    <summary>terminology &amp; metric definitions</summary>
+    <div class="muted" style="font-size:11px;margin-top:8px">
+      Quick reference — every acronym used on this page, grouped by type.
+    </div>
+    <div class="glossary-groups" id="glossary-groups"></div>
+  </details>
+
+  <!-- ═══ Live forecast (item 1) — multi-variant ═══ -->
+  <section>
+    <h2>live forecast · next 10 days
+      <span class="legend" id="live-legend"></span>
+    </h2>
+    <div class="muted" style="margin-bottom:6px;font-size:11px">
+      Every preserved CSC variant is plotted alongside the raw GFS/EURO models
+      and their 50/50 mean. Compare variants directly — a variant that
+      consistently tracks closer to the truth on the verification panels
+      below is a credible candidate to promote as the next CSC winner.
+    </div>
+    <div class="live-forecast-group" id="live-forecast-group">
+      <div class="chart-row">
+        <div class="chart-label">significant wave height — Hs (ft)</div>
+        <canvas id="hs-chart" class="chart"></canvas>
+        <canvas id="hs-crosshair" class="crosshair"></canvas>
+      </div>
+      <div class="chart-row">
+        <div class="chart-label">peak period — Tp (s)</div>
+        <canvas id="tp-chart" class="chart"></canvas>
+        <canvas id="tp-crosshair" class="crosshair"></canvas>
+      </div>
+      <div class="chart-row">
+        <div class="chart-label">peak direction — Dp (° from)</div>
+        <canvas id="dp-chart" class="chart" style="height:140px"></canvas>
+        <canvas id="dp-crosshair" class="crosshair" style="height:140px"></canvas>
+      </div>
+      <div class="live-forecast-tooltip" id="live-forecast-tooltip"></div>
+    </div>
+    <div class="muted" style="margin-top:8px;font-size:11px;line-height:1.45;
+         padding:8px 10px;border:1px solid var(--bd1);border-radius:4px;
+         background:var(--bg1)">
+      <b>CSC v2 active — primary-swell Hs.</b> GFS and all CSC variants now
+      display primary-swell partition Hs (the surfable component), matching
+      the main dashboard's convention. <b>EURO is an exception</b>: Open-
+      Meteo's ECMWF WAM does not expose swell partitions, so the EURO trace
+      is total-sea combined Hs and will read noticeably higher than the
+      other traces when there is wind chop. If you see EURO spike above
+      the pack, that's usually the wind-chop difference, not a disagreement
+      on the actual swell.
+    </div>
+  </section>
+
+  <!-- ═══ Condensed head-to-head table (item 3) ═══ -->
+  <section>
+    <h2>head-to-head · condensed</h2>
+    <div class="muted" style="margin-bottom: 8px; font-size: 11px;">
+      Core verification columns. Cells are tinted by column — green = best in
+      column, red = worst. Hover a column header for a one-line explanation
+      (full definitions in the glossary).
+    </div>
+    <div class="scroll-x">
+      <table class="stats" id="stats-table"><thead></thead><tbody></tbody></table>
+    </div>
+    <details>
+      <summary>how to interpret the condensed columns</summary>
+      <dl class="guide">
+        <dt>Hs bias (ft)</dt>
+        <dd>Signed mean error of significant wave height.
+          <b>Closer to 0 is better.</b> Positive = model over-predicts the
+          average wave-height of the training window.</dd>
+        <dt>Hs MAE (ft)</dt>
+        <dd>Average absolute error in feet. <b>Lower is better.</b> Direct,
+          unit-matched quality score — for surfers, each 0.1 ft off the
+          forecast is roughly one category-step risk on a borderline day.</dd>
+        <dt>Hs SI</dt>
+        <dd>Scatter Index = RMSE ÷ mean observed. <b>Lower is better.</b>
+          Dimensionless; lets you compare a calm-water buoy like Santa Monica
+          Basin against an open-ocean one like Block Island on equal footing.
+          ECMWF's headline wave metric; &lt;0.20 is considered good for Hs.</dd>
+        <dt>Skill vs GFS</dt>
+        <dd>1 − MSE(model) / MSE(GFS). <b>Higher is better.</b>
+          0 = ties raw GFS. +0.10 = 10% lower squared error than GFS.
+          Negative = worse than just using raw GFS. The CSC's reason-to-exist
+          check — it has to clear 0 to have earned its keep.</dd>
+        <dt>Tp MAE (s)</dt>
+        <dd>Mean absolute error of peak period, in seconds.
+          <b>Lower is better.</b> Period bias compounds — a 2 s error in Tp
+          on a long-travel swell shifts expected arrival time by hours.</dd>
+        <dt>Tp bias (s)</dt>
+        <dd>Signed mean period error. <b>Closer to 0 is better.</b>
+          GFS historically runs slightly long on Tp; the CSC is supposed
+          to pull this back towards zero.</dd>
+        <dt>Dp circ MAE (°)</dt>
+        <dd>Shortest-arc mean absolute angular error of peak direction.
+          <b>Lower is better.</b> Uses the true compass metric, so
+          350° vs 10° is an error of 20°, not 340°.</dd>
+        <dt>POD &gt;4ft</dt>
+        <dd>Probability of detection at Hs &gt; 4 ft. <b>Higher is better</b>
+          (closer to 1). Of all observed hours where seas were over 4 ft,
+          what fraction did the model call correctly?</dd>
+      </dl>
+    </details>
+  </section>
+
+  <!-- ═══ Residual over time ═══ -->
+  <section>
+    <h2>residual over time · 30-day rolling Hs MAE
+      <span class="legend" id="rot-legend"></span>
+    </h2>
+    <div class="muted" style="margin-bottom:6px;font-size:11px">
+      Rolling 30-day mean-absolute-error of Hs (ft) per model over the full
+      2024-03-01 → today archive. Lower is better. Upper panel pools all 8
+      buoys; lower panel is the buoy selected above.
+    </div>
+    <div class="chart-row">
+      <div class="chart-label">all buoys · Hs MAE (ft)</div>
+      <canvas id="residual-global" class="chart"></canvas>
+    </div>
+    <div class="chart-row">
+      <div class="chart-label">selected buoy · Hs MAE (ft)</div>
+      <canvas id="residual-buoy" class="chart"></canvas>
+    </div>
+  </section>
+
+  <!-- ═══ Stratified by colesurfs category (item 4) ═══ -->
+  <section>
+    <h2>stratified Hs MAE · by colesurfs category</h2>
+    <div class="muted" style="margin-bottom:6px;font-size:11px">
+      Hs MAE (ft) on held-out test rows, stratified by the <b>observed</b>
+      colesurfs category at that hour. Darker/redder cells = larger error.
+      Each row is one model. SOLID and above is the part that matters most
+      for forecast-quality decisions.
+    </div>
+    <div id="cat-strips"></div>
+    <div style="margin-top:18px">
+      <div class="muted" style="margin-bottom:6px;font-size:11px">
+        Per-buoy Hs MAE (ft) — rows = buoy, columns = model.
+      </div>
+      <div id="buoy-heatmap" class="panel-card"></div>
+    </div>
+  </section>
+
+  <!-- ═══ Peak-event aggregate summary (item 5) ═══ -->
+  <section>
+    <h2>high-consequence swells · SOLID / FIRING / HECTIC / MONSTRO
+      <span class="legend" id="peak-scope-tag"></span>
+    </h2>
+    <div class="muted" style="margin-bottom:6px;font-size:11px">
+      Aggregated across every observed peak (≥48 h apart) whose
+      (height_ft, period_s) at the peak classifies SOLID or higher on the
+      colesurfs scale. For each model: mean and absolute peak-Hs error (ft),
+      mean and absolute peak-timing error (h), and detection rate
+      (did the model's forecast peak within ±24 h of the observed peak?).
+    </div>
+    <div class="scroll-x">
+      <table class="stats" id="peak-summary-table"><thead></thead><tbody></tbody></table>
+    </div>
+    <div class="muted" style="margin-top:6px;font-size:11px" id="peak-events-ref"></div>
+  </section>
+
+  <!-- ═══ Taylor diagram (item 6) ═══ -->
+  <section>
+    <h2>taylor diagram · Hs (held-out test)</h2>
+    <div class="taylor-wrap">
+      <canvas id="taylor"></canvas>
+      <div class="taylor-caption">
+        <p><b>How to read it.</b> Each model is one dot. The <b>OBS</b>
+          reference sits at r=1, normalised σ=1. A model's position packs three
+          numbers into one point:</p>
+        <ul style="margin:6px 0 8px 16px; padding:0;">
+          <li><b>Angle from the horizontal</b> = correlation r with observations.
+            A dot straight along the x-axis → r=1 (perfect tracking). A dot swung
+            up toward the vertical → weaker correlation.</li>
+          <li><b>Distance from origin</b> = normalised standard deviation.
+            σ=1 means the model's variability matches the observations; &lt;1 =
+            too flat; &gt;1 = too spiky.</li>
+          <li><b>Distance from the OBS reference point</b> = centered RMSE
+            (dashed arcs). The closer to OBS, the better.</li>
+        </ul>
+        <p>Best possible outcome: a dot right on top of OBS.
+          Watch the CSC winner — it should sit tighter in than raw GFS or
+          raw EURO.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ POD/FAR curves (item 7) ═══ -->
+  <section>
+    <h2>pod / far curves · Hs thresholds</h2>
+    <div class="muted" style="margin-bottom:8px;font-size:11px">
+      Each line traces one model across Hs thresholds of 2 / 3 / 4 / 6 / 8 / 10 ft.
+      <b>Up-and-left is better:</b> high POD (real events detected), low FAR
+      (few false alarms).
+    </div>
+    <div class="podfar-wrap">
+      <canvas id="pod-far"></canvas>
+    </div>
+  </section>
+
+  <section class="footer">
+    <b>v1 is analysis-level correction only.</b> It predicts the corrected
+    <em>current</em> value at each hour from the two models' analyses at that
+    hour, then applies that same correction at every forecast lead. The forward
+    logger is now running and accumulating real lead-time data (at 24–168 h
+    resolution, one sample per day per lead) for BOTH models. A lead-time-aware
+    CSC v2 will train automatically on that growing archive. Training window
+    starts 2024-03-01 (EURO) / 2024-07-01 (GFS) and extends through today.
+    Swell-only: the target is NDBC WVHT (combined) for v1; CSC v2 will use
+    spectral-decomposed swell partitions as targets where NDBC spectral archive
+    is available.
+  </section>
+
+</div>
+
+<script>
+const INLINE = {{ inline_config | safe }};
+const buoys = INLINE.buoys;
+const GLOSSARY = INLINE.glossary || [];
+
+const _rs = getComputedStyle(document.documentElement);
+const COLOR = {
+  gfs:  _rs.getPropertyValue('--gfs').trim() || '#3fb950',
+  euro: _rs.getPropertyValue('--euro').trim() || '#7c6af7',
+  csc:  _rs.getPropertyValue('--csc').trim() || '#e8e8f0',
+  mean: _rs.getPropertyValue('--mean').trim() || '#d29922',
+  grid: _rs.getPropertyValue('--bd1').trim() || '#2e2e38',
+  tick: _rs.getPropertyValue('--fg2').trim() || '#606075',
+  vgrid: _rs.getPropertyValue('--bd0').trim() || '#1e1e24',
+  fg0:  _rs.getPropertyValue('--fg0').trim() || '#e8e8f0',
+};
+
+// Base colors for known variants; additional variants pull from VAR_PALETTE
+const VAR_PALETTE = ['#f85149', '#ff8a4e', '#56b6c2', '#98c379', '#7c6af7',
+                     '#d6a4ff', '#e8e8f0', '#2ea9df', '#c084fc', '#ffb86c'];
+
+const BASE_LINES = {   // raw-model traces on live forecast
+  gfs:  { color: COLOR.gfs,  label: 'GFS',  width: 1.4 },
+  euro: { color: COLOR.euro, label: 'EURO', width: 1.4 },
+  mean: { color: COLOR.mean, label: 'mean', width: 1.4 },
+};
+
+// Assign stable colors to variants (cached across re-renders per session)
+const _variantColor = new Map();
+function colorForVariant(name) {
+  if (_variantColor.has(name)) return _variantColor.get(name);
+  if (name === 'lgbm') { _variantColor.set(name, COLOR.csc); return COLOR.csc; }
+  const c = VAR_PALETTE[_variantColor.size % VAR_PALETTE.length];
+  _variantColor.set(name, c);
+  return c;
+}
+
+const picker = document.getElementById("buoy-pick");
+buoys.forEach(b => {
+  const opt = document.createElement("option");
+  opt.value = b.buoy_id;
+  opt.textContent = `${b.buoy_id} — ${b.label}`;
+  picker.appendChild(opt);
+});
+picker.addEventListener("change", () => loadBuoy(picker.value));
+
+// ─── Glossary ─────────────────────────────────────────────────────────────
+function renderGlossary() {
+  const host = document.getElementById("glossary-groups");
+  if (!GLOSSARY.length) { host.innerHTML = '<div class="muted">no glossary</div>'; return; }
+  const groupOrder = ['wave', 'metric', 'event', 'direction', 'csc'];
+  const groupLabel = {
+    wave: 'Wave terminology', metric: 'Error & accuracy metrics',
+    event: 'Event / threshold skill', direction: 'Direction metrics',
+    csc: 'This dashboard',
+  };
+  const bycat = {};
+  GLOSSARY.forEach(g => { (bycat[g.category] = bycat[g.category] || []).push(g); });
+  host.innerHTML = '';
+  groupOrder.forEach(cat => {
+    const items = bycat[cat]; if (!items || !items.length) return;
+    const div = document.createElement("div");
+    div.className = 'glossary-group';
+    const h4 = document.createElement("h4");
+    h4.textContent = groupLabel[cat] || cat;
+    div.appendChild(h4);
+    const dl = document.createElement("dl");
+    items.forEach(it => {
+      const dt = document.createElement("dt"); dt.textContent = it.term; dl.appendChild(dt);
+      const dd = document.createElement("dd"); dd.textContent = it.definition; dl.appendChild(dd);
+    });
+    div.appendChild(dl);
+    host.appendChild(div);
+  });
+}
+renderGlossary();
+
+// ─── Canvas helpers ───────────────────────────────────────────────────────
+function setupCanvas(cv) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  cv.width  = Math.max(1, Math.floor(rect.width * dpr));
+  cv.height = Math.max(1, Math.floor(rect.height * dpr));
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: rect.width, h: rect.height };
+}
+
+function drawLine(ctx, pts, { color, w, h, yMin, yMax, xMin, xMax, lineWidth = 1.5 }) {
+  if (!pts.length) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  let started = false;
+  for (const [x, y] of pts) {
+    if (y == null || !isFinite(y)) { started = false; continue; }
+    const px = ((x - xMin) / Math.max(1, xMax - xMin)) * (w - 40) + 30;
+    const py = h - 20 - ((y - yMin) / Math.max(1e-9, yMax - yMin)) * (h - 30);
+    if (!started) { ctx.moveTo(px, py); started = true; }
+    else          { ctx.lineTo(px, py); }
+  }
+  ctx.stroke();
+}
+
+function drawAxes(ctx, w, h, yMin, yMax, xMin, xMax, xTicks) {
+  ctx.fillStyle = COLOR.tick;
+  ctx.font = "10px ui-monospace, monospace";
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = COLOR.grid;
+  for (let i = 0; i <= 4; i++) {
+    const y = h - 20 - i * ((h - 30) / 4);
+    const val = yMin + i * (yMax - yMin) / 4;
+    ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(w - 10, y); ctx.stroke();
+    ctx.fillText(val.toFixed(1), 2, y + 3);
+  }
+  ctx.textAlign = "center";
+  ctx.strokeStyle = COLOR.vgrid;
+  for (const { x, label } of xTicks) {
+    const px = ((x - xMin) / Math.max(1, xMax - xMin)) * (w - 40) + 30;
+    ctx.fillText(label, px, h - 5);
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h - 20);
+    ctx.stroke();
+  }
+  ctx.textAlign = "left";
+}
+
+// ─── Live forecast (item 1) ───────────────────────────────────────────────
+function renderLegend(traceDefs) {
+  const host = document.getElementById("live-legend");
+  host.innerHTML = '';
+  traceDefs.forEach(t => {
+    const el = document.createElement("span");
+    el.className = 'sw';
+    el.textContent = t.label;
+    el.style.setProperty('--bd2', t.color);
+    el.firstChild.nodeType; // noop
+    el.innerHTML = `<span style="display:inline-block;width:10px;height:10px;` +
+                   `border-radius:2px;background:${t.color};margin-right:5px;"></span>${t.label}`;
+    host.appendChild(el);
+  });
+}
+
+// Persisted state so the hover handler can redraw crosshair + pinpoints
+// without touching the underlying canvas drawings.
+const _liveHoverState = {
+  recs: [], traceDefs: [], xMin: 0, xMax: 0,
+  charts: [],  // [{ field, canvas, overlay, yLo, yHi }, ...]
+};
+
+function renderForecastMulti(variantsPayload) {
+  const hsCv = document.getElementById("hs-chart");
+  const tpCv = document.getElementById("tp-chart");
+  const dpCv = document.getElementById("dp-chart");
+  const recs = (variantsPayload && variantsPayload.records) || [];
+  _liveHoverState.recs = [];
+  _liveHoverState.charts = [];
+  _hideLiveTooltip();
+  if (!recs.length) {
+    [hsCv, tpCv, dpCv].forEach(c => {
+      const { ctx, w, h } = setupCanvas(c);
+      ctx.fillStyle = COLOR.tick;
+      ctx.font = "12px ui-monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("no forecast available yet — server may still be warming cache",
+                   w / 2, h / 2);
+    });
+    renderLegend([]);
+    return;
+  }
+
+  const variants = variantsPayload.variants || [];
+  const traceDefs = [
+    { key: 'gfs',  label: 'GFS',  color: COLOR.gfs,  width: 1.3 },
+    { key: 'euro', label: 'EURO', color: COLOR.euro, width: 1.3 },
+    { key: 'mean', label: 'mean (50/50)', color: COLOR.mean, width: 1.1 },
+  ];
+  variants.forEach(v => {
+    traceDefs.push({ key: v, label: 'CSC · ' + v,
+                     color: colorForVariant(v), width: 2.0 });
+  });
+  renderLegend(traceDefs);
+
+  const xMin = 0, xMax = recs.length - 1;
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const ticks = [];
+  for (let i = 0; i < recs.length; i += 24) {
+    const d = new Date(recs[i].valid_utc);
+    const lbl = isNaN(d.getTime()) ? "?" : DAYS[d.getUTCDay()];
+    ticks.push({ x: i, label: lbl });
+  }
+
+  function draw(cv, field, yLoFloor, yHiFallback) {
+    const { ctx, w, h } = setupCanvas(cv);
+    let yMax = yHiFallback;
+    recs.forEach(r => {
+      traceDefs.forEach(t => {
+        const v = r[field] ? r[field][t.key] : null;
+        if (v != null && isFinite(v) && v > yMax) yMax = v;
+      });
+    });
+    const yHi = field === 'dp' ? 360 : yMax * 1.1;
+    const yLo = yLoFloor;
+    drawAxes(ctx, w, h, yLo, yHi, xMin, xMax, ticks);
+    traceDefs.forEach(t => {
+      const pts = recs.map((r, i) => [i, r[field] ? r[field][t.key] : null]);
+      drawLine(ctx, pts, { color: t.color, w, h, yMin: yLo, yMax: yHi,
+                           xMin, xMax, lineWidth: t.width });
+    });
+    return { yLo, yHi };
+  }
+  const hsBounds = draw(hsCv, 'hs', 0, 3);
+  const tpBounds = draw(tpCv, 'tp', 0, 14);
+  const dpBounds = draw(dpCv, 'dp', 0, 360);
+
+  _liveHoverState.recs = recs;
+  _liveHoverState.traceDefs = traceDefs;
+  _liveHoverState.xMin = xMin;
+  _liveHoverState.xMax = xMax;
+  _liveHoverState.charts = [
+    { field: 'hs', canvas: hsCv, overlay: document.getElementById('hs-crosshair'),
+      yLo: hsBounds.yLo, yHi: hsBounds.yHi },
+    { field: 'tp', canvas: tpCv, overlay: document.getElementById('tp-crosshair'),
+      yLo: tpBounds.yLo, yHi: tpBounds.yHi },
+    { field: 'dp', canvas: dpCv, overlay: document.getElementById('dp-crosshair'),
+      yLo: dpBounds.yLo, yHi: dpBounds.yHi },
+  ];
+  _liveHoverState.charts.forEach(c => setupCanvas(c.overlay));
+}
+
+// ─── Live-forecast synced hover/crosshair ─────────────────────────────────
+const CARDS = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+               'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function _cscToCard(deg) {
+  if (deg == null || !isFinite(deg)) return '';
+  return CARDS[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+}
+
+function _pxForIndex(i, cv, xMin, xMax) {
+  const rect = cv.getBoundingClientRect();
+  const w = rect.width;
+  return ((i - xMin) / Math.max(1, xMax - xMin)) * (w - 40) + 30;
+}
+
+function _clearOverlay(cv) {
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const rect = cv.getBoundingClientRect();
+  ctx.clearRect(0, 0, rect.width, rect.height);
+}
+
+function _hideLiveTooltip() {
+  const tt = document.getElementById('live-forecast-tooltip');
+  if (tt) tt.classList.remove('visible');
+  (_liveHoverState.charts || []).forEach(c => c.overlay && _clearOverlay(c.overlay));
+}
+
+function _formatValidUtc(ts) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts);
+  const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${DAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${hh}:${mm} UTC`;
+}
+
+function _liveHoverMove(e) {
+  const st = _liveHoverState;
+  if (!st.recs.length || !st.charts.length) return;
+  const srcCanvas = e.currentTarget;
+  const rect = srcCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const w = rect.width;
+
+  const frac = (mx - 30) / Math.max(1, w - 40);
+  const approxIdx = st.xMin + frac * (st.xMax - st.xMin);
+  let idx = Math.round(approxIdx);
+  if (idx < 0) idx = 0;
+  if (idx > st.recs.length - 1) idx = st.recs.length - 1;
+
+  const rec = st.recs[idx];
+  if (!rec) return;
+
+  // Draw crosshair + pinpoint dot on all three overlay canvases.
+  st.charts.forEach(c => {
+    const overlay = c.overlay; if (!overlay) return;
+    const orect = overlay.getBoundingClientRect();
+    const ow = orect.width, oh = orect.height;
+    const ctx = overlay.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    // Ensure overlay backing store matches its CSS size.
+    if (overlay.width !== Math.floor(ow * dpr) ||
+        overlay.height !== Math.floor(oh * dpr)) {
+      overlay.width = Math.max(1, Math.floor(ow * dpr));
+      overlay.height = Math.max(1, Math.floor(oh * dpr));
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, ow, oh);
+
+    const px = ((idx - st.xMin) / Math.max(1, st.xMax - st.xMin)) * (ow - 40) + 30;
+    // Vertical rule.
+    ctx.strokeStyle = COLOR.fg0;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 0.5, 0);
+    ctx.lineTo(px + 0.5, oh - 20);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Pinpoint dots for each visible trace at idx.
+    const field = rec[c.field] || {};
+    st.traceDefs.forEach(t => {
+      const v = field[t.key];
+      if (v == null || !isFinite(v)) return;
+      const py = oh - 20 - ((v - c.yLo) / Math.max(1e-9, c.yHi - c.yLo)) * (oh - 30);
+      ctx.fillStyle = t.color;
+      ctx.strokeStyle = COLOR.fg0;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+  });
+
+  // Tooltip content.
+  const tt = document.getElementById('live-forecast-tooltip');
+  if (!tt) return;
+  const fmt = (v, d = 2) =>
+    (v == null || !isFinite(v)) ? '—' : v.toFixed(d);
+  const hs = rec.hs || {}, tp = rec.tp || {}, dp = rec.dp || {};
+  const modelKeys = new Set([
+    ...Object.keys(hs), ...Object.keys(tp), ...Object.keys(dp),
+  ]);
+  // Preserve the traceDefs ordering (gfs, euro, mean, variants...).
+  const ordered = st.traceDefs.filter(t => modelKeys.has(t.key));
+
+  let rows = '';
+  ordered.forEach(t => {
+    const hVal = hs[t.key];
+    const hFt = (hVal == null || !isFinite(hVal)) ? null : hVal * 3.28084;
+    const pVal = tp[t.key];
+    const dVal = dp[t.key];
+    const card = _cscToCard(dVal);
+    rows += `<tr>` +
+      `<td class="tt-sw"><span style="background:${t.color}"></span></td>` +
+      `<td class="tt-name">${t.label}</td>` +
+      `<td class="tt-val">${fmt(hFt, 1)} ft</td>` +
+      `<td class="tt-val">${fmt(pVal, 1)} s</td>` +
+      `<td class="tt-val">${(dVal == null || !isFinite(dVal)) ? '—' : `${Math.round(dVal)}&deg; ${card}`}</td>` +
+      `</tr>`;
+  });
+
+  tt.innerHTML =
+    `<div class="tt-head">${_formatValidUtc(rec.valid_utc)}</div>` +
+    `<table>` +
+      `<thead><tr>` +
+        `<td class="tt-sw"></td>` +
+        `<td class="tt-name" style="color:var(--fg2)">model</td>` +
+        `<td class="tt-val" style="color:var(--fg2)">Hs</td>` +
+        `<td class="tt-val" style="color:var(--fg2)">Tp</td>` +
+        `<td class="tt-val" style="color:var(--fg2)">Dp</td>` +
+      `</tr></thead>` +
+      `<tbody>${rows}</tbody>` +
+    `</table>`;
+  tt.classList.add('visible');
+
+  // Position: prefer above the hovered canvas, else below. Always horizontally
+  // clamp within the live-forecast-group so it can't leave the panel.
+  const group = document.getElementById('live-forecast-group');
+  const grect = group.getBoundingClientRect();
+  const srcTop  = rect.top  - grect.top;
+  const srcBot  = rect.bottom - grect.top;
+  const mouseXInGroup = e.clientX - grect.left;
+
+  // Let the browser measure the tooltip before positioning.
+  tt.style.left = '0px';
+  tt.style.top  = '0px';
+  const ttW = tt.offsetWidth;
+  const ttH = tt.offsetHeight;
+
+  let tx = mouseXInGroup - ttW / 2;
+  if (tx < 4) tx = 4;
+  if (tx + ttW > grect.width - 4) tx = grect.width - ttW - 4;
+
+  // Prefer above; fall back to below if it would clip the top of the group.
+  let ty = srcTop - ttH - 8;
+  if (ty < 2) ty = srcBot + 8;
+  // If below also clips (unlikely), just pin to top.
+  if (ty + ttH > grect.height - 2) ty = Math.max(2, srcTop - ttH - 8);
+
+  tt.style.left = tx + 'px';
+  tt.style.top  = ty + 'px';
+}
+
+function _liveHoverLeave(e) {
+  // Only hide if the pointer truly left the group (relatedTarget not inside).
+  const group = document.getElementById('live-forecast-group');
+  if (group && e.relatedTarget && group.contains(e.relatedTarget)) return;
+  _hideLiveTooltip();
+}
+
+function _initLiveHover() {
+  ['hs', 'tp', 'dp'].forEach(k => {
+    // Attach to the OVERLAY canvases? No — overlays are pointer-events:none.
+    // Attach listeners to the actual data canvases.
+    const cv = document.getElementById(`${k}-chart`);
+    if (!cv || cv.dataset.hoverBound === '1') return;
+    cv.dataset.hoverBound = '1';
+    cv.addEventListener('mousemove', _liveHoverMove);
+    cv.addEventListener('mouseleave', _liveHoverLeave);
+  });
+}
+_initLiveHover();
+
+// ─── Stats table (item 3, condensed + coloured) ───────────────────────────
+const CONDENSED_COLS = [
+  { key: "hs_bias",      label: "Hs bias",     unit: "ft",
+    xform: v => v == null ? null : v * 3.28084, fmt: "+.2f",
+    tip: "Signed mean error of Hs (ft). 0 is ideal; + = over-predict, − = under.",
+    score: "abs" },
+  { key: "hs_mae",       label: "Hs MAE",      unit: "ft",
+    xform: v => v == null ? null : v * 3.28084, fmt: ".2f",
+    tip: "Mean |Hs error| in feet. Lower is better.",
+    score: "lower" },
+  { key: "hs_si",        label: "Hs SI",       unit: "",
+    fmt: ".2f",
+    tip: "Scatter Index = RMSE ÷ mean observed Hs. Dimensionless. Lower is better.",
+    score: "lower" },
+  { key: "hs_skill_vs_baseline", label: "Skill vs GFS", unit: "",
+    fmt: "+.2f",
+    tip: "1 − MSE(model) / MSE(raw GFS). 0 ties GFS; positive = better than GFS.",
+    score: "higher" },
+  { key: "tp_mae",       label: "Tp MAE",      unit: "s",
+    fmt: ".2f",
+    tip: "Mean |Tp error| in seconds. Lower is better.",
+    score: "lower" },
+  { key: "tp_bias",      label: "Tp bias",     unit: "s",
+    fmt: "+.2f",
+    tip: "Signed mean peak-period error (s). 0 is ideal.",
+    score: "abs" },
+  { key: "dp_circ_mae",  label: "Dp circ MAE", unit: "°",
+    fmt: ".0f",
+    tip: "Shortest-arc mean angular error of peak direction (°). Lower is better.",
+    score: "lower" },
+  { key: "pod_hs_gt_4ft", label: "POD >4ft",   unit: "",
+    fmt: ".2f",
+    tip: "Probability of detection at Hs > 4 ft. Higher is better.",
+    score: "higher" },
+];
+
+function formatNum(v, spec) {
+  if (v == null || !isFinite(v)) return "—";
+  const m = spec.match(/^([+-]?)\.(\d)f$/);
+  if (!m) return v.toFixed(2);
+  const signed = m[1] === "+";
+  const digits = parseInt(m[2], 10);
+  return (signed && v > 0 ? "+" : "") + v.toFixed(digits);
+}
+
+function colScores(col, values) {
+  const scored = values.map(v => v == null || !isFinite(v) ? null :
+    col.score === 'abs'    ? Math.abs(v) :
+    col.score === 'higher' ? -v : v);
+  const valid = scored.filter(v => v != null);
+  if (!valid.length) return values.map(() => null);
+  const mn = Math.min(...valid), mx = Math.max(...valid);
+  return scored.map(v => v == null ? null :
+    (mx === mn ? 0 : (v - mn) / (mx - mn)));   // 0 = best, 1 = worst
+}
+
+function tintColor(t) {
+  // 0 = green, 1 = red. Pass-through lightness tuned for dark bg legibility.
+  if (t == null) return null;
+  const hue = (1 - t) * 120;   // 120 green → 0 red
+  return `hsl(${hue.toFixed(0)}, 55%, 28%)`;
+}
+
+function renderStatsTable(versions) {
+  const thead = document.querySelector("#stats-table thead");
+  const tbody = document.querySelector("#stats-table tbody");
+  thead.innerHTML = ""; tbody.innerHTML = "";
+
+  const modelRows = [];
+  if (versions.length) {
+    const ref = versions[0].metrics;
+    ["raw_gfs", "raw_euro", "mean", "persistence"].forEach(k => {
+      if (ref[k]) modelRows.push({ label: k, metrics: ref[k] });
+    });
+  }
+  versions.forEach(v => {
+    const w = v.winner;
+    if (!w || !v.metrics[w]) return;
+    modelRows.push({ label: `CSC ${v.version} (${w})`, metrics: v.metrics[w] });
+  });
+
+  const trh = document.createElement("tr");
+  trh.appendChild(Object.assign(document.createElement("th"),
+    { textContent: "model" }));
+  CONDENSED_COLS.forEach(c => {
+    const th = document.createElement("th");
+    th.textContent = c.label + (c.unit ? ` (${c.unit})` : "");
+    th.title = c.tip;
+    trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+
+  const scores = CONDENSED_COLS.map(c => {
+    const values = modelRows.map(row => {
+      const raw = row.metrics[c.key];
+      return c.xform ? c.xform(raw) : raw;
+    });
+    return colScores(c, values);
+  });
+
+  modelRows.forEach((row, ri) => {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = row.label;
+    tr.appendChild(th);
+    CONDENSED_COLS.forEach((c, ci) => {
+      const td = document.createElement("td");
+      let v = row.metrics[c.key];
+      if (c.xform) v = c.xform(v);
+      td.textContent = formatNum(v, c.fmt);
+      const t = scores[ci][ri];
+      if (t != null) {
+        td.style.background = tintColor(t);
+        td.style.color = COLOR.fg0;
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+// ─── Residual over time ───────────────────────────────────────────────────
+const MODEL_COLOR = { raw_gfs: COLOR.gfs, raw_euro: COLOR.euro,
+                      mean: COLOR.mean, csc: COLOR.csc };
+const MODEL_LABEL = { raw_gfs: "GFS", raw_euro: "EURO",
+                      mean: "mean", csc: "CSC (winner)" };
+
+function renderRotLegend() {
+  const host = document.getElementById("rot-legend");
+  if (!host) return;
+  host.innerHTML = '';
+  ["raw_gfs", "raw_euro", "mean", "csc"].forEach(k => {
+    const el = document.createElement("span");
+    el.className = 'sw';
+    el.innerHTML = `<span style="display:inline-block;width:10px;height:10px;` +
+                   `border-radius:2px;background:${MODEL_COLOR[k]};margin-right:5px;"></span>${MODEL_LABEL[k]}`;
+    host.appendChild(el);
+  });
+}
+renderRotLegend();
+
+function drawDateAxisLine(ctx, w, h, yMin, yMax, series) {
+  const n = (series.ts || []).length;
+  if (!n) {
+    ctx.fillStyle = COLOR.tick; ctx.font = "12px ui-monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("no data", w / 2, h / 2);
+    return;
+  }
+  const xMin = 0, xMax = n - 1;
+  const ticks = [];
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let lastMonth = -1;
+  for (let i = 0; i < n; i += Math.max(1, Math.floor(n / 8))) {
+    const d = new Date(series.ts[i] + "T00:00:00Z");
+    const m = d.getUTCMonth();
+    if (m !== lastMonth) {
+      ticks.push({ x: i, label: MONTHS[m] + " " + String(d.getUTCFullYear()).slice(2) });
+      lastMonth = m;
+    }
+  }
+  drawAxes(ctx, w, h, yMin, yMax, xMin, xMax, ticks);
+  for (const key of ["raw_gfs", "raw_euro", "mean", "csc"]) {
+    const vals = series.models[key] || [];
+    drawLine(ctx, vals.map((v, i) => [i, v]),
+             { color: MODEL_COLOR[key], w, h, yMin, yMax, xMin, xMax,
+               lineWidth: key === "csc" ? 2.2 : 1.4 });
+  }
+}
+
+function renderResidualOverTime(rot) {
+  const gCv = document.getElementById("residual-global");
+  const bCv = document.getElementById("residual-buoy");
+  if (!rot) return;
+  function seriesMaxY(s) {
+    if (!s) return 2;
+    let mx = 0;
+    for (const k of Object.keys(s.models || {})) {
+      for (const v of (s.models[k] || [])) if (v != null && isFinite(v) && v > mx) mx = v;
+    }
+    return Math.max(0.5, mx * 1.15);
+  }
+  {
+    const { ctx, w, h } = setupCanvas(gCv);
+    drawDateAxisLine(ctx, w, h, 0, seriesMaxY(rot.global), rot.global || { ts: [], models: {} });
+  }
+  {
+    const { ctx, w, h } = setupCanvas(bCv);
+    const s = rot.per_buoy_selected || { ts: [], models: {} };
+    drawDateAxisLine(ctx, w, h, 0, seriesMaxY(s), s);
+  }
+}
+
+// ─── Category-stratified strip (item 4) ───────────────────────────────────
+function colorRamp(v, vMin, vMax) {
+  if (v == null || !isFinite(v)) return "var(--bg2)";
+  const t = Math.max(0, Math.min(1, (v - vMin) / Math.max(1e-9, vMax - vMin)));
+  const stops = [[63,185,80],[210,153,34],[248,81,73]];
+  let a, b, f;
+  if (t < 0.5) { a = stops[0]; b = stops[1]; f = t / 0.5; }
+  else         { a = stops[1]; b = stops[2]; f = (t - 0.5) / 0.5; }
+  const r = Math.round(a[0] + (b[0] - a[0]) * f);
+  const g = Math.round(a[1] + (b[1] - a[1]) * f);
+  const bl = Math.round(a[2] + (b[2] - a[2]) * f);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function renderCategoryStrips(strat) {
+  const host = document.getElementById("cat-strips");
+  host.innerHTML = "";
+  const bc = strat && strat.by_category;
+  if (!bc || !bc.by_model) {
+    host.innerHTML = `<div class="muted">no category data</div>`; return;
+  }
+  const cats = bc.categories;
+  let vMin = Infinity, vMax = 0;
+  for (const k of ["raw_gfs", "raw_euro", "mean", "csc"]) {
+    const row = (bc.by_model[k] || {}).mae_ft || [];
+    for (const v of row) if (v != null && isFinite(v)) {
+      if (v > vMax) vMax = v;
+      if (v < vMin) vMin = v;
+    }
+  }
+  if (!isFinite(vMin)) vMin = 0; if (vMax === 0) vMax = 1;
+
+  // header row
+  const header = document.createElement("div");
+  header.className = "cat-strip";
+  const hhc = document.createElement("div"); hhc.className = "cat-cell"; hhc.textContent = "";
+  header.appendChild(hhc);
+  cats.forEach(c => {
+    const d = document.createElement("div");
+    d.className = "cat-head " + c;
+    d.textContent = c;
+    header.appendChild(d);
+  });
+  host.appendChild(header);
+
+  for (const k of ["raw_gfs", "raw_euro", "mean", "csc"]) {
+    const strip = document.createElement("div");
+    strip.className = "cat-strip";
+    const lbl = document.createElement("div");
+    lbl.className = "cat-cell model";
+    lbl.innerHTML = `<span style="color:${MODEL_COLOR[k]}">■</span> ${MODEL_LABEL[k]}`;
+    strip.appendChild(lbl);
+    const row = (bc.by_model[k] || {}).mae_ft || [];
+    const counts = (bc.by_model[k] || {}).counts || [];
+    cats.forEach((cat, i) => {
+      const cell = document.createElement("div");
+      const v = row[i]; const n = counts[i] || 0;
+      if (v == null || !isFinite(v) || n < 5) {
+        cell.className = "cat-cell val empty";
+        cell.textContent = n ? `n=${n}` : "";
+      } else {
+        cell.className = "cat-cell val";
+        cell.style.background = colorRamp(v, vMin, vMax);
+        cell.textContent = v.toFixed(2);
+        cell.title = `MAE ${v.toFixed(2)} ft · n=${n}`;
+      }
+      strip.appendChild(cell);
+    });
+    host.appendChild(strip);
+  }
+}
+
+function renderBuoyHeatmap(strat) {
+  const host = document.getElementById("buoy-heatmap");
+  host.innerHTML = "";
+  const pb = (strat || {}).per_buoy;
+  if (!pb) { host.innerHTML = `<div class="muted">no per-buoy data</div>`; return; }
+  let vMax = 0, vMin = Infinity;
+  for (const k of pb.models) for (const v of (pb.mae_ft[k] || [])) {
+    if (v != null && isFinite(v)) {
+      if (v > vMax) vMax = v;
+      if (v < vMin) vMin = v;
+    }
+  }
+  if (!isFinite(vMin)) vMin = 0; if (vMax === 0) vMax = 1;
+  const tbl = document.createElement("table");
+  tbl.style.borderCollapse = "collapse";
+  tbl.style.width = "100%";
+  tbl.style.fontSize = "11px";
+  const thead = tbl.createTHead();
+  const thr = thead.insertRow();
+  thr.appendChild(document.createElement("th"));
+  for (const k of pb.models) {
+    const th = document.createElement("th");
+    th.style.color = "var(--fg1)"; th.style.padding = "3px 6px";
+    th.innerHTML = `<span style="color:${MODEL_COLOR[k]}">■</span> ${MODEL_LABEL[k]}`;
+    thr.appendChild(th);
+  }
+  const tbody = tbl.createTBody();
+  pb.buoy_ids.forEach((bid, ri) => {
+    const tr = tbody.insertRow();
+    const lbl = document.createElement("th");
+    lbl.textContent = bid; lbl.style.color = "var(--fg1)";
+    lbl.style.textAlign = "left"; lbl.style.padding = "3px 6px";
+    tr.appendChild(lbl);
+    for (const k of pb.models) {
+      const td = tr.insertCell();
+      td.style.height = "26px"; td.style.textAlign = "center"; td.style.fontWeight = "500";
+      const v = (pb.mae_ft[k] || [])[ri];
+      const c = (pb.counts[k] || [])[ri] || 0;
+      if (v == null || !isFinite(v)) {
+        td.style.background = "var(--bg2)"; td.style.color = "var(--fg2)"; td.textContent = "—";
+      } else {
+        td.style.background = colorRamp(v, vMin, vMax);
+        td.style.color = "#000";
+        td.textContent = v.toFixed(2);
+        td.title = `n=${c}`;
+      }
+    }
+  });
+  host.appendChild(tbl);
+}
+
+// ─── Peak-event summary (item 5) ──────────────────────────────────────────
+function renderPeakSummary(peaks) {
+  const thead = document.querySelector("#peak-summary-table thead");
+  const tbody = document.querySelector("#peak-summary-table tbody");
+  const scopeTag = document.getElementById("peak-scope-tag");
+  const refHost = document.getElementById("peak-events-ref");
+  thead.innerHTML = ""; tbody.innerHTML = "";
+
+  // Prefer per-buoy summary; fall back to global if buoy has no SOLID+ peaks.
+  const sel = peaks && peaks.selected;
+  const glob = peaks && peaks.global;
+  const chosen = (sel && sel.n_events >= 3) ? sel : glob;
+  if (!chosen || !chosen.summary) {
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">no high-consequence peaks yet</td></tr>`;
+    scopeTag.textContent = '';
+    refHost.textContent = '';
+    return;
+  }
+  const using = (chosen === sel) ? 'selected buoy' : 'all buoys (selected has too few events)';
+  scopeTag.innerHTML = `<span class="sw"><span style="display:inline-block;width:10px;height:10px;` +
+                       `border-radius:2px;background:var(--accent);margin-right:5px;"></span>` +
+                       `scope: ${using} · n = ${chosen.n_events}</span>`;
+
+  const cols = [
+    { key: 'peak_hs_bias_ft',    label: 'peak Hs bias (ft)', fmt: '+.2f', score: 'abs' },
+    { key: 'peak_hs_mae_ft',     label: 'peak Hs MAE (ft)',  fmt: '.2f',  score: 'lower' },
+    { key: 'peak_timing_bias_h', label: 'timing bias (h)',   fmt: '+.1f', score: 'abs' },
+    { key: 'peak_timing_mae_h',  label: 'timing MAE (h)',    fmt: '.1f',  score: 'lower' },
+    { key: 'detection_rate',     label: 'detect rate (±24h)',fmt: '.2f',  score: 'higher' },
+  ];
+  const trh = document.createElement("tr");
+  trh.appendChild(Object.assign(document.createElement("th"), { textContent: "model" }));
+  cols.forEach(c => {
+    const th = document.createElement("th"); th.textContent = c.label; trh.appendChild(th);
+  });
+  thead.appendChild(trh);
+
+  const rows = [];
+  ["raw_gfs", "raw_euro", "mean", "csc"].forEach(k => {
+    const s = chosen.summary[k];
+    if (!s) return;
+    rows.push({ k, s });
+  });
+  const scores = cols.map(c => colScores(c, rows.map(r => r.s[c.key])));
+  rows.forEach((r, ri) => {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.innerHTML = `<span style="color:${MODEL_COLOR[r.k]}">■</span> ${MODEL_LABEL[r.k]}`;
+    tr.appendChild(th);
+    cols.forEach((c, ci) => {
+      const td = document.createElement("td");
+      const v = r.s[c.key];
+      td.textContent = formatNum(v, c.fmt);
+      const t = scores[ci][ri];
+      if (t != null) {
+        td.style.background = tintColor(t);
+        td.style.color = COLOR.fg0;
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  // reference list of recent events
+  const refs = (chosen.events || []).slice(0, 8);
+  if (refs.length) {
+    refHost.textContent = 'recent qualifying peaks: ' + refs.map(e =>
+      `${e.peak_ts.slice(0,10)} [${e.category}] ${e.obs_peak_ft.toFixed(1)}ft @ ${e.obs_peak_tp_s.toFixed(1)}s` +
+      (chosen === glob ? ` (${e.buoy_id})` : '')
+    ).join(' · ');
+  } else {
+    refHost.textContent = '';
+  }
+}
+
+// ─── Taylor diagram (item 6, rebuilt w/ square layout) ────────────────────
+function renderTaylor(taylor) {
+  const cv = document.getElementById("taylor");
+  const { ctx, w, h } = setupCanvas(cv);
+  if (!taylor || !taylor.models) {
+    ctx.fillStyle = COLOR.tick; ctx.font = "12px ui-monospace";
+    ctx.textAlign = "center"; ctx.fillText("no taylor data", w / 2, h / 2);
+    return;
+  }
+  const margin = 48;
+  const cx = margin, cy = h - margin;
+  const rMax = Math.min(w - 2 * margin, h - 2 * margin);
+  const sigmaMax = 1.6;
+  function toXY(r_corr, sigma_ratio) {
+    const theta = Math.acos(Math.max(-1, Math.min(1, r_corr)));
+    const rr = (sigma_ratio / sigmaMax) * rMax;
+    return [cx + rr * Math.cos(theta), cy - rr * Math.sin(theta)];
+  }
+  ctx.strokeStyle = COLOR.grid;
+  ctx.lineWidth = 1;
+  for (let s = 0.25; s <= sigmaMax; s += 0.25) {
+    const rr = (s / sigmaMax) * rMax;
+    ctx.beginPath(); ctx.arc(cx, cy, rr, -Math.PI / 2, 0); ctx.stroke();
+    if (Math.abs(s - Math.round(s * 4) / 4) < 1e-6) {
+      ctx.fillStyle = COLOR.tick; ctx.font = "10px ui-monospace";
+      ctx.textAlign = "center"; ctx.fillText(s.toFixed(2), cx + rr, cy + 14);
+    }
+  }
+  ctx.strokeStyle = COLOR.vgrid;
+  const rTicks = [0, 0.2, 0.4, 0.6, 0.8, 0.9, 0.95, 0.99, 1.0];
+  for (const r of rTicks) {
+    const theta = Math.acos(r);
+    const [ex, ey] = [cx + rMax * Math.cos(theta), cy - rMax * Math.sin(theta)];
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.fillStyle = COLOR.tick; ctx.font = "10px ui-monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(r.toFixed(2),
+                 cx + (rMax + 6) * Math.cos(theta),
+                 cy - (rMax + 6) * Math.sin(theta) + 3);
+  }
+  const [refX, refY] = toXY(1, 1);
+  ctx.fillStyle = "#ffffffcc";
+  ctx.beginPath(); ctx.arc(refX, refY, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = COLOR.fg0;
+  ctx.font = "bold 11px ui-monospace";
+  ctx.fillText("OBS", refX + 8, refY - 4);
+
+  ctx.save();
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = COLOR.grid;
+  for (const cr of [0.25, 0.5, 0.75, 1.0]) {
+    const arcR = (cr / sigmaMax) * rMax;
+    ctx.beginPath(); ctx.arc(refX, refY, arcR, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.fillStyle = COLOR.tick; ctx.font = "11px ui-monospace";
+  ctx.textAlign = "center";
+  ctx.fillText("normalised σ  (σ_model / σ_obs)", cx + rMax / 2, cy + 32);
+  ctx.save();
+  ctx.translate(cx - 36, cy - rMax / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.fillText("correlation r", 0, 0);
+  ctx.restore();
+
+  for (const k of ["raw_gfs", "raw_euro", "mean", "csc"]) {
+    const s = taylor.models[k];
+    if (!s || s.r == null || s.sigma_ratio == null ||
+        !isFinite(s.r) || !isFinite(s.sigma_ratio)) continue;
+    const [x, y] = toXY(s.r, s.sigma_ratio);
+    ctx.fillStyle = MODEL_COLOR[k];
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#0008"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = MODEL_COLOR[k];
+    ctx.font = "bold 11px ui-monospace";
+    ctx.textAlign = "left";
+    ctx.fillText(MODEL_LABEL[k], x + 10, y + 4);
+  }
+}
+
+// ─── POD/FAR (item 7, tightened) ──────────────────────────────────────────
+function renderPodFar(curves) {
+  const cv = document.getElementById("pod-far");
+  const { ctx, w, h } = setupCanvas(cv);
+  if (!curves || !curves.models) {
+    ctx.fillStyle = COLOR.tick; ctx.font = "12px ui-monospace";
+    ctx.textAlign = "center"; ctx.fillText("no threshold-curve data", w / 2, h / 2);
+    return;
+  }
+  const PAD_L = 44, PAD_R = 16, PAD_T = 16, PAD_B = 34;
+  const plotW = w - PAD_L - PAD_R;
+  const plotH = h - PAD_T - PAD_B;
+  ctx.strokeStyle = COLOR.grid; ctx.lineWidth = 1;
+  ctx.fillStyle = COLOR.tick; ctx.font = "10px ui-monospace";
+  ctx.textAlign = "right";
+  for (let i = 0; i <= 4; i++) {
+    const py = PAD_T + (1 - i / 4) * plotH;
+    const val = i / 4;
+    ctx.beginPath(); ctx.moveTo(PAD_L, py); ctx.lineTo(w - PAD_R, py); ctx.stroke();
+    ctx.fillText(val.toFixed(2), PAD_L - 4, py + 3);
+  }
+  ctx.textAlign = "center";
+  for (let i = 0; i <= 4; i++) {
+    const val = i / 4;
+    const px = PAD_L + val * plotW;
+    ctx.beginPath(); ctx.moveTo(px, PAD_T); ctx.lineTo(px, PAD_T + plotH); ctx.stroke();
+    ctx.fillText(val.toFixed(2), px, h - 16);
+  }
+  ctx.fillStyle = COLOR.fg0;
+  ctx.font = "11px ui-monospace";
+  ctx.fillText("FAR →", PAD_L + plotW / 2, h - 4);
+  ctx.save();
+  ctx.translate(12, PAD_T + plotH / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.fillText("POD →", 0, 0);
+  ctx.restore();
+
+  // "best corner" marker
+  ctx.fillStyle = COLOR.tick;
+  ctx.font = "10px ui-monospace";
+  ctx.textAlign = "left";
+  ctx.fillText("best", PAD_L + 4, PAD_T + 12);
+  ctx.beginPath();
+  ctx.moveTo(PAD_L + 22, PAD_T + 9); ctx.lineTo(PAD_L + 10, PAD_T + 4);
+  ctx.moveTo(PAD_L + 10, PAD_T + 4); ctx.lineTo(PAD_L + 16, PAD_T + 3);
+  ctx.moveTo(PAD_L + 10, PAD_T + 4); ctx.lineTo(PAD_L + 11, PAD_T + 10);
+  ctx.strokeStyle = COLOR.tick; ctx.stroke();
+
+  const thresholds = curves.thresholds_ft || [];
+  for (const k of ["raw_gfs", "raw_euro", "mean", "csc"]) {
+    const m = curves.models[k]; if (!m) continue;
+    const pts = [];
+    for (let i = 0; i < thresholds.length; i++) {
+      const p = m.pod[i], f = m.far[i];
+      if (p == null || f == null || !isFinite(p) || !isFinite(f)) continue;
+      pts.push([f, p, thresholds[i]]);
+    }
+    if (!pts.length) continue;
+    pts.sort((a, b) => a[2] - b[2]);
+    ctx.strokeStyle = MODEL_COLOR[k];
+    ctx.lineWidth = k === "csc" ? 2.4 : 1.6;
+    ctx.beginPath();
+    pts.forEach(([fx, py], i) => {
+      const X = PAD_L + fx * plotW;
+      const Y = PAD_T + (1 - py) * plotH;
+      if (i === 0) ctx.moveTo(X, Y); else ctx.lineTo(X, Y);
+    });
+    ctx.stroke();
+    for (const [fx, py, thr] of pts) {
+      const X = PAD_L + fx * plotW;
+      const Y = PAD_T + (1 - py) * plotH;
+      ctx.fillStyle = MODEL_COLOR[k];
+      ctx.beginPath(); ctx.arc(X, Y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "9px ui-monospace";
+      ctx.fillStyle = COLOR.tick;
+      ctx.textAlign = "left";
+      ctx.fillText(`${thr}ft`, X + 4, Y - 4);
+    }
+  }
+  // legend in top-right of plot area
+  let ly = PAD_T + 12;
+  ctx.textAlign = "left";
+  for (const k of ["raw_gfs", "raw_euro", "mean", "csc"]) {
+    ctx.fillStyle = MODEL_COLOR[k];
+    ctx.fillRect(w - PAD_R - 82, ly - 8, 10, 10);
+    ctx.fillStyle = COLOR.fg0; ctx.font = "11px ui-monospace";
+    ctx.fillText(MODEL_LABEL[k], w - PAD_R - 66, ly);
+    ly += 14;
+  }
+}
+
+// ─── Panels loader ────────────────────────────────────────────────────────
+async function loadPanels(buoyId) {
+  try {
+    const r = await fetch(`/api/csc/panels?buoy_id=${encodeURIComponent(buoyId)}`);
+    if (!r.ok) {
+      const msg = r.status === 503
+        ? "panels.json not built yet — run `python -m csc.dashboard_eval --rebuild`"
+        : `panels ${r.status}`;
+      document.getElementById("cat-strips").innerHTML = `<div class="err">${msg}</div>`;
+      return;
+    }
+    const d = await r.json();
+    renderResidualOverTime(d.residual_over_time);
+    renderCategoryStrips(d.stratified);
+    renderBuoyHeatmap(d.stratified);
+    renderPeakSummary(d.peak_events);
+    renderTaylor(d.taylor);
+    renderPodFar(d.threshold_curves);
+  } catch (e) {
+    console.error("panels:", e);
+    document.getElementById("cat-strips").innerHTML = `<div class="err">panels error: ${e.message}</div>`;
+  }
+}
+
+async function loadVariantsLive(buoyId) {
+  try {
+    const r = await fetch(`/api/csc/variants/${encodeURIComponent(buoyId)}`);
+    if (!r.ok) { renderForecastMulti(null); return; }
+    const d = await r.json();
+    renderForecastMulti(d);
+  } catch (e) {
+    console.error("variants:", e);
+    renderForecastMulti(null);
+  }
+}
+
+async function loadBuoy(buoyId) {
+  try {
+    const r = await fetch(`/api/csc/compare?buoy_id=${encodeURIComponent(buoyId)}`);
+    if (!r.ok) throw new Error(`compare ${r.status}`);
+    const d = await r.json();
+    document.getElementById("current-version").textContent = d.current_version || "(none)";
+    document.getElementById("current-winner").textContent = d.current_winner || "(none)";
+    renderStatsTable(d.versions || []);
+  } catch (e) {
+    console.error(e);
+    const t = document.querySelector("#stats-table tbody");
+    t.innerHTML = `<tr><td class="err" colspan="40">error: ${e.message}</td></tr>`;
+  }
+  loadVariantsLive(buoyId);
+  loadPanels(buoyId);
+}
+
+window.addEventListener("resize", () => loadBuoy(picker.value));
+loadBuoy(buoys[0].buoy_id);
+</script>
+</body>
+</html>

@@ -159,6 +159,10 @@ def _parse_response(data) -> list:
             "energy":             primary["energy"]        if primary else None,
             "components":         comps,
             "raw_direction_deg":  raw_dir,
+            # Combined (total) wave values — used by csc.predict, not the main UI.
+            "combined_wave_height_m":  wh[i],
+            "combined_wave_period_s":  wp_peak[i] or wp[i],
+            "combined_wave_direction_deg": wd[i],
         })
     return records
 
