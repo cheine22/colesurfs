@@ -1,10 +1,10 @@
-# colesurfs · v1.4
+# colesurfs · v1.5
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
-A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo, then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
+A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo and Copernicus Marine (CMEMS), then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
-Flask backend, vanilla HTML/CSS/JS frontend. No cloud account or API keys required — all data sources (NOAA, Open-Meteo) are free and unauthenticated.
+Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authenticates via the `copernicusmarine` CLI; everything else uses free unauthenticated NOAA / Open-Meteo endpoints.
 
 ---
 
@@ -40,7 +40,8 @@ All data is fetched from free, unauthenticated public APIs:
 
 - **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min)
 - **NDBC THREDDS** — historical full-spectrum NetCDFs per station (used by CSC backfill; 2017 → today where available)
-- **Open-Meteo Marine API** — ECMWF WAM and GFS wave model forecasts (10-day hourly)
+- **Open-Meteo Marine API** — ECMWF WAM (OM-EURO) and GFS wave model forecasts (10-day hourly, per-spot)
+- **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC (C-EURO) with swell partitions (VHM0_SW1/SW2, VTM01_SW1/SW2, VMDR_SW1/SW2); per-buoy 3-hourly, interpolated to hourly. Requires a free `copernicusmarine login` credential (persists at `~/.copernicusmarine/.copernicusmarine-credentials`)
 - **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts (matched to the selected wave model)
 - **NOAA CO-OPS** — harmonic tide predictions per spot with Surfline-calibrated time corrections
 
@@ -108,6 +109,15 @@ Wind direction zones are defined relative to each spot's measured shore normal: 
 ---
 
 ## Changelog
+
+### v1.5
+- **EURO wave forecast migrated to Copernicus Marine (CMEMS)** — Open-Meteo's `ecmwf_wam025` endpoint returns `null` for every swell-partition variable, so the dashboard's OM-EURO column had been silently serving combined-sea values as "primary swell" (wind chop included). CMEMS ANFC publishes real `VHM0_SW1` / `VHM0_SW2` spectral partitions. `/api/forecast/EURO` now calls CMEMS; Open-Meteo ECMWF-WAM was removed from the site
+- **Cache warmer** — 30-minute warmer pulls CMEMS for every region buoy in parallel (~11 s wall clock for 7 buoys). 24-hour TTL + `skip_none=True` keeps the last-known-good payload during outages
+- **Period convention aligned to Tp** — CMEMS publishes partition period as `VTM01` (spectral mean m1); we scale by 1/0.83 ≈ 1.20 before display so numbers line up with Windy, Surfline, and buoy DPD
+- **Partition filter** — the "below 6s is noise" cutoff dropped to 5.0 s (equivalent to Tp ≥ 6 s) and now applies consistently to every wave source
+- **No more combined-sea fallback** — if no swell partition passes the filter, the cell stays empty. Previously the table would silently fall back to combined Hs/Tp/direction (including wind chop), which matched neither Windy's partition display nor what a buoy DPD reports
+- **Provenance moved** — data-source attribution now lives in the logo-tap info modal; outage modal no longer links to external issue trackers
+- **Dependencies** — `copernicusmarine>=2.4`, `xarray`, `netCDF4`
 
 ### v1.3.3
 - **Fix:** Mobile slider no longer jumps on tap — anchor is taken from the current handle position rather than the tap location, so the chart only moves when the finger actually slides

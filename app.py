@@ -17,8 +17,10 @@ Routes:
   /api/buoy_history/<station_id>  5-day historical buoy data with spectral components
   /api/refresh (POST)            Clear caches + reload swell rules
 
-v1.3: Batched wave forecasts, parallel buoy fetches, server-side sunrise/sunset,
-      flask-compress, Cache-Control headers, background cache warming, disk persistence.
+v1.5: EURO wave forecast migrated from Open-Meteo ECMWF-WAM to Copernicus Marine
+      (CMEMS) ECMWF-WAM ANFC. Open-Meteo EURO waves were removed from the site
+      entirely — OM returns null swell partitions, so switching to CMEMS gives
+      us real SW1/SW2 spectral partitions. GFS continues via Open-Meteo.
 """
 import json as _json
 import os
@@ -34,6 +36,7 @@ import swell_rules
 from buoy  import fetch_buoy, fetch_buoy_history, _parse_spectral_file, _spectral_components
 import requests as _req_buoy
 from waves import fetch_wave_forecast, fetch_all_wave_forecasts
+from waves_cmems import fetch_all_cmems_wave_forecasts
 from wind  import (fetch_wind_grid, fetch_spot_wind,
                     fetch_wind_forecast_grid, fetch_spot_wind_forecasts,
                     fetch_region_wind_forecasts, estimate_model_run)
@@ -100,10 +103,20 @@ def api_buoys():
 
 @app.route("/api/forecast/<model_key>")
 def api_forecast(model_key: str):
-    if model_key not in ("EURO", "GFS"):
-        return jsonify({"error": "unknown model"}), 400
-    result = fetch_all_wave_forecasts(model_key)
-    return jsonify(result or {})
+    """Model keys:
+      EURO — Copernicus Marine ECMWF WAM ANFC (per-buoy 3h, interpolated hourly,
+             SW1/SW2 partitions with Tm01→Tp scaled periods)
+      GFS  — Open-Meteo NCEP GFS-Wave (per-spot hourly)
+
+    v1.5: Open-Meteo ECMWF-WAM was removed from the site; EURO is now CMEMS
+    exclusively. /api/forecast/C-EURO remains as a backward-compat alias.
+    """
+    key = model_key.upper()
+    if key in ("EURO", "C-EURO"):
+        return jsonify(fetch_all_cmems_wave_forecasts() or {})
+    if key == "GFS":
+        return jsonify(fetch_all_wave_forecasts("GFS") or {})
+    return jsonify({"error": "unknown model"}), 400
 
 
 @app.route("/api/wind")
@@ -438,12 +451,17 @@ def _warm_all_caches():
     t0 = time.monotonic()
     errors = []
 
-    # Wave forecasts (batched — 1 API call per model)
-    for model in ("EURO", "GFS"):
-        try:
-            fetch_all_wave_forecasts(model)
-        except Exception as e:
-            errors.append(f"wave/{model}: {e}")
+    # Wave forecasts.
+    # GFS: batched through Open-Meteo (1 API call, all spots).
+    # EURO: CMEMS, parallel across region buoys (~11 s for 7 buoys in testing).
+    try:
+        fetch_all_wave_forecasts("GFS")
+    except Exception as e:
+        errors.append(f"wave/GFS: {e}")
+    try:
+        fetch_all_cmems_wave_forecasts()
+    except Exception as e:
+        errors.append(f"cmems: {e}")
 
     # Wind (already batched internally)
     for model in ("EURO", "GFS"):

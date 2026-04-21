@@ -3,6 +3,7 @@ colesurfs — Thread-safe TTL cache utility + API call counter.
 Drop-in replacement for @st.cache_data for Flask usage.
 
 v1.3: Added disk persistence (write-through on set, restore on startup).
+v1.5: Used by the CMEMS C-EURO fetcher for cross-restart cache continuity.
 """
 import hashlib
 import json

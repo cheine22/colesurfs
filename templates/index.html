@@ -350,10 +350,6 @@
     .footer-sig .sig-accent { color: var(--accent); }
     .footer-center { display: flex; align-items: center; gap: 8px; }
     .footer-version { font-size: 8.5px; letter-spacing: .08em; color: var(--text3); font-family: var(--font); }
-    .footer-api {
-      font-size: 8.5px; letter-spacing: .04em; color: var(--text3);
-      font-family: var(--font);
-    }
     .footer-btn {
       padding: 3px 11px; border: 1px solid var(--border1);
       border-radius: 5px; background: transparent;
@@ -987,13 +983,22 @@
       letter-spacing: .04em; align-self: flex-start;
     }
     .info-modal-refresh:hover { border-color: var(--accent); color: var(--accent); }
-    .info-modal-api {
-      font-size: 8.5px; letter-spacing: .04em; color: var(--text3);
-      font-family: var(--font); line-height: 1.5;
-    }
     .info-modal-version {
       font-size: 8.5px; letter-spacing: .08em; color: var(--text3);
       font-family: var(--font);
+    }
+    .info-modal-sources {
+      border-top: 1px solid var(--border0); padding-top: 10px; margin-top: 2px;
+      font-size: 9.5px; color: var(--text2); line-height: 1.55;
+      letter-spacing: .02em; font-family: var(--font);
+    }
+    .info-modal-sources dt {
+      color: var(--text1); font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; font-size: 8.5px; margin-top: 6px;
+    }
+    .info-modal-sources dt:first-child { margin-top: 0; }
+    .info-modal-sources dd {
+      margin: 1px 0 0 0; color: var(--text2);
     }
     /* Make logo tappable */
     .header-logo { cursor: pointer; }
@@ -1193,7 +1198,7 @@
     <div class="outage-modal-body" id="outage-modal-body">
       <strong>A service outage upstream of colesurfs may be impacting up-to-date forecast availability.</strong><br>
       <span id="outage-affected-types">Forecast data may be temporarily unavailable — showing cached or partial data where possible.</span><br><br>
-      <a id="outage-status-link" class="outage-modal-link" href="https://github.com/open-meteo/open-meteo/issues" target="_blank" rel="noopener noreferrer">Check status on GitHub →</a>
+      <span id="outage-status-link" class="outage-modal-link">Tap Retry to try again</span>
     </div>
     <button class="outage-modal-btn" onclick="_retryAfterOutage()">↺ RETRY</button>
   </div>
@@ -1312,8 +1317,14 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <a class="info-modal-refresh" href="/csc" style="text-decoration:none;text-align:center">∿ CSC (BETA)</a>
-    <span class="info-modal-api" id="mob-info-api-tag">—</span>
-    <span class="info-modal-version">v1.4</span>
+    <dl class="info-modal-sources">
+      <dt>Swell — EURO</dt><dd>Copernicus Marine (CMEMS) · ECMWF WAM ANFC</dd>
+      <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
+      <dt>Wind</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
+      <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
+      <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
+    </dl>
+    <span class="info-modal-version">v1.5</span>
   </div>
 </div>
 
@@ -1339,7 +1350,7 @@
       <li>compare the GFS and Euro models to get a sense of how reliable the forecast is: model agreement = more reliable forecast</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.3.3</span>
+    <span class="about-version">v1.5</span>
   </div>
 </div>
 
@@ -1374,8 +1385,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.3.3</span>
-    <span class="footer-api" id="api-usage-tag">—</span>
+    <span class="footer-version">v1.5</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -1940,12 +1950,11 @@ function _setWindTimeLabel(label) {
   if (ov) ov.textContent = label;
 }
 
-// Fetch and display model run + API usage status in the controls bar.
+// Fetch model run info for the controls bar.
 async function _refreshStatus() {
   try {
     const data = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
     const runEl = document.getElementById('model-run-tag');
-    const apiEl = document.getElementById('api-usage-tag');
     if (data.model_run) _lastModelRun = data.model_run.run_time || null;
     if (data.model_run && runEl) {
       let datePart = '';
@@ -1961,14 +1970,10 @@ async function _refreshStatus() {
         next = ` · next run in ~${h < 1 ? '<1' : Math.round(h)}h`;
       }
       runEl.innerHTML = `<b>${datePart}${run}</b>${next}`;
-      // Sync mobile run tag (stacked: run on line 1, next on line 2)
       const mobRun  = document.getElementById('mob-run-tag');
       const mobNext = document.getElementById('mob-next-tag');
       if (mobRun)  mobRun.textContent = `${datePart}${run}`;
       if (mobNext) mobNext.textContent = next ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h` : '';
-    }
-    if (data.api_usage && apiEl) {
-      apiEl.innerHTML = `SWELL DATA PROVIDED VIA OPEN-METEO &nbsp;&nbsp;(${data.api_usage.total.toLocaleString()}/10,000 today)`;
     }
   } catch(e) { /* silent */ }
 }
@@ -2088,7 +2093,7 @@ async function loadAll() {
   const track = (promise, label) => promise.then(v => { _loader.step(label); return v; });
 
   // Abort any fetch that doesn't respond within 9 s so the loading screen
-  // doesn't block indefinitely when Open-Meteo is down.
+  // doesn't block indefinitely when an upstream source is down.
   const T = 9000;
   const [buoys, euro, gfs, wind, regionWind, tides] = await Promise.allSettled([
     track(_fetchWithTimeout('/api/buoys', T),                        'Buoy data loaded'),
@@ -2118,9 +2123,9 @@ async function loadAll() {
     GFS:  gfs.status  === 'fulfilled' ? (gfs.value  || {}) : {},
   };
 
-  // Detect upstream outage. The backend returns HTTP 200 with null values per
-  // spot (e.g. {"Lido Beach": null}) when it can't reach Open-Meteo, so we must
-  // check whether all VALUES are null — not just whether there are any keys.
+  // Detect upstream outage. Backends return HTTP 200 with null values per
+  // spot (e.g. {"Lido Beach": null}) when the upstream can't be reached, so
+  // check whether all VALUES are null — not just whether keys exist.
   const _allNull = obj => Object.keys(obj).length > 0 && Object.values(obj).every(v => v === null);
   const _isNullOrEmpty = obj => !obj || Object.keys(obj).length === 0;
   const euroEmpty  = _isNullOrEmpty(forecastData.EURO) || _allNull(forecastData.EURO);
@@ -2767,24 +2772,6 @@ async function _showOutageBanner(failures) {
     }
   }
 
-  // Best-effort: check GitHub for recent open issues mentioning outage keywords
-  try {
-    const q = encodeURIComponent('repo:open-meteo/open-meteo is:open outage OR down OR "500" OR "429" OR unavailable sort:created-desc');
-    const res = await fetch(`https://api.github.com/search/issues?q=${q}&per_page=5`, {
-      headers: { Accept: 'application/vnd.github+json' },
-      signal: AbortSignal.timeout(5000)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const count = data.total_count || 0;
-      const link = document.getElementById('outage-status-link');
-      if (link && count > 0) {
-        link.textContent = `${count} reported issue${count === 1 ? '' : 's'} on GitHub →`;
-      }
-    }
-  } catch (e) {
-    // GitHub check failed — modal already visible with default link, nothing to do
-  }
 }
 
 function _dismissOutageBanner() {
@@ -3475,12 +3462,7 @@ function setModelMobile(model) {
   const desktopBtn = document.querySelector(`.sw-btn[data-model="${model}"]`);
   if (desktopBtn) desktopBtn.classList.add('active');
   // Update mobile buttons
-  const euroBtn = document.getElementById('mob-euro');
-  const gfsBtn  = document.getElementById('mob-gfs');
-  euroBtn.classList.remove('active', 'active-gfs');
-  gfsBtn.classList.remove('active', 'active-gfs');
-  if (model === 'EURO') { euroBtn.classList.add('active'); }
-  else { gfsBtn.classList.add('active-gfs'); }
+  _syncMobileModel(model);
   // Trigger the actual model switch (reuse existing logic without btn arg)
   setModel(model, desktopBtn || document.createElement('button'));
 }
@@ -3809,9 +3791,6 @@ if (_isMobile()) {
 }
 
 function openInfoModal() {
-  const src = document.getElementById('api-usage-tag');
-  const dst = document.getElementById('mob-info-api-tag');
-  if (src && dst) dst.innerHTML = src.innerHTML;
   document.getElementById('info-modal-overlay').classList.add('open');
 }
 function closeInfoModal() {

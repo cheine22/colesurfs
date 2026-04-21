@@ -9,6 +9,8 @@ Previous attempts with ncep_gfswave / gfswave / gfs_wave all returned errors bec
 the Open-Meteo Marine API requires the resolution suffix in the model name.
 
 v1.3: Batch all spots into a single multi-location API call (matching wind.py pattern).
+v1.5: Open-Meteo EURO is now surfaced as "OM-EURO"; CMEMS-backed "C-EURO"
+      lives in waves_cmems.py and the /api/forecast/C-EURO route.
 """
 import requests
 import math
@@ -53,13 +55,15 @@ def _build_components(sw_h,  sw_p,  sw_d,
                        sw_h2, sw_p2, sw_d2,
                        sw_h3, sw_p3, sw_d3,
                        wh=None, wp=None, wd=None):
-    """
-    Build swell component list (up to 3), swell partitions first.
-    When all three swell partitions are null/below threshold (e.g. ecmwf_wam025
-    under wind-dominated conditions), fall back to the combined wave_height so
-    the cell is never left blank purely due to missing partition data.
-    Wind-wave partition is intentionally excluded — we display swell only.
-    Returns at most 3 entries sorted by energy (height²×period) descending.
+    """Build swell component list (up to 2) from swell partition fields only.
+
+    v1.5: The combined-sea fallback was removed. Open-Meteo's ecmwf_wam025
+    endpoint returns null for every swell partition, so this function now
+    produces empty cells for OM-EURO in practice — the honest read of the
+    upstream product. GFS-Wave partitions still flow through normally.
+
+    `wh`, `wp`, `wd` kept in the signature for parse-site compatibility but
+    no longer consulted.
     """
     raw = [
         {"h_m": sw_h,  "p": sw_p,  "d": sw_d,  "type": "swell"},
@@ -73,8 +77,9 @@ def _build_components(sw_h,  sw_p,  sw_d,
         d   = _safe(c["d"])
         if not h_m or h_m <= 0.0:
             continue
-        # Filter pure noise (< 6.0 s); anything 6–6.5 s is coloured WEAK by period cap rules
-        if not p or p < 6.0:
+        # Filter pure wind chop. 5.0 s targets real swell at Tp ~ 6 s;
+        # anything shorter is effectively sea, not swell.
+        if not p or p < 5.0:
             continue
         h_ft   = m_to_ft(h_m)
         energy = round(h_ft ** 2 * p, 1) if (h_ft and p) else None
@@ -85,24 +90,6 @@ def _build_components(sw_h,  sw_p,  sw_d,
             "energy":        energy,
             "type":          c["type"],
         })
-
-    # Last-resort fallback: if no swell partitions survived the filter, use the
-    # combined wave_height/wave_period. This keeps Euro cells populated when the
-    # model returns NaN for all partition variables (wind-dominated sea state).
-    if not comps:
-        h_m = _safe(wh)
-        p   = _safe(wp)
-        d   = _safe(wd)
-        if h_m and h_m > 0.0 and p and p >= 6.0:
-            h_ft   = m_to_ft(h_m)
-            energy = round(h_ft ** 2 * p, 1) if (h_ft and p) else None
-            comps.append({
-                "height_ft":     h_ft,
-                "period_s":      round(p, 1),
-                "direction_deg": d,
-                "energy":        energy,
-                "type":          "combined",
-            })
 
     comps.sort(key=lambda c: c["energy"] or 0, reverse=True)
     return comps[:2]

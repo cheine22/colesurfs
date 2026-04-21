@@ -14,3 +14,5 @@ lightgbm>=4.0
 joblib>=1.3
 duckdb>=0.10       # training scripts only; lazy-imported
 netCDF4>=1.6       # CDIP THREDDS for 46221/46268; lazy-imported
+copernicusmarine>=2.4    # CMEMS C-EURO wave forecasts; requires `copernicusmarine login`
+xarray>=2024.1           # CMEMS subset return type
