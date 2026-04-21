@@ -314,92 +314,23 @@ def index():
 
 @app.route("/csc")
 def csc_page():
-    from csc.schema import BUOYS as _CSC_BUOYS
-    from csc.glossary import to_payload as _glossary_payload
-    from csc.display_filter import is_public_buoy
-    csc_buoy_config = [
-        {"buoy_id": b[0], "label": b[1], "lat": b[2], "lon": b[3]}
-        for b in _CSC_BUOYS if is_public_buoy(b[0])
+    """CSC2 evaluation page. Under construction — data collection in progress."""
+    from csc2.schema import BUOYS as _CSC2_BUOYS
+    buoys = [
+        {"buoy_id": b[0], "label": b[1], "lat": b[2], "lon": b[3], "scope": b[4]}
+        for b in _CSC2_BUOYS
     ]
     return render_template(
         "csc.html",
-        inline_config=_json.dumps(
-            {"buoys": csc_buoy_config, "glossary": _glossary_payload()},
-            separators=(',', ':')),
+        inline_config=_json.dumps({"buoys": buoys}, separators=(',', ':')),
     )
 
 
-@app.route("/api/csc/<buoy_id>")
-def api_csc(buoy_id: str):
-    from csc.schema import BUOY_IDS
-    if buoy_id not in BUOY_IDS:
-        return jsonify({"error": "unknown CSC buoy"}), 404
-    from csc.serve import fetch_csc_forecast, _strip_nans
-    data = fetch_csc_forecast(buoy_id)
-    if data is None:
-        return jsonify({"error": "csc unavailable"}), 503
-    return jsonify(_strip_nans(data))
-
-
-@app.route("/api/csc/compare")
-def api_csc_compare():
-    buoy_id = request.args.get("buoy_id", "")
-    from csc.schema import BUOY_IDS
-    if buoy_id not in BUOY_IDS:
-        return jsonify({"error": "unknown CSC buoy",
-                        "known_buoys": BUOY_IDS}), 404
-    from csc.serve import compare_payload
-    from csc.display_filter import is_public_variant
-    payload = compare_payload(buoy_id)
-    versions = payload.get("versions") or []
-    payload["versions"] = [
-        v for v in versions if is_public_variant(v.get("winner") or "")
-        and is_public_variant(v.get("version") or "")
-    ]
-    return jsonify(payload)
-
-
-@app.route("/api/csc/variants/<buoy_id>")
-def api_csc_variants(buoy_id: str):
-    """Per-variant live predictions from every preserved model artifact."""
-    from csc.schema import BUOY_IDS
-    if buoy_id not in BUOY_IDS:
-        return jsonify({"error": "unknown CSC buoy",
-                        "known_buoys": BUOY_IDS}), 404
-    from csc.multi_serve import fetch_all_variants_live
-    data = fetch_all_variants_live(buoy_id)
-    if data is None:
-        return jsonify({"error": "csc variants unavailable"}), 503
-    return jsonify(data)
-
-
-@app.route("/api/csc/panels")
-def api_csc_panels():
-    """Serve precomputed dashboard panels from .csc_data/panels.json.
-    Optional ?buoy_id=<id> slices per-buoy panels for the peak-events list
-    and selected-buoy residual strip."""
-    buoy_id = request.args.get("buoy_id") or None
-    from csc.schema import BUOY_IDS
-    if buoy_id is not None and buoy_id not in BUOY_IDS:
-        return jsonify({"error": "unknown CSC buoy",
-                        "known_buoys": BUOY_IDS}), 404
-    from csc.dashboard_eval import load_panels, panels_for_buoy
-    from csc.serve import _strip_nans
-    payload = load_panels()
-    if payload is None:
-        return jsonify({
-            "error": "panels.json not built yet; run "
-                     "`python -m csc.dashboard_eval --rebuild`"
-        }), 503
-    return jsonify(_strip_nans(panels_for_buoy(payload, buoy_id)))
-
-
-@app.route("/api/csc/weekly_eval/latest")
-def api_csc_weekly_eval_latest():
-    """Latest weekly continuous-evaluation snapshot (from com.colesurfs.csc-eval)."""
-    from csc.continuous_eval import latest_snapshot
-    from csc.serve import _strip_nans
-    return jsonify(_strip_nans(latest_snapshot()))
+@app.route("/api/csc2/archive_status")
+def api_csc2_archive_status():
+    """How much CMEMS/GFS/buoy archive we've accumulated so far, per buoy."""
+    from csc2.archive_status import summarize
+    return jsonify(summarize())
 
 
 @app.route("/favicon.svg")

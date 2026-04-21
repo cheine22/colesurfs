@@ -5,23 +5,49 @@ Guidance for Claude when editing this repo.
 ## What this is
 
 Single-page Flask app that aggregates surf-forecast data (NOAA NDBC buoys,
-NOAA CO-OPS tides, Open-Meteo wave + wind models) and renders it as a swell
-table. No build step and no bundler — `templates/index.html` inlines all JS
-and CSS in one file.
+NOAA CO-OPS tides, Copernicus Marine / Open-Meteo wave + wind models) and
+renders it as a swell table. No build step and no bundler —
+`templates/index.html` inlines all JS and CSS in one file.
+
+Alongside the main dashboard, the `csc2/` module is a forecast-correction
+model under development. It trains on paired (EURO forecast, GFS forecast,
+buoy observation) triples to predict corrected primary+secondary swells.
+Its data-collection loop and eval page (`/csc`) run regardless of training
+status; the model button will appear on the main dashboard once trained.
 
 ## Where things live
 
 - `app.py` — Flask routes, `Cache-Control` rules, background cache warmer
 - `buoy.py` — NDBC fetch + spectral swell decomposition
-- `waves.py`, `wind.py`, `tide.py`, `sun.py` — other data sources
+- `waves.py` — Open-Meteo GFS-Wave partition fetch (EURO migrated to CMEMS in v1.5)
+- `waves_cmems.py` — Copernicus Marine ANFC EURO fetch + shared processing pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2)
+- `wind.py`, `tide.py`, `sun.py` — other data sources
 - `cache.py` — TTL cache + disk write-through + API-call counter
 - `config.py` — loads `regions.yaml`; defines palette, wind bands, grid
 - `regions.yaml` — single source of truth for regions / buoys / spots
 - `swell_rules.py` + `swell-categorization-scheme.toml` — swell → color
-- `templates/index.html` — the entire frontend, ~4.5k lines
+- `templates/index.html` — the main dashboard frontend, ~4.5 k lines
+- `templates/csc.html` — the CSC2 eval page (archive table, model defs, metric tables)
+- `csc2/` — CSC2 package (see subsection below)
 - Deployment specifics (how the app is served, restarted, tunneled) live in
   a local-only `hosting.md` that is intentionally git-ignored. Check the
   working directory for it when deploy-related questions come up.
+
+## csc2/ package
+
+- `csc2/schema.py` — buoy scope (5 east + 3 west), path layout, forecast-row columns
+- `csc2/logger.py` — live forecast logger (`com.colesurfs.csc2-log`, 3 AM + 3 PM ET). Pulls CMEMS + GFS via `waves_cmems.fetch_cmems_point` / `waves.fetch_wave_forecast` and writes per-cycle parquet shards
+- `csc2/obs_logger.py` — live NDBC observation logger (`com.colesurfs.csc2-obs`, every 30 min). Appends to the shared `.csc_data/live_log/observations/` tree with dedup on (valid_utc, partition)
+- `csc2/gee_backfill.py` — historical EURO backfill via Google Earth Engine ImageCollection (`COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`). Cycle-preserving archive back to 2025-04-28
+- `csc2/aws_gfs_backfill.py` — historical GFS backfill via AWS S3 (`noaa-gfs-bdp-pds`) with byte-range GRIB2 fetches driven by `.idx` sidecars
+- `csc2/ndbc_backfill.py` — historical buoy-obs backfill from NDBC stdmet yearly archives
+- `csc2/archive_status.py` — computes paired-cycle coverage per buoy with file-cache; backs `/api/csc2/archive_status`
+
+Local-only data directories (gitignored):
+- `.csc_data/observations/`, `.csc_data/live_log/observations/` — buoy obs
+- `.csc2_data/forecasts/model={EURO,GFS}/buoy=<id>/year=Y/month=M/cycle=*.parquet` — forecast shards
+- `.csc2_data/archive_status_cache.json` — cached `/api/csc2/archive_status` payload
+- `.csc2_models/` — trained model weights (not yet populated)
 
 ## Caching architecture (important when debugging staleness)
 
@@ -58,3 +84,24 @@ To force-clear all caches at runtime: `POST /api/refresh` (rate-limited to
   and justified; match that tone.
 - Prefer editing files in place over introducing new modules.
 - Python style: follow whatever the file already uses.
+- **Dashboard / CSC2 identity**: every CSC2 forecast row must match the
+  dashboard byte-for-byte for the same (buoy, valid_utc, model) tuple.
+  Anything that feeds training must pass through `waves_cmems` / `waves`
+  exactly the way the live dashboard does — no shortcut pulls of raw
+  CMEMS or raw GRIB values. The `raw_rows_to_hourly_records` helper in
+  `waves_cmems.py` is the canonical entry point for historical EURO
+  sources; waves.py `_build_components` is the canonical processor for
+  GFS. If CSC2 output disagrees with a dashboard cell for the same
+  hour/buoy, something is wrong — not a model difference.
+
+## Launchd jobs on this Mac
+
+The production stack runs as user-agent plists at `~/Library/LaunchAgents/`:
+
+- `com.colesurfs.server` — Flask + Waitress on :5151 (log `/tmp/colesurfs.log`)
+- `com.colesurfs.autopull` — `git pull origin main` every 90 s
+- `com.cloudflare.cloudflared` — tunnel to `surfreport.coleheine.com`
+- `com.colesurfs.csc2-log` — CSC2 forecast logger @ 3 AM + 3 PM ET
+- `com.colesurfs.csc2-obs` — CSC2 observation logger every 30 min
+
+To reload any service after a code change: `launchctl kickstart -k gui/$(id -u)/<label>`.

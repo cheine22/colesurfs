@@ -34,9 +34,15 @@ venv/
 # ─── Cache ───
 .cache/
 
-# ─── CSC (Colesurfs Correction) — training archive & model artifacts ───
+# ─── CSC / CSC2 (Colesurfs Correction) — training archive & model artifacts ───
+# All of these are local-only data stores. They accumulate historical and live
+# forecast cycles, buoy observations, and trained model weights. None of it
+# belongs in Git: it's large, grows continuously, and is reproducible from
+# the public sources the backfills pull from (GEE, AWS noaa-gfs-bdp-pds, NDBC).
 .csc_data/
 .csc_models/
+.csc2_data/
+.csc2_models/
 
 # ─── Claude Code local config ───
 .claude/

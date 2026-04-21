@@ -259,6 +259,18 @@ def _extract_point_rows(ds, lat: float, lon: float) -> list[dict]:
     return rows
 
 
+def raw_rows_to_hourly_records(raw_rows: list[dict]) -> list[dict]:
+    """Convert raw 3-hourly CMEMS point-series rows into dashboard-format
+    hourly records. Shared with csc2/gee_backfill.py so any historical pull
+    from GEE flows through the same processing as the live logger.
+
+    Each input row must carry a 'utc' datetime (UTC-aware) plus the
+    CMEMS_VARS keys with raw meters / seconds / degrees values (or None).
+    Output records carry the same keys as waves._parse_response.
+    """
+    return _rows_to_records(_interpolate_to_hourly(raw_rows))
+
+
 @ttl_cache(ttl_seconds=_CMEMS_TTL_SECONDS, skip_none=True)
 def fetch_cmems_point(lat: float, lon: float) -> list | None:
     """Pull CMEMS wave forecast at a single lat/lon; return per-hour records

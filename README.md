@@ -1,4 +1,4 @@
-# colesurfs · v1.5
+# colesurfs · v1.5.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -36,31 +36,75 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 
 ## Data Sources
 
-All data is fetched from free, unauthenticated public APIs:
+All data is fetched from free or free-tier public services:
 
-- **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min)
-- **NDBC THREDDS** — historical full-spectrum NetCDFs per station (used by CSC backfill; 2017 → today where available)
-- **Open-Meteo Marine API** — ECMWF WAM (OM-EURO) and GFS wave model forecasts (10-day hourly, per-spot)
-- **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC (C-EURO) with swell partitions (VHM0_SW1/SW2, VTM01_SW1/SW2, VMDR_SW1/SW2); per-buoy 3-hourly, interpolated to hourly. Requires a free `copernicusmarine login` credential (persists at `~/.copernicusmarine/.copernicusmarine-credentials`)
-- **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts (matched to the selected wave model)
+- **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min); yearly stdmet archives back to 2021 used for NDBC backfill
+- **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC with swell partitions (VHM0_SW1/SW2, VTM01_SW1/SW2, VMDR_SW1/SW2), the EURO source for both the dashboard and CSC2. Live fetch via `copernicusmarine` (free `copernicusmarine login` credential at `~/.copernicusmarine/.copernicusmarine-credentials`)
+- **Google Earth Engine — `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`** — cycle-preserving archive of the same CMEMS product, used by CSC2's historical backfill because CMEMS itself overwrites past cycles. Free for noncommercial use (Community Tier: 150 EECU-hours/month)
+- **AWS Open Data — `s3://noaa-gfs-bdp-pds/`** — NOAA GFS-Wave GRIB2 archive with swell partitions back to 2021-04 used by CSC2's historical backfill; byte-range fetches via `.idx` sidecars
+- **Open-Meteo Marine API** — live GFS-Wave partition forecasts for the dashboard and live logger (GFS stream only; EURO migrated off Open-Meteo in v1.5)
+- **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts
 - **NOAA CO-OPS** — harmonic tide predictions per spot with Surfline-calibrated time corrections
 
 ---
 
-## CSC — Colesurfs Correction (bias-corrected swell model)
+## CSC2 — Colesurfs Correction v2 (lead-time-aware forecast correction)
 
-CSC is a statistical correction layer trained on years of paired (GFS/EURO
-model analysis, NDBC buoy spectral observation) records. It learns the
-regional biases of each raw model and emits a single bias-corrected
-primary-swell forecast at each CSC buoy — directly comparable to the
-GFS and EURO columns shown on the main dashboard.
+**Goal.** A forecast-correction model that predicts the primary + secondary
+swells (height, period, direction) at a fixed set of NDBC buoys using patterns
+in the difference between the EURO and GFS model data across lead time, plus
+the time of year. Outputs are produced in the same dashboard-ready units as
+the `EURO` and `GFS` buttons, so a future `CSC2` button drops in alongside them.
 
-- **v3 East Coast** — 3 buoys (Boston, NY Harbor Entrance, Block Island Sound), ~950 k training rows spanning 2017 → today. CV-averaged Hs MAE of **0.134 m (~0.44 ft)** vs raw GFS's 0.25 m — a ~47 % reduction on primary-swell height. Barnegat (NJ) and Jeffrey's Ledge (NH) will auto-promote into the East scope once their archives cross 24 months (mid-2027).
-- **West Coast** — Santa Monica Basin, Santa Monica Bay, Topanga Nearshore — trains silently in parallel to East; artifacts kept under `.csc_models_west/`; not surfaced on the main dashboard.
-- **Head-to-head dashboard** — [`/csc`](http://localhost:5151/csc) shows every trained variant against raw GFS, raw EURO, and the 50/50 mean on a live 10-day forecast overlay plus a verification-metric suite (MAE, RMSE, SI, HH, POD/FAR/CSI, Taylor diagram, etc.). Linked from the logo modal on the main dashboard.
-- **Automation** — three launchd plists: hourly forecast logger, seasonal retrain (equinoxes + solstices) with Pushover notification, weekly continuous evaluation.
+**Scope.** Eight buoys total, split into two tracks that share code and
+architecture but nothing else:
 
-See [`csc/docs/README.md`](./csc/docs/README.md) for the full architecture, file map, strategy notes, and performance report.
+- **East (user-facing)** — 44013 Boston, 44065 NY Harbor Entrance, 44097 Block Island Sound, 44091 Barnegat (NJ), 44098 Jeffrey's Ledge (NH)
+- **West (silent, parallel)** — 46025 Santa Monica Basin, 46221 Santa Monica Bay, 46268 Topanga Nearshore
+
+**Identity with the dashboard.** Every forecast value that feeds training and
+live correction passes through the exact same processing pipeline as the main
+dashboard (`waves_cmems.py` and `waves.py`: 5.0 s Tm01 filter, `Tm01 × 1.20`
+Tp-rescale for CMEMS partitions, energy-sorted top-2 partitions, no
+combined-sea fallback). If a CSC2 cell disagrees with the dashboard's EURO or
+GFS cell for the same hour and buoy, something is wrong — not a model
+difference.
+
+**Data sources** (all kept strictly consistent with what the dashboard serves):
+
+| stream            | live (going forward)                                | historical backfill                                                              |
+|-------------------|-----------------------------------------------------|----------------------------------------------------------------------------------|
+| EURO (CMEMS)      | `com.colesurfs.csc2-log` @ 3 AM + 3 PM ET           | Google Earth Engine `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H` (2025-04 → today) |
+| GFS (Open-Meteo)  | same plist, same schedule                           | AWS `s3://noaa-gfs-bdp-pds/` byte-range GRIB2 fetch (scope A: 2025-04 → today)   |
+| Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet yearly archives (2021 → today)                                       |
+
+**Model (planned).** Two tiers reported side-by-side on the eval page:
+
+- *CSC2 (baseline)* — per-[buoy × lead-hour × variable] linear bias correction. Simple floor; no learned interactions.
+- *CSC2 (model)* — gradient-boosted trees (LightGBM) over features: raw EURO partitions, raw GFS partitions, EURO–GFS deltas per lead, sin/cos day-of-year, buoy identity, and **lead hour as a first-class feature** (since the archive preserves full 0..+240 h lead structure for every cycle). One model per output variable.
+
+**Evaluation.** [`/csc`](http://localhost:5151/csc) renders two tables with a
+buoy picker (individual or combined):
+
+- *Table 1 — Traditional metrics*: MAE / RMSE / bias for primary and secondary swell Hs, Tp, direction. One row per (variable × statistic), four columns (Raw EURO, Raw GFS, CSC2 baseline, CSC2 model). Color-coded best → worst per row.
+- *Table 2 — Surfer metrics*: Sensitivity / specificity / PPV / NPV for the dashboard's categorizer, stratified per category (FUN, SOLID, FIRING, HECTIC, MONSTRO) plus a combined FUN-or-better class. Same four-column layout.
+
+An "Archive accumulation" panel at the top of the page stays visible even
+after training, showing per-buoy EURO cycles, GFS cycles, and **paired cycles**
+(init times where both model forecasts *and* matching buoy observations
+exist — the minimum condition for a trainable sample). The page also scaffolds
+a live forecast row showing CSC2 vs EURO vs GFS for the selected buoy out to
++240 h, activated once the model is trained.
+
+**Cadence to first training.** First model trains once we've accumulated
+~3 months of paired cycles; target is 24 months so the model can learn
+seasonal pattern changes. The GEE backfill brings us to ~12 months of
+lead-resolved CMEMS coverage at kickoff; GFS and NDBC backfills cover
+the same window with full lead structure; live loggers top both up daily.
+
+**West-coast track** uses identical architecture; models train silently,
+artifacts land in `.csc2_models/west/`, and nothing is surfaced on the main
+dashboard until explicitly promoted.
 
 ---
 
@@ -99,16 +143,57 @@ Wind direction zones are defined relative to each spot's measured shore normal: 
 
 ---
 
+## Local data layout (not committed to Git)
+
+All CSC2 training inputs and model artifacts live outside Git. `.gitignore`
+covers every directory below:
+
+```
+colesurfs/
+├── .csc_data/                 # legacy observation archive, preserved (buoy-only, model-agnostic)
+│   ├── observations/          # NDBC stdmet yearly archives (2021 → today), written by csc2.ndbc_backfill
+│   └── live_log/observations/ # 30-min live obs, written by csc2.obs_logger
+├── .csc2_data/                # CSC2 forecast archive — fresh, lead-resolved, per-cycle parquet
+│   ├── forecasts/
+│   │   ├── model=EURO/buoy=<id>/year=Y/month=M/cycle=YYYYMMDDTHHZ.parquet
+│   │   └── model=GFS/buoy=<id>/year=Y/month=M/cycle=YYYYMMDDTHHZ.parquet
+│   ├── logs/                  # per-job append-only text logs
+│   └── archive_status_cache.json   # cached payload for /api/csc2/archive_status
+└── .csc2_models/              # trained model weights (materializes when first model fits)
+    └── east/<version>/ …
+    └── west/<version>/ …
+```
+
+Why not Git?
+
+- **Size** — ~50 MB today, grows by ~300 MB/year once the live loggers and
+  GFS backfill both settle. Not a good fit for Git history.
+- **Reproducibility** — every row is deterministically rebuildable from public
+  sources (CMEMS via GEE, NOAA GFS-Wave via AWS Open Data, NDBC stdmet
+  archives). The backfills are idempotent: `python -m csc2.gee_backfill`,
+  `python -m csc2.aws_gfs_backfill --start YYYY-MM-DD`, `python -m csc2.ndbc_backfill`.
+  A fresh clone on a new machine just re-runs them.
+- **Mutability** — shards get rewritten when backfills re-run or when the
+  live loggers fire. Git isn't the right store for append-only time series.
+
+---
+
 ## Known Limitations
 
 - No wave breaking / beach angle correction — offshore buoy and model data only
-- EURO WAM doesn't always return secondary/tertiary swell partitions under wind-dominated conditions; the app falls back to the combined wave height
+- When all three partition streams from a wave source are empty for a given hour, the dashboard displays no swell rather than falling back to combined sea (v1.5 change — honest empty over faked values)
+- 46268 Topanga Nearshore sits ~200 m from the coast; the nearest 0.083° CMEMS grid cell is masked as land, so CSC2 skips that buoy's EURO stream until a seaward sample-point shim is added
 - The wind particle field is drawn at the model grid resolution (144 points at 4° spacing), not interpolated to a finer mesh
 - Tide corrections were calibrated on a single date (2026-04-01) against Surfline and are fixed constants
 
 ---
 
 ## Changelog
+
+### v1.5.1
+- **CSC2 scaffold** — fresh forecast-correction stack replaces legacy `csc/`. Fixed buoy scope (5 east + 3 west), identity-with-dashboard contract, cycle-preserving historical backfills (CMEMS via Google Earth Engine, GFS via AWS `noaa-gfs-bdp-pds`, NDBC stdmet yearly archives), live loggers (`com.colesurfs.csc2-log` @ 3 AM + 3 PM ET for forecasts; `com.colesurfs.csc2-obs` every 30 min for buoys), and `/csc` eval page with archive-accumulation table, model definitions, and per-category surfer metrics
+- **EURO dashboard tightening** — keeps v1.5's CMEMS migration, honest-empty policy, and `Tm01 × 1.20` Tp-rescale; the single `EURO` button now stays visible in place with no `C-EURO`/`OM-EURO` vestiges
+- **Local-only data layout** — new `.csc2_data/` forecast archive is gitignored alongside the legacy `.csc_data/`; docs list what lives where and why none of it is in Git
 
 ### v1.5
 - **EURO wave forecast migrated to Copernicus Marine (CMEMS)** — Open-Meteo's `ecmwf_wam025` endpoint returns `null` for every swell-partition variable, so the dashboard's OM-EURO column had been silently serving combined-sea values as "primary swell" (wind chop included). CMEMS ANFC publishes real `VHM0_SW1` / `VHM0_SW2` spectral partitions. `/api/forecast/EURO` now calls CMEMS; Open-Meteo ECMWF-WAM was removed from the site
