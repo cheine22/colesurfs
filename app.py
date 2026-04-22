@@ -47,7 +47,10 @@ import cache as _cache
 app = Flask(__name__)
 Compress(app)   # gzip/brotli compression for all responses > 500 bytes
 PORT = int(os.environ.get("COLESURFS_PORT", 5151))
-HOST = os.environ.get("COLESURFS_HOST", "127.0.0.1")
+# Bind to 0.0.0.0 so LAN devices can reach /tuner at http://<mac-ip>:5151.
+# Public internet access keeps going through the Cloudflare tunnel →
+# loopback, which we gate /tuner against via _restrict_tuner below.
+HOST = os.environ.get("COLESURFS_HOST", "0.0.0.0")
 DEBUG_MODE = os.environ.get("COLESURFS_DEBUG", "").strip() == "1"
 
 # Thread pool for parallel buoy fetches (reused across requests)
@@ -81,6 +84,33 @@ def _check_api_rate_limit():
         ip = request.remote_addr or "unknown"
         if _rate_limited("api", ip, max_calls=60, window_sec=60):
             return jsonify({"error": "rate limit exceeded"}), 429
+
+
+import ipaddress as _ipaddress
+
+
+@app.before_request
+def _restrict_tuner():
+    """Gate /tuner + /api/tuner/* to LAN clients only. The Cloudflare tunnel
+    proxies public requests through loopback, so we can't rely on remote_addr
+    alone — we additionally reject any request carrying Cloudflare-set
+    headers (CF-Ray, CF-Connecting-IP) or one where the Host header isn't
+    a LAN/loopback address."""
+    path = request.path or ""
+    if path != "/tuner" and not path.startswith("/api/tuner/"):
+        return None
+    if request.headers.get("CF-Ray") or request.headers.get("CF-Connecting-IP"):
+        return jsonify({"error": "not found"}), 404
+    host = (request.host or "").split(":")[0].strip().lower()
+    if host in ("localhost",):
+        return None
+    try:
+        ip = _ipaddress.ip_address(host)
+        if ip.is_loopback or ip.is_private:
+            return None
+    except ValueError:
+        pass
+    return jsonify({"error": "not found"}), 404
 
 
 @app.route("/api/buoys")
@@ -195,6 +225,7 @@ def api_sun():
 
 @app.route("/api/config")
 def api_config():
+    import wind_rules  # lazy: keeps import cost off cold startup
     bands = swell_rules.load_bands()
     return jsonify({
         "spots": SPOTS,
@@ -216,6 +247,7 @@ def api_config():
             {"min": b[0], "max": b[1], "bg": b[2], "text": b[3]}
             for b in WIND_BANDS
         ],
+        "wind_rating": wind_rules.load_config(),
         "model_colors": MODEL_COLORS,
         "wind_spots":   WIND_SPOTS,
         "region_views": REGION_VIEWS,
@@ -260,13 +292,15 @@ def api_debug_spectral(station_id: str):
 
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
-    """Clear all caches and reload swell rules. Rate-limited to 1 call per 30s."""
+    """Clear all caches and reload swell + wind rules. Rate-limited to 1 call per 30s."""
     ip = request.remote_addr or "unknown"
     if _rate_limited("refresh", ip, max_calls=1, window_sec=30):
         return jsonify({"error": "rate limit exceeded, try again in 30s"}), 429
     _cache.clear_all()
     swell_rules.reload()
-    return jsonify({"status": "cache cleared, swell rules reloaded"})
+    import wind_rules
+    wind_rules.reload()
+    return jsonify({"status": "cache cleared, swell + wind rules reloaded"})
 
 
 @app.route("/api/buoy_history/<station_id>")
@@ -284,6 +318,7 @@ def api_buoy_history(station_id):
 @app.route("/")
 def index():
     # Inline /api/config data into the HTML to save one round-trip on initial load.
+    import wind_rules
     bands = swell_rules.load_bands()
     config_data = {
         "spots": SPOTS,
@@ -305,6 +340,7 @@ def index():
             {"min": b[0], "max": b[1], "bg": b[2], "text": b[3]}
             for b in WIND_BANDS
         ],
+        "wind_rating": wind_rules.load_config(),
         "model_colors": MODEL_COLORS,
         "wind_spots":   WIND_SPOTS,
         "region_views": REGION_VIEWS,
@@ -331,6 +367,162 @@ def api_csc2_archive_status():
     """How much CMEMS/GFS/buoy archive we've accumulated so far, per buoy."""
     from csc2.archive_status import summarize
     return jsonify(summarize())
+
+
+@app.route("/palette-preview")
+def palette_preview_page():
+    """Static visual comparison of the current swell + wind palettes and
+    five alternative wind palettes. Pick one (A–E) and ask to apply it —
+    this page has no save action, it's for eyeballing only."""
+    return render_template("palette-preview.html")
+
+
+@app.route("/tuner")
+def tuner_page():
+    """Interactive slider-driven tuner for swell + wind category thresholds.
+    Changes write back to the TOML files and trigger the same reload hook
+    /api/refresh uses, so every downstream consumer picks them up live."""
+    import wind_rules
+    bands = swell_rules.load_bands()
+    # Build a JSON-friendly copy of the swell bands — preserve 'always'/'never'
+    # markers so the UI knows which cells are non-tunable.
+    def _jsonable_rule(v):
+        if isinstance(v, dict): return {"gte": v["gte"]}
+        if isinstance(v, float): return v
+        return v   # 'always' / 'never' strings
+    swell_payload = {
+        "bands": [
+            {"period_ub": b["period_ub"],
+             "rules": {k: _jsonable_rule(v) for k, v in b["rules"].items()}}
+            for b in bands
+        ]
+    }
+    # Light-mode palette for the tuner previews. Cell backgrounds come
+    # straight from swell_rules.COLORS' light_bg field so the heatmap
+    # matches what the main dashboard shows in light mode.
+    cat_colors = {
+        c: {"bg": swell_rules.COLORS[c]["light_bg"],
+            "text": swell_rules.COLORS[c]["light_text"]}
+        for c in swell_rules.CATEGORIES
+    }
+    wind_colors = {
+        "Glassy":   {"bg": "#ccecd4", "text": "#166028"},
+        "Groomed":  {"bg": "#ccecd4", "text": "#166028"},
+        "Clean":    {"bg": "#ccecd4", "text": "#166028"},
+        "Textured": {"bg": "#f5e6c0", "text": "#7a5500"},
+        "Messy":    {"bg": "#d8e8f8", "text": "#1a5a9a"},
+        "Blown Out":{"bg": "#e2e2de", "text": "#70707c"},
+    }
+    payload = {
+        "swell": swell_payload,
+        "wind":  wind_rules.load_config(),
+        "categories":    swell_rules.CATEGORIES,
+        "cat_colors":    cat_colors,
+        "wind_ratings":  ["Glassy","Groomed","Clean","Textured","Messy","Blown Out"],
+        "wind_colors":   wind_colors,
+    }
+    return render_template(
+        "tuner.html",
+        inline_config=_json.dumps(payload, separators=(',', ':')),
+    )
+
+
+@app.route("/api/tuner/save", methods=["POST"])
+def api_tuner_save():
+    """Persist swell + wind threshold edits to their TOML files and reload
+    the in-memory caches. Any downstream endpoint picking up category
+    classifications from `swell_rules` / `wind_rules` uses the new values
+    on its next call."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        _write_swell_toml(payload.get("swell", {}))
+        _write_wind_toml(payload.get("wind", {}))
+        swell_rules.reload()
+        import wind_rules
+        wind_rules.reload()
+        # Bust per-fetcher caches so any stale category labels get rebuilt
+        _cache.clear_all()
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    return jsonify({"status": "saved", "reloaded": ["swell_rules", "wind_rules"]})
+
+
+def _render_rule(v):
+    """Serialize one rule back to TOML syntax."""
+    if isinstance(v, dict) and "gte" in v:
+        return f'">={v["gte"]}"'
+    if isinstance(v, (int, float)):
+        return f"{float(v)}"
+    # string ('always' | 'never') or fallback
+    return f'"{v}"'
+
+
+def _write_swell_toml(swell):
+    bands = swell.get("bands") or []
+    lines = [
+        "# Swell Categorization Scheme",
+        "# (auto-written by /api/tuner/save; edit in /tuner or this file)",
+        "",
+    ]
+    for b in bands:
+        ub = b.get("period_ub")
+        ub_str = '"inf"' if ub is None else f"{float(ub)}"
+        lines.append("[[band]]")
+        lines.append(f"period_upper_bound = {ub_str}")
+        rules = b.get("rules") or {}
+        for cat in swell_rules.CATEGORIES:
+            if cat not in rules:
+                continue
+            lines.append(f"{cat:<8}= {_render_rule(rules[cat])}")
+        lines.append("")
+    _atomic_write_text(
+        os.path.join(app.root_path, "swell-categorization-scheme.toml"),
+        "\n".join(lines) + "\n",
+    )
+
+
+def _write_wind_toml(wind):
+    def g(p, default=0.0):
+        cur = wind
+        for k in p.split("."):
+            if not isinstance(cur, dict) or k not in cur:
+                return default
+            cur = cur[k]
+        return float(cur)
+    txt = f"""# Wind Categorization Scheme
+# (auto-written by /api/tuner/save; edit in /tuner or this file)
+# Sustained-wind-speed thresholds — matrix Y-axis on /tuner is authoritative.
+
+[angles]
+offshore_max  = {g('angles.offshore_max')}
+sideshore_max = {g('angles.sideshore_max')}
+
+[low_sustained]
+clean_max = {g('low_sustained.clean_max')}
+
+[offshore]
+glassy_sust_max       = {g('offshore.glassy_sust_max')}
+groomed_sustained_min = {g('offshore.groomed_sustained_min')}
+
+[sideshore]
+textured_sust_max = {g('sideshore.textured_sust_max')}
+messy_sust_max    = {g('sideshore.messy_sust_max')}
+
+[onshore]
+textured_sust_max = {g('onshore.textured_sust_max')}
+messy_sust_max    = {g('onshore.messy_sust_max')}
+"""
+    _atomic_write_text(
+        os.path.join(app.root_path, "wind-categorization-scheme.toml"),
+        txt,
+    )
+
+
+def _atomic_write_text(path: str, text: str) -> None:
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, path)
 
 
 @app.route("/favicon.svg")

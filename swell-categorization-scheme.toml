@@ -1,19 +1,8 @@
 # Swell Categorization Scheme
-# ═══════════════════════════════════════════════════════════════
-# Each [[band]] section covers one period range.
-# Rows are evaluated in order; the first band where
-#   period_s < period_upper_bound is used.
-# The last band (period_upper_bound = "inf") is the catch-all.
-#
-# Per-category threshold values:
-#   number   → upper height bound in ft  (height_ft < N → this category)
-#   ">=N"    → lower height bound in ft  (height_ft >= N → catch-all for row)
-#   "always" → period alone forces FLAT   (no height check)
-#   "never"  → category skipped for this period range
-# ═══════════════════════════════════════════════════════════════
+# (auto-written by /api/tuner/save; edit in /tuner or this file)
 
 [[band]]
-period_upper_bound = 5.5      # < 5.5 s — wind chop / noise
+period_upper_bound = 5.9
 FLAT    = "always"
 WEAK    = "never"
 FUN     = "never"
@@ -23,7 +12,7 @@ HECTIC  = "never"
 MONSTRO = "never"
 
 [[band]]
-period_upper_bound = 7.5      # 5.5 – 7.5 s — windswell 
+period_upper_bound = 7.5
 FLAT    = 2.5
 WEAK    = 5.0
 FUN     = 8.0
@@ -33,7 +22,7 @@ HECTIC  = ">=8"
 MONSTRO = "never"
 
 [[band]]
-period_upper_bound = 9.5      # 7.5 – 9.5 s — short period
+period_upper_bound = 9.5
 FLAT    = 2.0
 WEAK    = 4.0
 FUN     = 7.5
@@ -43,7 +32,7 @@ HECTIC  = ">=12"
 MONSTRO = "never"
 
 [[band]]
-period_upper_bound = 12.5     # 9.5 – 12.5 s — short-mid period
+period_upper_bound = 12.5
 FLAT    = 1.5
 WEAK    = 2.5
 FUN     = 4.5
@@ -53,7 +42,7 @@ HECTIC  = ">=9.5"
 MONSTRO = "never"
 
 [[band]]
-period_upper_bound = 15.5     # 12.5 – 15.5 s — upper-mid period
+period_upper_bound = 15.5
 FLAT    = 2.0
 WEAK    = 3.0
 FUN     = 4.0
@@ -63,21 +52,22 @@ HECTIC  = ">=14"
 MONSTRO = "never"
 
 [[band]]
-period_upper_bound = 17.5     # 15.5 – 17.5 s — groundswell
-FLAT    = 0.5
+period_upper_bound = 17.5
+FLAT    = 1.0
 WEAK    = "never"
 FUN     = 3.0
-SOLID   = 4.0
+SOLID   = 5.0
 FIRING  = 10.0
 HECTIC  = "never"
 MONSTRO = ">=10"
 
 [[band]]
-period_upper_bound = "inf"    # >= 17.5 s — long period
-FLAT    = 0.5
+period_upper_bound = "inf"
+FLAT    = 1.0
 WEAK    = "never"
 FUN     = 3.0
 SOLID   = 4.0
 FIRING  = 8.0
 HECTIC  = "never"
 MONSTRO = ">=8"
+

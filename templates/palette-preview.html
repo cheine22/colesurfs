@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wind palette preview · colesurfs</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f;
+    --bd0:#1e1e24; --bd1:#2e2e38; --bd2:#3e3e4e;
+    --fg0:#e8e8f0; --fg1:#a0a0b8; --fg2:#606075; --fg3:#404055;
+    --accent:#7c6af7;
+  }
+  body.light {
+    --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa;
+    --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
+    --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg0); color:var(--fg0);
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+
+  .page { max-width:1100px; margin:0 auto; padding:20px 24px 80px; }
+  .top { display:flex; align-items:center; gap:14px; padding-bottom:12px;
+    border-bottom:1px solid var(--bd1); }
+  .logo { font-size:18px; }
+  .logo .wave { color:var(--accent); margin-right:2px; font-weight:700; }
+  .crumb { color:var(--fg2); font-size:12px; }
+  .crumb a { color:var(--fg1); }
+  .spacer { flex:1; }
+  .toggle {
+    padding:6px 12px; border:1px solid var(--bd2); border-radius:5px;
+    color:var(--fg1); background:var(--bg1); font:inherit; cursor:pointer;
+  }
+  .toggle.on { border-color:var(--accent); color:var(--accent); }
+
+  .intro { background:var(--bg2); border:1px solid var(--bd1); border-radius:6px;
+    padding:12px 16px; margin:14px 0 22px; font-size:11.5px; line-height:1.6;
+    color:var(--fg1); }
+
+  .palette-block { margin: 22px 0 4px; }
+  .palette-block h2 {
+    font-size: 13px; letter-spacing:.04em; font-weight:600;
+    margin: 0 0 4px; color: var(--fg0);
+  }
+  .palette-block .desc {
+    color: var(--fg2); font-size: 11px; margin: 0 0 8px; line-height:1.5;
+  }
+  .palette-block .note {
+    color: var(--fg2); font-size: 10.5px; padding-top:6px;
+  }
+
+  .cells {
+    display:grid; grid-template-columns: repeat(7, 1fr);
+    gap: 5px; margin-bottom: 4px;
+  }
+  .cells.four { grid-template-columns: repeat(4, 1fr); }
+  .cells.six  { grid-template-columns: repeat(6, 1fr); }
+  .cell {
+    border-radius:4px;
+    padding: 10px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-align: center;
+    border: 1px solid transparent;
+  }
+  .cell small { display:block; font-weight:400; opacity:.7; font-size: 9.5px;
+    margin-top: 2px; letter-spacing: 0; }
+
+  .context-row {
+    display:grid; grid-template-columns: 120px 1fr; gap: 10px;
+    align-items: stretch; padding: 4px 0;
+  }
+  .context-row .label {
+    color:var(--fg1); font-size:11px; padding: 10px 6px;
+    border-right: 1px solid var(--bd0);
+  }
+
+  .current-marker { color:var(--accent); font-weight:700;
+    text-transform:uppercase; font-size:10px; letter-spacing:.1em; }
+
+  hr { border:none; border-top:1px dashed var(--bd1); margin:16px 0; }
+</style>
+</head>
+<body>
+
+<div class="page">
+<div class="top">
+  <div class="logo"><span class="wave">∿</span>colesurfs · palette preview</div>
+  <span class="crumb">/ <a href="/">← dashboard</a> / <a href="/tuner">tuner</a></span>
+  <div class="spacer"></div>
+  <button id="theme-toggle" class="toggle" onclick="toggleTheme()">◑ light mode</button>
+</div>
+
+<div class="intro">
+  Wind ratings currently share color families with swell categories (green for good,
+  gold for iffy, blue for messy, grey for blown out). This page renders the current
+  swell palette and the current wind palette side-by-side with five alternative wind
+  palettes so you can compare at a glance. Pick one (A–E) and tell me to apply it;
+  swell colors stay exactly as they are.
+</div>
+
+<!-- CURRENT SWELL (reference) -->
+<div class="palette-block">
+  <h2>SWELL — current <span class="current-marker">reference · unchanged</span></h2>
+  <div class="desc">
+    Full 7-category swell palette as it exists today; all options below are
+    designed to be visually distinct from these.
+  </div>
+  <div class="cells" id="swell-current"></div>
+</div>
+
+<hr>
+
+<!-- CURRENT WIND (baseline) -->
+<div class="palette-block">
+  <h2>WIND — current <span class="current-marker">live on site today</span></h2>
+  <div class="desc">
+    Reuses FUN-green / SOLID-gold / WEAK-blue / FLAT-grey from the swell palette.
+    Swell ≡ wind at a glance — that's the confusability problem.
+  </div>
+  <div class="cells four" id="wind-current"></div>
+</div>
+
+<hr>
+
+<!-- OPTION A -->
+<div class="palette-block">
+  <h2>Option A · Cool hue-shift (teal / burnt-orange / slate / warm grey)</h2>
+  <div class="desc">
+    Wind sits in different hues from swell entirely. Green-for-good becomes teal,
+    gold becomes burnt orange, blue becomes slate-indigo, grey stays grey but
+    warmer. Same visual weight as swell cells, clearly a different color register.
+  </div>
+  <div class="cells four" id="wind-A"></div>
+</div>
+
+<!-- OPTION B -->
+<div class="palette-block">
+  <h2>Option B · Low saturation (same hues, quieter)</h2>
+  <div class="desc">
+    Same hue families as swell but desaturated ~40 %. Swell reads as the primary
+    signal, wind recedes to supporting context.
+  </div>
+  <div class="cells four" id="wind-B"></div>
+</div>
+
+<!-- OPTION C -->
+<div class="palette-block">
+  <h2>Option C · Hue shift + lighter fills (airy)</h2>
+  <div class="desc">
+    Combines A's hue shift with softer background values. Wind cells feel almost
+    like a label strip rather than a data block — good if you want wind framing
+    to feel "meta" vs. swell "data."
+  </div>
+  <div class="cells four" id="wind-C"></div>
+</div>
+
+<!-- OPTION D -->
+<div class="palette-block">
+  <h2>Option D · Outlined chip (near-black fill + bright text + thin border)</h2>
+  <div class="desc">
+    Wind cells get a common dark background with a vivid colored outline + text —
+    like a tag chip. Visually unambiguous: a filled cell is swell, a chip is wind.
+    Highest-contrast differentiation of the five options.
+  </div>
+  <div class="cells four" id="wind-D"></div>
+</div>
+
+<!-- OPTION E -->
+<div class="palette-block">
+  <h2>Option E · Earth tones (sage / ochre / dusty blue / stone)</h2>
+  <div class="desc">
+    Wind uses natural muted earth shades throughout. Reads as a warmer, more
+    organic register distinct from swell's digital-bright palette. Softer visual
+    noise on a scroll-heavy page.
+  </div>
+  <div class="cells four" id="wind-E"></div>
+</div>
+
+<hr>
+
+<!-- CONTEXTUAL DEMO: show 1 row of each next to a sample swell row -->
+<div class="palette-block">
+  <h2>Head-to-head · sample row</h2>
+  <div class="desc">
+    Reasonable stress test: what each wind palette looks like directly
+    underneath a representative swell cell row. The rightmost column is how a
+    real dashboard row would look with swell above and the wind rating cell
+    below.
+  </div>
+  <div id="contextual"></div>
+</div>
+
+</div>
+
+<script>
+// ─── Palette data ──────────────────────────────────────────────
+const SWELL_CATS = ['FLAT','WEAK','FUN','SOLID','FIRING','HECTIC','MONSTRO'];
+const SWELL = {
+  dark: {
+    FLAT:    {bg:'#131316', text:'#404055'},
+    WEAK:    {bg:'#0d1520', text:'#3d7ab5'},
+    FUN:     {bg:'#0d1a0f', text:'#3fb950'},
+    SOLID:   {bg:'#1a1800', text:'#f5c518'},
+    FIRING:  {bg:'#220a0a', text:'#ff5a4e'},
+    HECTIC:  {bg:'#1c1240', text:'#7c6af7'},
+    MONSTRO: {bg:'#1a0a30', text:'#c084fc'},
+  },
+  light: {
+    FLAT:    {bg:'#e2e2de', text:'#70707c'},
+    WEAK:    {bg:'#d8e8f8', text:'#1a5a9a'},
+    FUN:     {bg:'#ccecd4', text:'#166028'},
+    SOLID:   {bg:'#f5e6c0', text:'#7a5500'},
+    FIRING:  {bg:'#f8d8d8', text:'#a81010'},
+    HECTIC:  {bg:'#e2dcf8', text:'#3828b8'},
+    MONSTRO: {bg:'#ecdcf8', text:'#7010b8'},
+  }
+};
+
+const WIND_CATS = ['Glassy/Groomed/Clean', 'Textured', 'Messy', 'Blown Out'];
+
+const WIND_PALETTES = {
+  // Current — green / gold / blue / grey (shared with swell)
+  current: {
+    dark: {
+      'Glassy/Groomed/Clean': {bg:'#0d1a0f', text:'#3fb950'},
+      'Textured':             {bg:'#1a1800', text:'#f5c518'},
+      'Messy':                {bg:'#0d1520', text:'#3d7ab5'},
+      'Blown Out':            {bg:'#131316', text:'#404055'},
+    },
+    light: {
+      'Glassy/Groomed/Clean': {bg:'#ccecd4', text:'#166028'},
+      'Textured':             {bg:'#f5e6c0', text:'#7a5500'},
+      'Messy':                {bg:'#d8e8f8', text:'#1a5a9a'},
+      'Blown Out':            {bg:'#e2e2de', text:'#70707c'},
+    },
+  },
+  // A — Cool hue-shift (teal / burnt-orange / slate / warm grey)
+  A: {
+    dark: {
+      'Glassy/Groomed/Clean': {bg:'#0c1c1d', text:'#4dc8b7'},
+      'Textured':             {bg:'#1f1407', text:'#f79a3a'},
+      'Messy':                {bg:'#111627', text:'#6470c2'},
+      'Blown Out':            {bg:'#19171a', text:'#6a6265'},
+    },
+    light: {
+      'Glassy/Groomed/Clean': {bg:'#d4ece7', text:'#0f5b4e'},
+      'Textured':             {bg:'#f8e3c0', text:'#7a4510'},
+      'Messy':                {bg:'#dde0f0', text:'#2d2e85'},
+      'Blown Out':            {bg:'#dedada', text:'#5a5255'},
+    },
+  },
+  // B — Low saturation
+  B: {
+    dark: {
+      'Glassy/Groomed/Clean': {bg:'#131a14', text:'#71a882'},
+      'Textured':             {bg:'#1a1812', text:'#c2a366'},
+      'Messy':                {bg:'#11141c', text:'#6884a8'},
+      'Blown Out':            {bg:'#16161a', text:'#4f4d57'},
+    },
+    light: {
+      'Glassy/Groomed/Clean': {bg:'#dee6e0', text:'#3a5e44'},
+      'Textured':             {bg:'#ebe2ce', text:'#6a5a2a'},
+      'Messy':                {bg:'#e0e6ee', text:'#3f5878'},
+      'Blown Out':            {bg:'#dedbd8', text:'#605c63'},
+    },
+  },
+  // C — Hue shift + lighter fills
+  C: {
+    dark: {
+      'Glassy/Groomed/Clean': {bg:'#15252a', text:'#7dd8c8'},
+      'Textured':             {bg:'#27180c', text:'#ffb057'},
+      'Messy':                {bg:'#181c30', text:'#8b94d1'},
+      'Blown Out':            {bg:'#1d1b1f', text:'#8a8085'},
+    },
+    light: {
+      'Glassy/Groomed/Clean': {bg:'#e4f1ed', text:'#196c60'},
+      'Textured':             {bg:'#faeacd', text:'#86530f'},
+      'Messy':                {bg:'#e4e6f3', text:'#3e4390'},
+      'Blown Out':            {bg:'#e7e3e0', text:'#6f656a'},
+    },
+  },
+  // D — Outlined chip (dark fill + vivid text + border)
+  D: {
+    dark: {
+      'Glassy/Groomed/Clean': {bg:'#0a0a0c', text:'#4dd29a', border:'#4dd29a'},
+      'Textured':             {bg:'#0a0a0c', text:'#ffa947', border:'#ffa947'},
+      'Messy':                {bg:'#0a0a0c', text:'#7289d7', border:'#7289d7'},
+      'Blown Out':            {bg:'#0a0a0c', text:'#90878c', border:'#4a4548'},
+    },
+    light: {
+      'Glassy/Groomed/Clean': {bg:'#f5f5f5', text:'#0b6944', border:'#0b6944'},
+      'Textured':             {bg:'#f5f5f5', text:'#7a4210', border:'#b66a1a'},
+      'Messy':                {bg:'#f5f5f5', text:'#27358f', border:'#27358f'},
+      'Blown Out':            {bg:'#f5f5f5', text:'#5a5055', border:'#9a9198'},
+    },
+  },
+  // E — Earth tones
+  E: {
+    dark: {
+      'Glassy/Groomed/Clean': {bg:'#151a14', text:'#a7b77a'},
+      'Textured':             {bg:'#1c1509', text:'#d4a859'},
+      'Messy':                {bg:'#121619', text:'#88a0b4'},
+      'Blown Out':            {bg:'#17161a', text:'#8b8580'},
+    },
+    light: {
+      'Glassy/Groomed/Clean': {bg:'#dfe5d2', text:'#43582a'},
+      'Textured':             {bg:'#ecdcb8', text:'#6a4914'},
+      'Messy':                {bg:'#d8dfe4', text:'#385060'},
+      'Blown Out':            {bg:'#dcd6cf', text:'#5f564e'},
+    },
+  },
+};
+
+// ─── Render helpers ────────────────────────────────────────────
+function cellHtml(cat, spec, extraBorder) {
+  const border = spec.border
+    ? `border: 1.5px solid ${spec.border};`
+    : 'border: 1px solid transparent;';
+  return `<div class="cell" style="background:${spec.bg}; color:${spec.text}; ${border}">
+      ${cat}<small>${spec.bg} · ${spec.text}</small>
+    </div>`;
+}
+
+function fillRow(elId, cats, paletteFor, theme) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = cats.map(c => {
+    const spec = paletteFor[theme][c];
+    return spec ? cellHtml(c, spec) : '';
+  }).join('');
+}
+
+function renderContextual(theme) {
+  const container = document.getElementById('contextual');
+  const labels = [
+    ['current','current — swell ≈ wind'],
+    ['A',      'Option A · hue shift'],
+    ['B',      'Option B · low saturation'],
+    ['C',      'Option C · airy'],
+    ['D',      'Option D · outlined chip'],
+    ['E',      'Option E · earth tones'],
+  ];
+
+  const swellRow = SWELL_CATS.slice(2,6).map((cat, i) => {
+    const spec = SWELL[theme][cat];
+    return `<div class="cell" style="background:${spec.bg}; color:${spec.text}; border:1px solid transparent;">
+      ${cat}<small>sample swell</small></div>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="context-row">
+      <div class="label">swell (reference)</div>
+      <div class="cells four">${swellRow}</div>
+    </div>
+  ` + labels.map(([key, lbl]) => {
+    const pal = WIND_PALETTES[key][theme];
+    const row = WIND_CATS.map(c => {
+      const spec = pal[c];
+      const border = spec.border ? `border:1.5px solid ${spec.border};` : 'border:1px solid transparent;';
+      return `<div class="cell" style="background:${spec.bg}; color:${spec.text}; ${border}">${c}</div>`;
+    }).join('');
+    return `
+      <div class="context-row">
+        <div class="label">${lbl}</div>
+        <div class="cells four">${row}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderAll() {
+  const theme = document.body.classList.contains('light') ? 'light' : 'dark';
+  fillRow('swell-current', SWELL_CATS, SWELL, theme);
+  fillRow('wind-current',  WIND_CATS, WIND_PALETTES.current, theme);
+  fillRow('wind-A',        WIND_CATS, WIND_PALETTES.A, theme);
+  fillRow('wind-B',        WIND_CATS, WIND_PALETTES.B, theme);
+  fillRow('wind-C',        WIND_CATS, WIND_PALETTES.C, theme);
+  fillRow('wind-D',        WIND_CATS, WIND_PALETTES.D, theme);
+  fillRow('wind-E',        WIND_CATS, WIND_PALETTES.E, theme);
+  renderContextual(theme);
+  const btn = document.getElementById('theme-toggle');
+  btn.textContent = theme === 'dark' ? '◑ switch to light' : '◐ switch to dark';
+  btn.classList.toggle('on', theme === 'light');
+}
+
+function toggleTheme() {
+  document.body.classList.toggle('light');
+  renderAll();
+}
+
+// Start in dark mode to match the main dashboard default.
+renderAll();
+</script>
+
+</body>
+</html>

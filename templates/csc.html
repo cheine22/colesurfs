@@ -102,7 +102,7 @@
 
 <div class="controls">
   <label for="buoy-picker" class="muted" style="font-size:11px; letter-spacing:.06em; text-transform: uppercase;">Buoy</label>
-  <select id="buoy-picker" disabled><option>— combined / per-buoy coming once models train —</option></select>
+  <select id="buoy-picker"></select>
 </div>
 
 <section>
@@ -116,26 +116,88 @@
     was last trained — retrains happen when the paired-cycle count crosses meaningful thresholds.
   </div>
   <div class="muted" style="font-size:11px; margin: 2px 0 10px;">
-    <b>Paired cycles</b> — model init times (cycles) where EURO has a shard,
-    GFS has a shard, and the buoy has at least one observation whose
-    <code>valid_utc</code> matches a lead step present in <em>both</em>
-    forecasts. This is the minimum condition for deriving a trainable
-    (EURO forecast, GFS forecast, buoy observation) triple from that init
-    time. Training sample count per cycle is typically dozens, so the
-    total-sample count is much higher than the paired-cycle count — both
-    are tracked internally, only the cycle count is displayed here.
+    A <b>model run</b> is one model initialization tagged by its
+    <code>run_time</code> (e.g. a CMEMS EURO 00Z run on 2025-06-15).
+    <b>Paired model + buoy data</b> counts init times where EURO has a
+    run, GFS has a run, and the buoy has observations at at least
+    <b>95%</b> of the shared EURO∩GFS forecast valid_utcs. Paired-sample
+    count reported in the sub-label is the actually-matched buoy-hour
+    count, not the whole forecast window. The 95% threshold tolerates
+    routine single-hour NDBC dropouts without letting cycles with large
+    buoy outages slip into training.
   </div>
   <table id="archive-table">
     <thead><tr>
       <th>Buoy</th><th>Scope</th>
-      <th class="num">EURO cycles</th>
-      <th class="num">GFS cycles</th>
-      <th class="num" title="Init times with EURO+GFS forecasts AND buoy obs overlap">Paired cycles</th>
-      <th>3-mo progress</th>
+      <th class="num">EURO model runs</th>
+      <th class="num">GFS model runs</th>
+      <th class="num" title="Init times with EURO+GFS forecasts AND buoy obs overlap">Paired model + buoy data</th>
       <th>24-mo progress</th>
     </tr></thead>
-    <tbody><tr><td colspan="7" class="muted" style="text-align:center; padding:20px;">Loading…</td></tr></tbody>
+    <tbody><tr><td colspan="6" class="muted" style="text-align:center; padding:20px;">Loading…</td></tr></tbody>
   </table>
+
+  <h3 style="margin-top:24px">Paired model + buoy data · seasonal histogram</h3>
+  <div class="muted" style="font-size:11px; margin: 0 0 8px;">
+    Bar height = count of <em>distinct model runs</em> (cycle IDs) on each
+    calendar day (MM-DD) that are usable as training cycles for at least
+    one functional buoy — i.e. EURO has a run, GFS has a run, and some
+    buoy clears the 95% observation-coverage bar. Same unit as the two
+    histograms below, so by construction paired ≤ min(EURO, GFS) on every
+    bar. Year-agnostic: any year's data drops into its MM-DD bucket.
+    <span id="years-seen-label"></span>
+  </div>
+  <div id="paired-histogram" style="width:100%;
+       border:1px solid var(--bd1); border-radius:6px; background:var(--bg1);
+       padding: 14px 16px 10px;">
+    <svg id="paired-histogram-svg" width="100%" height="180"
+         preserveAspectRatio="none"></svg>
+    <div id="paired-histogram-axis" class="muted"
+         style="font-size:10.5px; display:flex; justify-content:space-between;
+                padding-top:6px;"></div>
+  </div>
+
+  <h3 style="margin-top:20px">Individual model coverage · unpaired</h3>
+  <div class="muted" style="font-size:11px; margin: 0 0 10px;">
+    Each bar = count of distinct model runs on that MM-DD, summed across
+    every year. No pairing requirement — these reflect raw model-run
+    availability, which may outpace paired coverage when one side (e.g.
+    the AWS GFS backfill) finishes ahead of the other.
+  </div>
+  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px;">
+        <h4 style="margin:0; font-size:12px; color:var(--accent);
+                   letter-spacing:.04em;">EURO (CMEMS) · model runs</h4>
+        <span id="euro-histogram-meta" class="muted" style="font-size:10.5px;"></span>
+      </div>
+      <div id="euro-histogram" style="margin-top:6px;
+           border:1px solid var(--bd1); border-radius:6px; background:var(--bg1);
+           padding: 10px 12px 8px;">
+        <svg id="euro-histogram-svg" width="100%" height="140"
+             preserveAspectRatio="none"></svg>
+        <div id="euro-histogram-axis" class="muted"
+             style="font-size:10px; display:flex; justify-content:space-between;
+                    padding-top:4px;"></div>
+      </div>
+    </div>
+    <div>
+      <div style="display:flex; align-items:baseline; gap:8px;">
+        <h4 style="margin:0; font-size:12px; color:var(--amber);
+                   letter-spacing:.04em;">GFS (NOAA) · model runs</h4>
+        <span id="gfs-histogram-meta" class="muted" style="font-size:10.5px;"></span>
+      </div>
+      <div id="gfs-histogram" style="margin-top:6px;
+           border:1px solid var(--bd1); border-radius:6px; background:var(--bg1);
+           padding: 10px 12px 8px;">
+        <svg id="gfs-histogram-svg" width="100%" height="140"
+             preserveAspectRatio="none"></svg>
+        <div id="gfs-histogram-axis" class="muted"
+             style="font-size:10px; display:flex; justify-content:space-between;
+                    padding-top:4px;"></div>
+      </div>
+    </div>
+  </div>
 </section>
 
 <section>
@@ -277,6 +339,61 @@
 
 <script>
 const CFG = {{ inline_config | safe }};
+let _archiveStatus = null;
+
+function _populateBuoyPicker() {
+  const sel = document.getElementById('buoy-picker');
+  if (!sel || sel.options.length > 0) return;
+  // Only east-coast buoys are user-selectable. West-coast buoys train
+  // silently in parallel per the CSC2 spec and are not surfaced here.
+  const east = CFG.buoys.filter(b => b.scope === 'east');
+
+  const combined = document.createElement('option');
+  combined.value = 'combined_east';
+  combined.textContent = 'Combined (east coast)';
+  sel.appendChild(combined);
+
+  const eastGroup = document.createElement('optgroup');
+  eastGroup.label = 'East coast';
+  for (const b of east) {
+    const o = document.createElement('option');
+    o.value = b.buoy_id;
+    o.textContent = `${b.label} (${b.buoy_id})`;
+    eastGroup.appendChild(o);
+  }
+  sel.appendChild(eastGroup);
+
+  sel.value = 'combined_east';
+  sel.addEventListener('change', () => _renderHistogramsForSelection());
+}
+
+function _renderHistogramsForSelection() {
+  if (!_archiveStatus) return;
+  const key = document.getElementById('buoy-picker').value || 'combined_east';
+  const h = (_archiveStatus.histograms || {})[key] || {
+    paired_by_doy: [], euro_by_doy: [], gfs_by_doy: []
+  };
+  renderDoyHistogram({
+    points: h.paired_by_doy || [], valueField: 'paired_runs',
+    svgId: 'paired-histogram-svg', axisId: 'paired-histogram-axis',
+    colorVar: '--green', height: 180, emptyMsg: 'No paired runs yet for this selection.',
+    tooltipLabel: 'paired runs',
+  });
+  renderDoyHistogram({
+    points: h.euro_by_doy || [], valueField: 'runs',
+    svgId: 'euro-histogram-svg', axisId: 'euro-histogram-axis',
+    metaId: 'euro-histogram-meta', colorVar: '--accent',
+    height: 140, emptyMsg: 'No EURO runs on disk yet for this selection.',
+    tooltipLabel: 'EURO runs',
+  });
+  renderDoyHistogram({
+    points: h.gfs_by_doy || [], valueField: 'runs',
+    svgId: 'gfs-histogram-svg', axisId: 'gfs-histogram-axis',
+    metaId: 'gfs-histogram-meta', colorVar: '--amber',
+    height: 140, emptyMsg: 'No GFS runs on disk yet for this selection.',
+    tooltipLabel: 'GFS runs',
+  });
+}
 
 async function loadArchiveStatus() {
   let r;
@@ -284,15 +401,16 @@ async function loadArchiveStatus() {
     r = await fetch('/api/csc2/archive_status').then(x => x.json());
   } catch(e) {
     document.querySelector('#archive-table tbody').innerHTML =
-      '<tr><td colspan="7" class="muted" style="text-align:center;">Archive status unavailable</td></tr>';
+      '<tr><td colspan="6" class="muted" style="text-align:center;">Archive status unavailable</td></tr>';
     return;
   }
+  _archiveStatus = r;
+  _populateBuoyPicker();
   const tb = document.querySelector('#archive-table tbody');
   tb.innerHTML = '';
   const fmt = n => (n == null ? '—' : n.toLocaleString());
   for (const b of CFG.buoys) {
     const row = r.per_buoy[b.buoy_id] || {};
-    const soft = Math.round((row.progress_soft_floor || 0) * 100);
     const tgt  = Math.round((row.progress_target     || 0) * 100);
     const pairedLabel = row.paired_samples
       ? `${fmt(row.paired_cycles)} <span class="muted" style="font-size:10.5px">(~${fmt(row.paired_samples)} samples)</span>`
@@ -304,13 +422,111 @@ async function loadArchiveStatus() {
       <td class="num">${fmt(row.euro_cycles)}</td>
       <td class="num">${fmt(row.gfs_cycles)}</td>
       <td class="num">${pairedLabel}</td>
-      <td><div class="progress-outer"><div class="progress-inner" style="width:${soft}%;"></div></div>
-          <div class="progress-label">${soft}%</div></td>
       <td><div class="progress-outer"><div class="progress-inner" style="width:${tgt}%;"></div></div>
           <div class="progress-label">${tgt}%</div></td>
     `;
     tb.appendChild(tr);
   }
+
+  const yearsLabel = document.getElementById('years-seen-label');
+  const yearsSeen = r.years_seen || [];
+  if (yearsLabel) {
+    yearsLabel.textContent = yearsSeen.length
+      ? ` Currently summing across ${yearsSeen.length} year${yearsSeen.length === 1 ? '' : 's'}: ${yearsSeen.join(', ')}.`
+      : '';
+  }
+
+  _renderHistogramsForSelection();
+}
+
+function renderDoyHistogram(opts) {
+  const svg  = document.getElementById(opts.svgId);
+  const axis = document.getElementById(opts.axisId);
+  const meta = opts.metaId ? document.getElementById(opts.metaId) : null;
+  if (!svg || !axis) return;
+  svg.innerHTML = '';
+  axis.innerHTML = '';
+
+  // Build leap-year MM-DD axis so every calendar day is visible
+  const byDoy = Object.create(null);
+  for (const p of opts.points) byDoy[p.doy] = p[opts.valueField];
+  const series = [];
+  for (let m = 1; m <= 12; m++) {
+    const daysInMonth = new Date(Date.UTC(2024, m, 0)).getUTCDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      series.push({ doy: key, n: byDoy[key] || 0 });
+    }
+  }
+  if (meta) {
+    const total = series.reduce((a, s) => a + s.n, 0);
+    meta.textContent = total ? `(${total.toLocaleString()} total)` : '';
+  }
+  if (!series.some(s => s.n > 0)) {
+    axis.textContent = opts.emptyMsg || 'No data yet.';
+    return;
+  }
+  // Fixed linear y-axis 0–10 so the three histograms are directly
+  // comparable and a bar's visual area maps 1:1 to count across charts.
+  // Any value exceeding 10 is visually clipped at the top of the plot
+  // area but still recorded in the tooltip and the "total" meta label.
+  const maxN = 10;
+
+  const VB_W = 1000, VB_H = opts.height || 180, PAD_TOP = 6, PAD_BOT = 12;
+  svg.setAttribute('viewBox', `0 0 ${VB_W} ${VB_H}`);
+  const usableH = VB_H - PAD_TOP - PAD_BOT;
+  const barW = VB_W / series.length;
+
+  const fill = getComputedStyle(document.documentElement)
+    .getPropertyValue(opts.colorVar).trim() || '#7c6af7';
+
+  // Y-axis gridlines every 2 units — 0, 2, 4, 6, 8, 10 for the fixed scale.
+  const step = Math.max(1, Math.round(maxN / 5));
+  for (let v = 0; v <= maxN; v += step) {
+    const y = PAD_TOP + usableH - (usableH * v / maxN);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="0" x2="${VB_W}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"
+         stroke="var(--bd0)" stroke-width="0.6"/>
+       <text x="4" y="${(y - 2).toFixed(1)}" fill="var(--fg3)"
+         font-size="10" font-family="ui-monospace, monospace">${v}</text>`);
+  }
+
+  // Month dividers
+  let runningIdx = 0;
+  const monthStarts = [];
+  for (let m = 1; m <= 12; m++) {
+    monthStarts.push(runningIdx);
+    runningIdx += new Date(Date.UTC(2024, m, 0)).getUTCDate();
+  }
+  for (const idx of monthStarts) {
+    const x = idx * barW;
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${x.toFixed(2)}" x2="${x.toFixed(2)}" y1="${PAD_TOP}"
+         y2="${PAD_TOP + usableH}" stroke="var(--bd0)"
+         stroke-width="0.4" opacity="0.7"/>`);
+  }
+
+  // Bars. Values exceeding the fixed scale get visually clipped but the
+  // tooltip still shows the true count.
+  const bars = series.map((s, i) => {
+    if (s.n <= 0) return '';
+    const clipped = Math.min(s.n, maxN);
+    const h = (clipped / maxN) * usableH;
+    const x = i * barW;
+    const y = PAD_TOP + usableH - h;
+    const tip = s.n > maxN
+      ? `${s.doy} · ${s.n} ${opts.tooltipLabel} (clipped at ${maxN}; summed across all years)`
+      : `${s.doy} · ${s.n} ${opts.tooltipLabel} (summed across all years)`;
+    return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}"
+              width="${Math.max(0.5, barW - 0.15).toFixed(2)}"
+              height="${h.toFixed(2)}" fill="${fill}" opacity="0.9">
+              <title>${tip}</title>
+            </rect>`;
+  }).join('');
+  svg.insertAdjacentHTML('beforeend', bars);
+
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  axis.innerHTML = monthNames.map(m => `<span>${m}</span>`).join('');
 }
 
 loadArchiveStatus();

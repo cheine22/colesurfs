@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Category Tuner · colesurfs</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    /* Light mode palette — matches the main dashboard's light theme. */
+    --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+    --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
+    --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+    --accent:#7c6af7; --green:#3fb950; --amber:#b8820d; --red:#c81e1e;
+    --blue:#3d7ab5;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg0); color:var(--fg0);
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color:var(--accent); text-decoration:none; } a:hover{text-decoration:underline;}
+  .page { max-width:1300px; margin:0 auto; padding:20px 24px 80px; }
+  .top { display:flex; gap:14px; align-items:center; padding-bottom:12px;
+    border-bottom:1px solid var(--bd1); }
+  .logo { font-size:18px; }
+  .logo .wave { color:var(--accent); margin-right:2px; font-weight:700; }
+  .crumb { color:var(--fg2); font-size:12px; }
+  .crumb a { color:var(--fg1); }
+  .spacer { flex:1; }
+  .btn { padding:6px 12px; border:1px solid var(--bd2); border-radius:5px;
+    color:var(--fg1); background:var(--bg1); font:inherit; cursor:pointer;
+    letter-spacing:.04em; }
+  .btn:hover { border-color:var(--accent); color:var(--fg0); }
+  .btn-primary { border-color:var(--accent); color:var(--accent);
+    background: rgba(124,106,247,0.09); }
+  .btn-primary:hover { background: rgba(124,106,247,0.18); color:#4a3faa; }
+  .btn-warn { border-color:var(--amber); color:var(--amber); }
+  .btn:disabled { opacity:0.45; cursor:not-allowed; }
+
+  h2 { font-size:14px; color:var(--fg1); margin:22px 0 10px;
+    padding-bottom:5px; border-bottom:1px dashed var(--bd1);
+    letter-spacing:.06em; text-transform:uppercase; font-weight:500; }
+  h3 { font-size:12px; color:var(--fg0); margin:16px 0 8px;
+    letter-spacing:.04em; }
+  .muted { color:var(--fg2); }
+  .notice { background:var(--bg2); border:1px solid var(--bd1);
+    border-radius:6px; padding:10px 14px; color:var(--fg1);
+    font-size:11.5px; line-height:1.55; }
+
+  .tuner-grid { display:grid; grid-template-columns: minmax(340px, 460px) 1fr;
+    gap:18px; align-items:start; }
+  @media (max-width:920px) { .tuner-grid { grid-template-columns: 1fr; } }
+
+  .slider-row { display:grid; grid-template-columns: 180px 1fr 54px;
+    gap:10px; align-items:center; padding: 4px 0;
+    font-size:11.5px; }
+  .slider-row label { color:var(--fg1); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .slider-row input[type=range] { width:100%; accent-color:var(--accent); }
+  .slider-row .val { text-align:right; color:var(--fg0);
+    font-variant-numeric:tabular-nums; }
+  .slider-row .unit { color:var(--fg2); font-size:10.5px; }
+
+  .block { border:1px solid var(--bd1); border-radius:6px;
+    background:var(--bg1); padding:12px 14px; }
+  .block h3 { margin-top:0; }
+
+  .preview { position:sticky; top:16px; }
+
+  #swell-heatmap { width:100%; height:auto; display:block;
+    background:var(--bg1); }
+  #wind-matrix { width:100%; height:auto; display:block;
+    background:var(--bg1); }
+
+  .status { font-size:11px; color:var(--fg2);
+    padding:8px 12px; border-radius:4px; background:var(--bg2);
+    border:1px solid var(--bd1); margin-left:10px; }
+  .status.dirty { color:var(--amber); border-color:var(--amber); }
+  .status.saved { color:var(--green); border-color:var(--green); }
+  .status.error { color:var(--red);   border-color:var(--red);   }
+
+  /* Legend for heatmap */
+  .legend { display:flex; gap:8px; flex-wrap:wrap; font-size:10.5px;
+    color:var(--fg1); padding:6px 0 0 0; }
+  .legend .sw { display:inline-flex; align-items:center; gap:4px; }
+  .legend .sw::before { content:''; width:10px; height:10px;
+    border-radius:2px; background:var(--bd2); display:inline-block; }
+</style>
+</head>
+<body>
+<div class="page">
+
+<div class="top">
+  <div class="logo"><span class="wave">∿</span>colesurfs · Category Tuner</div>
+  <span class="crumb">/ <a href="/">← dashboard</a></span>
+  <div class="spacer"></div>
+  <span id="status" class="status">Loading…</span>
+  <button class="btn btn-warn" id="reset-btn" disabled>Revert</button>
+  <button class="btn btn-primary" id="save-btn" disabled>Save changes</button>
+</div>
+
+<div class="notice" style="margin-top:14px">
+  All sliders bind to the source-of-truth TOML files
+  (<code>swell-categorization-scheme.toml</code>,
+  <code>wind-categorization-scheme.toml</code>). Save persists to disk and
+  calls the server's refresh hook — every downstream consumer
+  (main dashboard table colors, spot wind ratings, <a href="/csc">/csc</a>
+  surfer-metrics stratification, and the CSC2 training targets when the
+  model fits) picks up the new thresholds immediately. Previews update as
+  you drag.
+</div>
+
+<!-- ═══ SWELL ═══════════════════════════════════════════════ -->
+<h2>Swell categorization</h2>
+<div class="tuner-grid">
+  <div>
+    <div class="block">
+      <h3>Period band boundaries</h3>
+      <div id="swell-boundary-sliders"></div>
+    </div>
+    <div class="block" style="margin-top:12px;">
+      <h3>Per-band height thresholds</h3>
+      <div class="muted" style="font-size:10.5px; margin-bottom:6px;">
+        Each number is an upper-bound on height in ft (category applies
+        when height &lt; threshold) unless marked <code>≥</code> (catch-all
+        above that bound). <code>—</code> = category disabled for that band.
+      </div>
+      <div id="swell-rule-sliders"></div>
+    </div>
+  </div>
+  <div class="preview">
+    <div class="block">
+      <h3>Heatmap preview
+        <span class="muted" style="font-weight:normal; font-size:10.5px">
+          (height × period, colored by assigned category)</span></h3>
+      <svg id="swell-heatmap" viewBox="0 0 600 380"
+           preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="swell-legend" class="legend"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WIND ════════════════════════════════════════════════ -->
+<h2>Wind rating</h2>
+<div class="tuner-grid">
+  <div>
+    <div class="block">
+      <h3>Direction bands (degrees from offshore)</h3>
+      <div id="wind-angle-sliders"></div>
+    </div>
+    <div class="block" style="margin-top:12px;">
+      <h3>Speed / gust thresholds (mph)</h3>
+      <div id="wind-speed-sliders"></div>
+    </div>
+  </div>
+  <div class="preview">
+    <div class="block">
+      <h3>Matrix preview
+        <span class="muted" style="font-weight:normal; font-size:10.5px">
+          (angle-from-offshore × sustained wind speed — drag the dashed lines to edit)</span></h3>
+      <svg id="wind-matrix" viewBox="0 0 600 340"
+           preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="wind-legend" class="legend"></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+const CFG = {{ inline_config | safe }};
+let SWELL = deepClone(CFG.swell);   // mutable working copy
+let WIND  = deepClone(CFG.wind);
+const SWELL_ORIG = deepClone(CFG.swell);
+const WIND_ORIG  = deepClone(CFG.wind);
+const CATEGORIES = CFG.categories;   // ['FLAT','WEAK','FUN','SOLID','FIRING','HECTIC','MONSTRO']
+const CAT_COLORS = CFG.cat_colors;   // { FLAT:{bg,text}, ... }
+const WIND_RATINGS = CFG.wind_ratings; // ['Glassy','Groomed','Clean','Textured','Messy','Blown Out']
+const WIND_COLORS = CFG.wind_colors;
+
+function deepClone(x) { return JSON.parse(JSON.stringify(x)); }
+
+// ─── Slider building blocks ─────────────────────────────────
+function buildSliderRow(container, { id, label, min, max, step, unit, getter, setter }) {
+  const row = document.createElement('div');
+  row.className = 'slider-row';
+  row.innerHTML = `
+    <label for="${id}" title="${label}">${label}</label>
+    <input type="range" id="${id}" min="${min}" max="${max}" step="${step}">
+    <span class="val"><span id="${id}-val"></span> <span class="unit">${unit || ''}</span></span>
+  `;
+  container.appendChild(row);
+  const input = row.querySelector('input');
+  const valEl = row.querySelector(`#${id}-val`);
+  const refresh = () => {
+    const v = getter();
+    input.value = v;
+    valEl.textContent = Number.isInteger(v * 10) ? v.toFixed(1) : v.toString();
+  };
+  input.addEventListener('input', () => {
+    setter(parseFloat(input.value));
+    valEl.textContent = parseFloat(input.value).toFixed(1);
+    markDirty();
+    rerenderAll();
+  });
+  refresh();
+  return refresh;
+}
+
+// ─── SWELL ui ───────────────────────────────────────────────
+function buildSwellUi() {
+  const boxBound = document.getElementById('swell-boundary-sliders');
+  boxBound.innerHTML = '';
+  // All bands except the implicit "inf" catch-all have a period_ub we can tune.
+  SWELL.bands.forEach((band, i) => {
+    if (band.period_ub == null) return;   // inf band
+    buildSliderRow(boxBound, {
+      id: `swell-ub-${i}`,
+      label: `Band ${i+1} upper bound`,
+      min: 3, max: 25, step: 0.1, unit: 's',
+      getter: () => band.period_ub,
+      setter: v => band.period_ub = v,
+    });
+  });
+
+  const boxRule = document.getElementById('swell-rule-sliders');
+  boxRule.innerHTML = '';
+  SWELL.bands.forEach((band, i) => {
+    const head = document.createElement('div');
+    head.style.cssText = 'font-size:11px; color:var(--fg0); margin:8px 0 2px;';
+    const ubStr = band.period_ub == null ? '∞' : band.period_ub.toFixed(1);
+    head.textContent = `Band ${i+1} · ≤ ${ubStr}s`;
+    boxRule.appendChild(head);
+    // Only numeric and {gte:...} entries get sliders.
+    for (const cat of CATEGORIES) {
+      const rule = band.rules[cat];
+      if (rule === 'never' || rule === 'always') continue;
+      const isGte = (rule && typeof rule === 'object' && 'gte' in rule);
+      const isNum = (typeof rule === 'number');
+      if (!(isGte || isNum)) continue;
+      const label = isGte ? `${cat} ≥ (ft)` : `${cat} < (ft)`;
+      buildSliderRow(boxRule, {
+        id: `swell-${i}-${cat}`,
+        label, min: 0, max: 25, step: 0.1, unit: 'ft',
+        getter: () => isGte ? band.rules[cat].gte : band.rules[cat],
+        setter: v => {
+          if (isGte) band.rules[cat].gte = v;
+          else band.rules[cat] = v;
+        },
+      });
+    }
+  });
+
+  // Swell legend chips
+  const legend = document.getElementById('swell-legend');
+  legend.innerHTML = CATEGORIES.map(c =>
+    `<span class="sw" style="--bg:${CAT_COLORS[c].bg}"><span class="_sw"
+      style="display:inline-block; width:10px; height:10px; border-radius:2px;
+             background:${CAT_COLORS[c].bg}"></span> ${c}</span>`
+  ).join('');
+}
+
+function categorizeSwell(heightFt, periodS) {
+  if (heightFt == null || periodS == null) return 'FLAT';
+  // Find first band whose period_ub > periodS; else last band (inf)
+  let band = SWELL.bands[SWELL.bands.length - 1];
+  for (const b of SWELL.bands) {
+    if (b.period_ub == null) { band = b; break; }
+    if (periodS < b.period_ub) { band = b; break; }
+  }
+  let last = CATEGORIES[0];
+  for (const c of CATEGORIES) {
+    const r = band.rules[c];
+    if (r === 'never') continue;
+    last = c;
+    if (r === 'always') break;
+    if (r && typeof r === 'object' && 'gte' in r) {
+      if (heightFt >= r.gte) break;
+    } else if (typeof r === 'number') {
+      if (heightFt < r) break;
+    }
+  }
+  return last;
+}
+
+function renderSwellHeatmap() {
+  const svg = document.getElementById('swell-heatmap');
+  svg.innerHTML = '';
+  const W = 600, H = 380, PAD_L = 40, PAD_B = 24, PAD_T = 8, PAD_R = 6;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const P_MAX = 25, H_MAX = 25;      // seconds, feet
+  const NX = 50, NY = 50;
+  const cellW = plotW / NX, cellH = plotH / NY;
+  const pieces = [];
+  for (let ix = 0; ix < NX; ix++) {
+    const p = (ix + 0.5) / NX * P_MAX;
+    for (let iy = 0; iy < NY; iy++) {
+      // Height decreases top → bottom visually
+      const h = ((NY - 1 - iy) + 0.5) / NY * H_MAX;
+      const cat = categorizeSwell(h, p);
+      const color = CAT_COLORS[cat] ? CAT_COLORS[cat].bg : '#222';
+      pieces.push(`<rect x="${(PAD_L + ix*cellW).toFixed(2)}"
+        y="${(PAD_T + iy*cellH).toFixed(2)}"
+        width="${cellW.toFixed(2)}" height="${cellH.toFixed(2)}"
+        fill="${color}"/>`);
+    }
+  }
+  // Axes + ticks
+  const axes = `
+    <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+plotH}"
+      stroke="var(--bd2)" stroke-width="0.8"/>
+    <line x1="${PAD_L}" y1="${PAD_T+plotH}" x2="${PAD_L+plotW}" y2="${PAD_T+plotH}"
+      stroke="var(--bd2)" stroke-width="0.8"/>`;
+  let ticks = '';
+  // X ticks every 5s
+  for (let p = 0; p <= P_MAX; p += 5) {
+    const x = PAD_L + (p / P_MAX) * plotW;
+    ticks += `<line x1="${x}" x2="${x}" y1="${PAD_T+plotH}" y2="${PAD_T+plotH+4}"
+                stroke="var(--fg3)" stroke-width="0.8"/>
+              <text x="${x}" y="${PAD_T+plotH+15}" fill="var(--fg2)"
+                font-size="10" text-anchor="middle"
+                font-family="ui-monospace,monospace">${p}s</text>`;
+  }
+  // Y ticks every 5 ft
+  for (let h = 0; h <= H_MAX; h += 5) {
+    const y = PAD_T + plotH - (h / H_MAX) * plotH;
+    ticks += `<line x1="${PAD_L-4}" x2="${PAD_L}" y1="${y}" y2="${y}"
+                stroke="var(--fg3)" stroke-width="0.8"/>
+              <text x="${PAD_L-6}" y="${y+3}" fill="var(--fg2)"
+                font-size="10" text-anchor="end"
+                font-family="ui-monospace,monospace">${h}ft</text>`;
+  }
+  svg.innerHTML = pieces.join('') + axes + ticks;
+}
+
+// ─── WIND ui ────────────────────────────────────────────────
+function buildWindUi() {
+  const boxA = document.getElementById('wind-angle-sliders');
+  boxA.innerHTML = '';
+  buildSliderRow(boxA, {
+    id:'wind-a-offshore', label:'Offshore  ≤',
+    min:0, max:90, step:1, unit:'°',
+    getter:()=>WIND.angles.offshore_max, setter:v=>WIND.angles.offshore_max=v,
+  });
+  buildSliderRow(boxA, {
+    id:'wind-a-sideshore', label:'Sideshore ≤',
+    min:32, max:179, step:1, unit:'°',
+    getter:()=>WIND.angles.sideshore_max, setter:v=>WIND.angles.sideshore_max=v,
+  });
+
+  const boxS = document.getElementById('wind-speed-sliders');
+  boxS.innerHTML = '';
+  const add = (id, label, path) => buildSliderRow(boxS, {
+    id, label, min:0, max:40, step:0.25, unit:'mph',
+    getter:()=> path.reduce((o,k)=>o[k], WIND),
+    setter:v => {
+      let o = WIND; for (let i=0;i<path.length-1;i++) o = o[path[i]];
+      o[path[path.length-1]] = v;
+    },
+  });
+  add('wind-clean-low',   'Clean if sustained <',       ['low_sustained','clean_max']);
+  add('wind-off-glassy',  'Offshore · Glassy sust <',   ['offshore','glassy_sust_max']);
+  add('wind-off-groomed', 'Offshore · Groomed sust >',  ['offshore','groomed_sustained_min']);
+  add('wind-side-tex',    'Sideshore · Textured sust <',['sideshore','textured_sust_max']);
+  add('wind-side-messy',  'Sideshore · Messy sust <',   ['sideshore','messy_sust_max']);
+  add('wind-on-tex',      'Onshore · Textured sust <',  ['onshore','textured_sust_max']);
+  add('wind-on-messy',    'Onshore · Messy sust <',     ['onshore','messy_sust_max']);
+
+  const legend = document.getElementById('wind-legend');
+  legend.innerHTML = WIND_RATINGS.map(r =>
+    `<span class="sw"><span style="display:inline-block; width:10px; height:10px;
+      border-radius:2px; background:${WIND_COLORS[r].bg}"></span> ${r}</span>`
+  ).join('');
+}
+
+function categorizeWind(speed, angleFromOffshore, _shoreNormal) {
+  // Sustained-only classification. Must mirror wind_rules.categorize().
+  const diff = Math.abs(angleFromOffshore);
+  let band;
+  if (diff <= WIND.angles.offshore_max)       band = 'offshore';
+  else if (diff <= WIND.angles.sideshore_max) band = 'sideshore';
+  else                                         band = 'onshore';
+  if (band === 'offshore' && speed < WIND.offshore.glassy_sust_max)         return 'Glassy';
+  if (band === 'offshore' && speed > WIND.offshore.groomed_sustained_min)   return 'Groomed';
+  if (band === 'offshore')                                                   return 'Clean';
+  if (speed < WIND.low_sustained.clean_max)                                  return 'Clean';
+  if (band === 'sideshore' && speed < WIND.sideshore.textured_sust_max)      return 'Textured';
+  if (band === 'onshore'   && speed < WIND.onshore.textured_sust_max)        return 'Textured';
+  if (band === 'sideshore' && speed < WIND.sideshore.messy_sust_max)         return 'Messy';
+  if (band === 'onshore'   && speed < WIND.onshore.messy_sust_max)           return 'Messy';
+  return 'Blown Out';
+}
+
+// Layout constants reused by the drag handlers and the renderer.
+const WM = { W: 600, H: 340, PAD_L: 52, PAD_B: 30, PAD_T: 8, PAD_R: 8,
+             ANG_MAX: 180, SPD_MAX: 40 };
+WM.plotW = WM.W - WM.PAD_L - WM.PAD_R;
+WM.plotH = WM.H - WM.PAD_T - WM.PAD_B;
+
+function _angleToX(a) { return WM.PAD_L + (a / WM.ANG_MAX) * WM.plotW; }
+function _xToAngle(x) { return (x - WM.PAD_L) / WM.plotW * WM.ANG_MAX; }
+function _speedToY(s) { return WM.PAD_T + WM.plotH - (s / WM.SPD_MAX) * WM.plotH; }
+function _yToSpeed(y) { return (WM.PAD_T + WM.plotH - y) / WM.plotH * WM.SPD_MAX; }
+
+// Map the current WIND config to a list of draggable boundaries. Every
+// horizontal boundary's `speed` is the config value directly — sustained
+// mph in the same units the matrix Y-axis uses — so what you drag is what
+// the classifier compares against, byte-for-byte.
+function windBoundaries() {
+  const { angles, low_sustained, offshore, sideshore, onshore } = WIND;
+  const list = [];
+  list.push({
+    axis: 'v', label: 'Offshore / Sideshore cutoff', angle: angles.offshore_max,
+    min: 0, max: angles.sideshore_max - 1,
+    onDrag: v => WIND.angles.offshore_max = Math.round(v),
+  });
+  list.push({
+    axis: 'v', label: 'Sideshore / Onshore cutoff', angle: angles.sideshore_max,
+    min: angles.offshore_max + 1, max: 179,
+    onDrag: v => WIND.angles.sideshore_max = Math.round(v),
+  });
+
+  const oX0 = 0, oX1 = angles.offshore_max;
+  list.push({ axis:'h', label:'Glassy / Clean', x0:oX0, x1:oX1,
+    speed: offshore.glassy_sust_max, min:0.5, max:30,
+    onDrag: s => WIND.offshore.glassy_sust_max = +s.toFixed(1) });
+  list.push({ axis:'h', label:'Clean / Groomed', x0:oX0, x1:oX1,
+    speed: offshore.groomed_sustained_min, min:1, max:39.5,
+    onDrag: s => WIND.offshore.groomed_sustained_min = +s.toFixed(1) });
+
+  const sX0 = angles.offshore_max, sX1 = angles.sideshore_max;
+  list.push({ axis:'h', label:'Clean (low sustained)', x0:sX0, x1:sX1,
+    speed: low_sustained.clean_max, min:0, max:20,
+    onDrag: s => WIND.low_sustained.clean_max = +s.toFixed(1) });
+  list.push({ axis:'h', label:'Textured / Messy (side)', x0:sX0, x1:sX1,
+    speed: sideshore.textured_sust_max, min:0.5, max:39,
+    onDrag: s => WIND.sideshore.textured_sust_max = +s.toFixed(1) });
+  list.push({ axis:'h', label:'Messy / Blown Out (side)', x0:sX0, x1:sX1,
+    speed: sideshore.messy_sust_max, min:0.5, max:39.5,
+    onDrag: s => WIND.sideshore.messy_sust_max = +s.toFixed(1) });
+
+  const nX0 = angles.sideshore_max, nX1 = 180;
+  list.push({ axis:'h', label:'Clean (low sustained)', x0:nX0, x1:nX1,
+    speed: low_sustained.clean_max, min:0, max:20,
+    onDrag: s => WIND.low_sustained.clean_max = +s.toFixed(1) });
+  list.push({ axis:'h', label:'Textured / Messy (on)', x0:nX0, x1:nX1,
+    speed: onshore.textured_sust_max, min:0.5, max:39,
+    onDrag: s => WIND.onshore.textured_sust_max = +s.toFixed(1) });
+  list.push({ axis:'h', label:'Messy / Blown Out (on)', x0:nX0, x1:nX1,
+    speed: onshore.messy_sust_max, min:0.5, max:39.5,
+    onDrag: s => WIND.onshore.messy_sust_max = +s.toFixed(1) });
+  return list;
+}
+
+function renderWindMatrix() {
+  const svg = document.getElementById('wind-matrix');
+  svg.innerHTML = '';
+  svg.setAttribute('viewBox', `0 0 ${WM.W} ${WM.H}`);
+  const { PAD_L, PAD_T, PAD_B, PAD_R, plotW, plotH, ANG_MAX, SPD_MAX } = WM;
+  const NX = 60, NY = 40;
+  const cellW = plotW / NX, cellH = plotH / NY;
+
+  // Cells
+  const pieces = [];
+  for (let ix = 0; ix < NX; ix++) {
+    const angle = (ix + 0.5) / NX * ANG_MAX;
+    for (let iy = 0; iy < NY; iy++) {
+      const speed = ((NY - 1 - iy) + 0.5) / NY * SPD_MAX;
+      const cat = categorizeWind(speed, angle, 0);
+      const color = WIND_COLORS[cat] ? WIND_COLORS[cat].bg : '#222';
+      pieces.push(`<rect x="${(PAD_L + ix*cellW).toFixed(2)}"
+        y="${(PAD_T + iy*cellH).toFixed(2)}"
+        width="${cellW.toFixed(2)}" height="${cellH.toFixed(2)}"
+        fill="${color}"/>`);
+    }
+  }
+  // Axes
+  const axes = `
+    <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T+plotH}"
+      stroke="var(--bd2)" stroke-width="0.8"/>
+    <line x1="${PAD_L}" y1="${PAD_T+plotH}" x2="${PAD_L+plotW}" y2="${PAD_T+plotH}"
+      stroke="var(--bd2)" stroke-width="0.8"/>`;
+  let ticks = '';
+  for (let a = 0; a <= ANG_MAX; a += 30) {
+    const x = _angleToX(a);
+    ticks += `<line x1="${x}" x2="${x}" y1="${PAD_T+plotH}" y2="${PAD_T+plotH+4}"
+                stroke="var(--fg3)" stroke-width="0.8"/>
+              <text x="${x}" y="${PAD_T+plotH+15}" fill="var(--fg2)"
+                font-size="10" text-anchor="middle"
+                font-family="ui-monospace,monospace">${a}°</text>`;
+  }
+  for (let s = 0; s <= SPD_MAX; s += 10) {
+    const y = _speedToY(s);
+    ticks += `<line x1="${PAD_L-4}" x2="${PAD_L}" y1="${y}" y2="${y}"
+                stroke="var(--fg3)" stroke-width="0.8"/>
+              <text x="${PAD_L-6}" y="${y+3}" fill="var(--fg2)"
+                font-size="10" text-anchor="end"
+                font-family="ui-monospace,monospace">${s}mph</text>`;
+  }
+  const xLab = `<text x="${PAD_L + plotW/2}" y="${WM.H-4}" fill="var(--fg2)"
+    font-size="10" text-anchor="middle">angle from offshore →</text>`;
+  const yLab = `<text x="10" y="${PAD_T + plotH/2}" fill="var(--fg2)"
+    font-size="10" text-anchor="middle"
+    transform="rotate(-90, 10, ${PAD_T + plotH/2})">sustained speed (mph)</text>`;
+
+  svg.innerHTML = pieces.join('') + axes + ticks + xLab + yLab;
+
+  // Interactive boundary lines — SVG children added through DOM so we can
+  // attach event listeners (innerHTML would strip them).
+  const NS = 'http://www.w3.org/2000/svg';
+  function makeLine(attrs, cls, title) {
+    const el = document.createElementNS(NS, 'line');
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    el.setAttribute('class', cls);
+    const t = document.createElementNS(NS, 'title'); t.textContent = title;
+    el.appendChild(t);
+    return el;
+  }
+  for (const b of windBoundaries()) {
+    if (b.axis === 'v') {
+      const x = _angleToX(b.angle);
+      // Visible dashed line
+      svg.appendChild(makeLine({
+        x1: x, x2: x, y1: PAD_T, y2: PAD_T+plotH,
+        stroke: 'var(--fg0)', 'stroke-width': 1.2,
+        'stroke-dasharray': '3,3', opacity: 0.65,
+        'pointer-events': 'none',
+      }, 'wbv', `${b.label}: ${b.angle.toFixed(0)}°`));
+      // Fat invisible hit zone — pointer-events:stroke so transparent stroke
+      // still hit-tests (the default visiblePainted wouldn't catch it).
+      const hit = makeLine({
+        x1: x, x2: x, y1: PAD_T, y2: PAD_T+plotH,
+        stroke: '#000', 'stroke-opacity': 0, 'stroke-width': 18,
+        'pointer-events': 'stroke',
+        style: 'cursor: ew-resize;',
+      }, 'wbv-hit', `${b.label}: drag to adjust`);
+      _attachDrag(hit, 'v', b);
+      svg.appendChild(hit);
+    } else {
+      const x0 = _angleToX(b.x0), x1 = _angleToX(b.x1);
+      const y = _speedToY(b.speed);
+      svg.appendChild(makeLine({
+        x1: x0, x2: x1, y1: y, y2: y,
+        stroke: 'var(--fg0)', 'stroke-width': 1.2,
+        'stroke-dasharray': '4,3', opacity: 0.65,
+        'pointer-events': 'none',
+      }, 'wbh', `${b.label}: ${b.speed.toFixed(1)} mph`));
+      const hit = makeLine({
+        x1: x0, x2: x1, y1: y, y2: y,
+        stroke: '#000', 'stroke-opacity': 0, 'stroke-width': 18,
+        'pointer-events': 'stroke',
+        style: 'cursor: ns-resize;',
+      }, 'wbh-hit', `${b.label}: drag to adjust`);
+      _attachDrag(hit, 'h', b);
+      svg.appendChild(hit);
+    }
+  }
+}
+
+function _attachDrag(line, axis, spec) {
+  // Look up the SVG by id at event-time — line.ownerSVGElement is null
+  // during _attachDrag because we attach handlers before the element is
+  // appended, and every mousemove would otherwise throw TypeError.
+  let dragging = false;
+  let pendingFrame = null;
+  const toSvgCoords = (evt) => {
+    const svg = document.getElementById('wind-matrix');
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  };
+  function onMove(evt) {
+    if (!dragging) return;
+    const p = toSvgCoords(evt);
+    if (axis === 'v') {
+      let a = _xToAngle(p.x);
+      a = Math.max(spec.min, Math.min(spec.max, a));
+      spec.onDrag(a);
+    } else {
+      let s = _yToSpeed(p.y);
+      s = Math.max(spec.min, Math.min(spec.max, s));
+      spec.onDrag(s);
+    }
+    markDirty();
+    // Throttle the matrix repaint to one per animation frame and skip the
+    // swell heatmap + slider-panel rebuild until mouseup (they rebuild
+    // several hundred DOM nodes each — too heavy for 60 fps).
+    if (pendingFrame == null) {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null;
+        renderWindMatrix();
+      });
+    }
+  }
+  function onUp() {
+    dragging = false;
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onUp);
+    if (pendingFrame != null) { cancelAnimationFrame(pendingFrame); pendingFrame = null; }
+    // Final sync: rebuild the numeric slider panel so it mirrors the drag.
+    buildWindUi();
+    renderWindMatrix();
+  }
+  line.addEventListener('mousedown', (evt) => {
+    evt.preventDefault();
+    dragging = true;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// ─── Persistence + orchestration ─────────────────────────────
+function rerenderAll() { renderSwellHeatmap(); renderWindMatrix(); }
+
+function markDirty() {
+  const s = document.getElementById('status');
+  s.className = 'status dirty';
+  s.textContent = 'Unsaved changes';
+  document.getElementById('save-btn').disabled = false;
+  document.getElementById('reset-btn').disabled = false;
+}
+function markSaved() {
+  const s = document.getElementById('status');
+  s.className = 'status saved';
+  s.textContent = 'Saved · live on site';
+  document.getElementById('save-btn').disabled = true;
+  document.getElementById('reset-btn').disabled = true;
+}
+function markClean() {
+  const s = document.getElementById('status');
+  s.className = 'status';
+  s.textContent = 'In sync with saved config';
+  document.getElementById('save-btn').disabled = true;
+  document.getElementById('reset-btn').disabled = true;
+}
+function markError(msg) {
+  const s = document.getElementById('status');
+  s.className = 'status error';
+  s.textContent = 'Save failed — ' + msg;
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('save-btn'); btn.disabled = true;
+  try {
+    const r = await fetch('/api/tuner/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ swell: SWELL, wind: WIND }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+    // Replace the baselines so further edits show as "unsaved" again
+    Object.assign(SWELL_ORIG, deepClone(SWELL));
+    Object.assign(WIND_ORIG,  deepClone(WIND));
+    markSaved();
+  } catch (e) {
+    markError(String(e));
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  SWELL = deepClone(SWELL_ORIG);
+  WIND  = deepClone(WIND_ORIG);
+  buildSwellUi();
+  buildWindUi();
+  rerenderAll();
+  markClean();
+});
+
+buildSwellUi();
+buildWindUi();
+rerenderAll();
+markClean();
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Wind Categorization Scheme
+# (auto-written by /api/tuner/save; edit in /tuner or this file)
+# Sustained-wind-speed thresholds — matrix Y-axis on /tuner is authoritative.
+
+[angles]
+offshore_max  = 32.0
+sideshore_max = 115.0
+
+[low_sustained]
+clean_max = 3.0
+
+[offshore]
+glassy_sust_max       = 9.33
+groomed_sustained_min = 20.0
+
+[sideshore]
+textured_sust_max = 15.5
+messy_sust_max    = 18.33
+
+[onshore]
+textured_sust_max = 8.13
+messy_sust_max    = 13.33

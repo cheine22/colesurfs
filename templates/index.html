@@ -1317,6 +1317,7 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
     <a class="info-modal-refresh" href="/csc" style="text-decoration:none;text-align:center">∿ CSC (BETA)</a>
+    <a class="info-modal-refresh" href="/tuner" style="text-decoration:none;text-align:center">⇞ TUNER</a>
     <dl class="info-modal-sources">
       <dt>Swell — EURO</dt><dd>Copernicus Marine (CMEMS) · ECMWF WAM ANFC</dd>
       <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
@@ -2566,69 +2567,55 @@ function buildWaveCell(r, t, extraClass = '', spotName = null) {
 }
 
 /**
- * 6-tier wind condition classification (evaluated hierarchically):
- *
- *   1. Glassy    — offshore, gust < 10 mph
- *   2. Groomed   — offshore, sustained > 20 mph (strong offshore)
- *   3. Clean     — offshore any speed, OR any direction w/ sustained < 5 mph
- *   4. Textured  — sideshore (32°–115°) gust < 15 OR onshore (>115°) gust < 10
- *   5. Messy     — sideshore gust < 25 OR onshore gust < 20
- *   6. Blown Out — everything else
- *
- * Effective gust = min(raw_gust, sustained × 1.5) — caps ECMWF over-reporting.
+ * 6-tier wind condition classifier, keyed on SUSTAINED speed only.
+ * Gust readings are ignored — the /tuner matrix is authoritative and
+ * Y-axis is sustained mph in the same unit the config file stores.
+ * `gust_mph` is kept in the signature for caller compatibility.
  */
-function windCondition(speed_mph, direction_deg, shore_normal, gust_mph) {
+function windCondition(speed_mph, direction_deg, shore_normal, _gust_mph) {
   if (speed_mph == null || shore_normal == null) return null;
-  const rawG = gust_mph != null ? gust_mph : speed_mph;
-  const g    = Math.min(rawG, speed_mph * 1.5);   // effective gust
+  const wr = (CFG && CFG.wind_rating) || null;
+  if (!wr) return null;
 
-  // Direction classification
-  let isOffshore = false, isSideshore = false, isOnshore = false;
+  let band = null;
   if (direction_deg != null) {
     const offshoreFrom = (shore_normal + 180) % 360;
     let diff = Math.abs(direction_deg - offshoreFrom) % 360;
     if (diff > 180) diff = 360 - diff;
-    isOffshore  = diff <= 32;
-    isSideshore = diff > 32 && diff <= 115;
-    isOnshore   = diff > 115;
+    if (diff <= wr.angles.offshore_max)        band = 'offshore';
+    else if (diff <= wr.angles.sideshore_max)  band = 'sideshore';
+    else                                        band = 'onshore';
   }
 
-  // 1. Glassy — offshore + light gust
-  if (isOffshore && g < 10)                     return 'Glassy';
-  // 2. Groomed — offshore + strong sustained
-  if (isOffshore && speed_mph > 20)             return 'Groomed';
-  // 3. Clean — offshore any speed, OR any direction with very light sustained
-  if (isOffshore)                               return 'Clean';
-  if (speed_mph < 5)                            return 'Clean';
-  // If no direction data, can't classify further
-  if (direction_deg == null)                    return null;
-  // 4. Textured — moderate sideshore or light onshore
-  if (isSideshore && g < 15)                    return 'Textured';
-  if (isOnshore   && g < 10)                    return 'Textured';
-  // 5. Messy — stronger sideshore or moderate onshore
-  if (isSideshore && g < 25)                    return 'Messy';
-  if (isOnshore   && g < 20)                    return 'Messy';
-  // 6. Blown Out — everything else
+  if (band === 'offshore' && speed_mph < wr.offshore.glassy_sust_max)       return 'Glassy';
+  if (band === 'offshore' && speed_mph > wr.offshore.groomed_sustained_min) return 'Groomed';
+  if (band === 'offshore')                                                   return 'Clean';
+  if (speed_mph < wr.low_sustained.clean_max)                                return 'Clean';
+  if (direction_deg == null)                                                 return null;
+  if (band === 'sideshore' && speed_mph < wr.sideshore.textured_sust_max)    return 'Textured';
+  if (band === 'onshore'   && speed_mph < wr.onshore.textured_sust_max)      return 'Textured';
+  if (band === 'sideshore' && speed_mph < wr.sideshore.messy_sust_max)       return 'Messy';
+  if (band === 'onshore'   && speed_mph < wr.onshore.messy_sust_max)         return 'Messy';
   return 'Blown Out';
 }
 
 function windCondColor(cond) {
+  // Palette — Option C from /palette-preview: airy hue-shift. Wind cells sit
+  // in teal / peach-amber / periwinkle / pale-taupe — deliberately different
+  // from swell's green / gold / blue / grey so at a glance a wind cell can't
+  // be mistaken for a swell cell.
   const dark = _isDark();
-  // Green tier: Glassy, Groomed, Clean
   if (cond === 'Glassy' || cond === 'Groomed' || cond === 'Clean')
-    return dark ? { bg: '#0d1a0f', text: '#3fb950' }
-                : { bg: '#ccecd4', text: '#166028' };
-  // Gold tier: Textured (was Doable)
+    return dark ? { bg: '#15252a', text: '#7dd8c8' }
+                : { bg: '#e4f1ed', text: '#196c60' };
   if (cond === 'Textured')
-    return dark ? { bg: '#1a1800', text: '#f5c518' }
-                : { bg: '#f5e6c0', text: '#7a5500' };
-  // Blue tier: Messy
+    return dark ? { bg: '#27180c', text: '#ffb057' }
+                : { bg: '#faeacd', text: '#86530f' };
   if (cond === 'Messy')
-    return dark ? { bg: '#0d1520', text: '#3d7ab5' }
-                : { bg: '#d8e8f8', text: '#1a5a9a' };
-  // Grey tier: Blown Out (matches FLAT swell category)
-  return dark ? { bg: '#131316', text: '#404055' }
-              : { bg: '#e2e2de', text: '#70707c' };
+    return dark ? { bg: '#181c30', text: '#8b94d1' }
+                : { bg: '#e4e6f3', text: '#3e4390' };
+  return dark ? { bg: '#1d1b1f', text: '#8a8085' }
+              : { bg: '#e7e3e0', text: '#6f656a' };
 }
 
 /**
