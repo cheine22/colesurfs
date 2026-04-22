@@ -21,7 +21,13 @@ class _TTLStore:
     def __init__(self):
         self._data: dict = {}
         self._lock = threading.Lock()
+        self._prefix_ttls: dict[str, int] = {}
         self._restore_from_disk()
+
+    def register_prefix_ttl(self, prefix: str, ttl: int):
+        """Called at decorator-definition time to record the configured TTL per key prefix."""
+        existing = self._prefix_ttls.get(prefix)
+        self._prefix_ttls[prefix] = min(existing, ttl) if existing is not None else ttl
 
     def get(self, key):
         with self._lock:
@@ -29,7 +35,9 @@ class _TTLStore:
             if entry is None:
                 return None, False
             value, ts, ttl = entry
-            if time.monotonic() - ts < ttl:
+            configured = self._prefix_ttls.get(key.split(':')[0])
+            effective_ttl = min(ttl, configured) if configured is not None else ttl
+            if time.monotonic() - ts < effective_ttl:
                 return value, True
             del self._data[key]
             return None, False
@@ -100,11 +108,7 @@ class _TTLStore:
                 with open(path) as f:
                     entry = json.load(f)
                 age = now - entry["wall_ts"]
-                # Use generous TTL for disk restore: up to 6 hours (21600s)
-                # even if the in-memory TTL is shorter. The background warmer
-                # will refresh before this matters.
-                max_disk_age = max(entry["ttl"], 21600)
-                if age < max_disk_age:
+                if age < entry["ttl"]:
                     # Reconstruct monotonic timestamp
                     mono_ts = time.monotonic() - age
                     self._data[entry["key"]] = (entry["value"], mono_ts, entry["ttl"])
@@ -158,9 +162,11 @@ def ttl_cache(ttl_seconds: int = 3600, skip_none: bool = False):
     skip_none=True: do not cache None results so failures are retried on the next call.
     """
     def decorator(func):
+        prefix = f"{func.__module__}.{func.__qualname__}"
+        _store.register_prefix_ttl(prefix, ttl_seconds)
         @wraps(func)
         def wrapper(*args, **kwargs):
-            key = f"{func.__module__}.{func.__qualname__}:{args}:{sorted(kwargs.items())}"
+            key = f"{prefix}:{args}:{sorted(kwargs.items())}"
             cached, hit = _store.get(key)
             if hit:
                 return cached
@@ -168,7 +174,7 @@ def ttl_cache(ttl_seconds: int = 3600, skip_none: bool = False):
             if result is not None or not skip_none:
                 _store.set(key, result, ttl_seconds)
             return result
-        wrapper._cache_key_fn = lambda *a, **kw: f"{func.__module__}.{func.__qualname__}:{a}:{sorted(kw.items())}"
+        wrapper._cache_key_fn = lambda *a, **kw: f"{prefix}:{a}:{sorted(kw.items())}"
         return wrapper
     return decorator
 
@@ -196,9 +202,11 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0):
       2. If not cached or expired beyond hard TTL → fetch
     """
     def decorator(func):
+        prefix = f"{func.__module__}.{func.__qualname__}"
+        _store.register_prefix_ttl(prefix, hard_ttl)
         @wraps(func)
         def wrapper(*args, **kwargs):
-            key = f"{func.__module__}.{func.__qualname__}:{args}:{sorted(kwargs.items())}"
+            key = f"{prefix}:{args}:{sorted(kwargs.items())}"
             cached, hit = _store.get(key)
 
             if hit:
@@ -221,7 +229,7 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0):
                 _store.set(key, result, hard_ttl)
             return result
 
-        wrapper._cache_key_fn = lambda *a, **kw: f"{func.__module__}.{func.__qualname__}:{a}:{sorted(kw.items())}"
+        wrapper._cache_key_fn = lambda *a, **kw: f"{prefix}:{a}:{sorted(kw.items())}"
         wrapper._new_run_checker = None  # set by caller
         return wrapper
     return decorator

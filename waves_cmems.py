@@ -46,7 +46,8 @@ CMEMS_VARS = [
 # Long TTL so an occasional CMEMS outage does not wipe the cache before
 # the 30-minute warmer can refresh. skip_none=True keeps the last-known-good
 # payload in place when a fetch fails.
-_CMEMS_TTL_SECONDS = 86400
+# Re-fetch 4x/day so new CMEMS model runs are picked up within 6h
+_CMEMS_TTL_SECONDS = 21600
 
 # CMEMS publishes VTM01_SW1/SW2 (spectral mean period m1) but no VTPK_SW*.
 # Windy/Surfline/buoy-DPD use peak period Tp. For typical ocean swell
