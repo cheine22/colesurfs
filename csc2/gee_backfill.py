@@ -43,7 +43,7 @@ import ee  # noqa: E402
 from csc2.schema import (  # noqa: E402
     BUOYS, FORECAST_COLUMNS, FORECASTS_DIR, LOGS_DIR, ensure_dirs,
 )
-from csc2.logger import _shard_path, _records_to_rows, _write_rows  # noqa: E402
+from csc2.logger import shard_path, records_to_rows, write_rows  # noqa: E402
 from waves_cmems import CMEMS_VARS, raw_rows_to_hourly_records  # noqa: E402
 
 
@@ -135,7 +135,7 @@ def _backfill_buoy(buoy_id: str, lat: float, lon: float,
 
     for i, rt_ms in enumerate(cycle_times_ms, 1):
         cycle = _cycle_id_from_ms(int(rt_ms))
-        shard = _shard_path(buoy_id, "EURO", cycle)
+        shard = shard_path(buoy_id, "EURO", cycle)
         if shard.exists() and not force:
             cycles_skipped += 1
             continue
@@ -155,9 +155,9 @@ def _backfill_buoy(buoy_id: str, lat: float, lon: float,
             continue
 
         records = raw_rows_to_hourly_records(raw_rows)
-        rows = _records_to_rows(records, buoy_id=buoy_id, model="EURO",
+        rows = records_to_rows(records, buoy_id=buoy_id, model="EURO",
                                  cycle_utc=cycle, ingest_utc=ingest_utc)
-        n = _write_rows(buoy_id, "EURO", cycle, rows)
+        n = write_rows(buoy_id, "EURO", cycle, rows)
         rows_total += n
         cycles_written += 1
 

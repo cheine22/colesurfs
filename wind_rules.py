@@ -36,10 +36,8 @@ _CACHE: dict | None = None
 
 
 def load_config(force: bool = False) -> dict:
-    """Load sustained-wind thresholds. Legacy `*_gust_max` fields are still
-    accepted (interpreted as sustained directly — tuner migration already
-    divided by the old gust multiplier) so live tuner sessions mid-save
-    don't break. Categorizer uses sustained speed only."""
+    """Load sustained-wind thresholds. Legacy `*_gust_max` fields are
+    accepted for backward compatibility (value read as sustained)."""
     global _CACHE
     if _CACHE is not None and not force:
         return _CACHE

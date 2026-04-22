@@ -1,4 +1,4 @@
-# colesurfs · v1.5.1
+# colesurfs · v1.6
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -40,7 +40,7 @@ All data is fetched from free or free-tier public services:
 
 - **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min); yearly stdmet archives back to 2021 used for NDBC backfill
 - **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC with swell partitions (VHM0_SW1/SW2, VTM01_SW1/SW2, VMDR_SW1/SW2), the EURO source for both the dashboard and CSC2. Live fetch via `copernicusmarine` (free `copernicusmarine login` credential at `~/.copernicusmarine/.copernicusmarine-credentials`)
-- **Google Earth Engine — `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`** — cycle-preserving archive of the same CMEMS product, used by CSC2's historical backfill because CMEMS itself overwrites past cycles. Free for noncommercial use (Community Tier: 150 EECU-hours/month)
+- **Google Earth Engine — `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`** — cycle-preserving archive of the same CMEMS product, used by CSC2's historical backfill because CMEMS itself overwrites past cycles. The GEE mirror ingests one cycle per day starting 2025-04-28; see `csc2/gee_backfill.py`. Free for noncommercial use (Community Tier: 150 EECU-hours/month)
 - **AWS Open Data — `s3://noaa-gfs-bdp-pds/`** — NOAA GFS-Wave GRIB2 archive with swell partitions back to 2021-04 used by CSC2's historical backfill; byte-range fetches via `.idx` sidecars
 - **Open-Meteo Marine API** — live GFS-Wave partition forecasts for the dashboard and live logger (GFS stream only; EURO migrated off Open-Meteo in v1.5)
 - **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts
@@ -189,6 +189,17 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.6
+- **CSC2 housekeeping sweep** — following a three-agent codebase audit (redundancy, efficiency, documentation), applied every green-light finding in nine coordinated batches while the GFS backfill kept running
+- **Unified obs schema** — live-log observations now write `hs_m` (SI, matches stdmet historical) instead of `hs_ft`; existing 34 live-log shards migrated in place. `archive_status` dropped its per-source Hs fallback
+- **Fixed latent null-partition-0 bug** — `obs_logger._rows_for_buoy` was looking up `height_ft`/`wvht_ft` keys that `fetch_buoy` doesn't return (real key is `wave_height_ft`), so partition-0 rows had been silently all-null. Mean paired-cycle coverage lifted 163.9 → 165.5 after the fix
+- **Canonical ISO timestamps** — all three writers (`logger.py`, `obs_logger.py`, `ndbc_backfill.py`) now emit `Z`-suffix UTC strings; legacy `+00:00` rows converge on rewrite via a re-normalization step in dedup
+- **Public shard API** — `csc2/logger.py` helpers renamed from `_shard_path` / `_records_to_rows` / `_write_rows` to public names, with underscored aliases retained so the in-flight GFS backfill subprocess keeps working
+- **Obs fast-path** — `_append_dedup` now skips parquet rewrites entirely when the incoming `(valid_utc, partition)` set is already on disk (NDBC updates at 10-min cadence while the logger polls every 30 min, so most ticks are duplicates)
+- **`ndbc_backfill` parallelism** — yearly archive pulls fan out across a thread pool (default 8 workers) instead of serializing
+- **Archive-status sentinel fast-path** — cache staleness check resolves in O(1) via `.csc2_data/forecasts/.last_write` sentinel, with the original full-tree rglob kept as a safety net
+- **Plist annotation** — both csc2 plists now carry a comment explaining the asymmetric `RunAtLoad` choice (false for cycle logger to avoid cycle-shard collision; true for obs logger since rows dedup harmlessly)
 
 ### v1.5.1
 - **CSC2 scaffold** — fresh forecast-correction stack replaces legacy `csc/`. Fixed buoy scope (5 east + 3 west), identity-with-dashboard contract, cycle-preserving historical backfills (CMEMS via Google Earth Engine, GFS via AWS `noaa-gfs-bdp-pds`, NDBC stdmet yearly archives), live loggers (`com.colesurfs.csc2-log` @ 3 AM + 3 PM ET for forecasts; `com.colesurfs.csc2-obs` every 30 min for buoys), and `/csc` eval page with archive-accumulation table, model definitions, and per-category surfer metrics

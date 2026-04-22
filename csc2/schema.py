@@ -1,4 +1,13 @@
-"""CSC2 buoy scope, data layout, and schema constants."""
+"""CSC2 — buoy scope, data layout, and schema constants.
+
+Single source of truth for:
+  - The eight buoys in scope (BUOYS: id, label, lat, lon, scope)
+  - On-disk paths the CSC2 stack writes into (.csc2_data/forecasts/, logs/)
+  - The per-row column schema for forecast parquet shards (FORECAST_COLUMNS)
+
+Every csc2/* module imports BUOYS / paths from here so a new buoy or a
+relocation of data dirs is a single-file edit.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +18,9 @@ CSC2_DATA_DIR = PROJECT_ROOT / ".csc2_data"
 CSC2_MODELS_DIR = PROJECT_ROOT / ".csc2_models"
 
 FORECASTS_DIR = CSC2_DATA_DIR / "forecasts"      # one parquet per cycle per buoy per model
-OBSERVATIONS_DIR = CSC2_DATA_DIR / "observations"
 LOGS_DIR = CSC2_DATA_DIR / "logs"
+# Note: observations live under .csc_data/ (shared with the pre-CSC2
+# pipeline, model-agnostic). obs_logger + ndbc_backfill write there.
 
 # (buoy_id, label, lat, lon, scope)
 BUOYS = [
@@ -25,8 +35,11 @@ BUOYS = [
 ]
 
 BUOY_IDS = [b[0] for b in BUOYS]
-EAST_BUOYS = [b[0] for b in BUOYS if b[4] == "east"]
-WEST_BUOYS = [b[0] for b in BUOYS if b[4] == "west"]
+
+
+def buoys_in(scope: str) -> list[str]:
+    """Return the ordered buoy_id list for the given scope ('east' or 'west')."""
+    return [b[0] for b in BUOYS if b[4] == scope]
 
 
 def buoy_meta(buoy_id: str):
@@ -63,6 +76,5 @@ FORECAST_COLUMNS = [
 
 
 def ensure_dirs() -> None:
-    for d in (CSC2_DATA_DIR, FORECASTS_DIR, OBSERVATIONS_DIR, LOGS_DIR,
-              CSC2_MODELS_DIR):
+    for d in (CSC2_DATA_DIR, FORECASTS_DIR, LOGS_DIR, CSC2_MODELS_DIR):
         d.mkdir(parents=True, exist_ok=True)

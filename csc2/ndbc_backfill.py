@@ -28,6 +28,7 @@ import argparse
 import io
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone as dtz
 from pathlib import Path
 
@@ -101,7 +102,7 @@ def _parse_stdmet(text: str) -> pd.DataFrame:
             except (ValueError, IndexError):
                 return None
         rows.append({
-            "valid_utc": t.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            "valid_utc": t.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "hs_m":      _f(idx_wvht),
             "tp_s":      _f(idx_dpd),
             "dp_deg":    _f(idx_mwd),
@@ -133,7 +134,7 @@ def _backfill_buoy_year(station_id: str, year: int, *, force: bool) -> int:
     df.insert(0, "buoy_id", station_id)
     df["partition"] = 0
     df["source"]    = "ndbc_stdmet_archive"
-    df["ingest_utc"] = datetime.now(dtz.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    df["ingest_utc"] = datetime.now(dtz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     # Column order matches the historical observations schema on disk
     df = df[["buoy_id", "valid_utc", "partition",
               "hs_m", "tp_s", "dp_deg", "source", "ingest_utc"]]
@@ -144,22 +145,41 @@ def _backfill_buoy_year(station_id: str, year: int, *, force: bool) -> int:
 
 def run_backfill(*, start_year: int, end_year: int,
                   buoy_ids: list[str] | None = None,
-                  force: bool = False) -> dict:
+                  force: bool = False, parallel: int = 8) -> dict:
     ensure_dirs()
     HIST_OBS_DIR.mkdir(parents=True, exist_ok=True)
     targets = buoy_ids or [b[0] for b in BUOYS]
     t0 = time.monotonic()
-    report: dict[str, dict[int, int]] = {}
-    for buoy_id, label, *_ in BUOYS:
-        if buoy_id not in targets:
-            continue
-        report[buoy_id] = {}
-        print(f"── {buoy_id}  {label} ──", flush=True)
-        for yr in range(start_year, end_year + 1):
-            n = _backfill_buoy_year(buoy_id, yr, force=force)
-            report[buoy_id][yr] = n
-            tag = "wrote" if (n and not (HIST_OBS_DIR / f'buoy={buoy_id}' / f'year={yr}' / 'stdmet.parquet').exists()) else "ok "
-            print(f"  {buoy_id} {yr}: {n:>6} rows", flush=True)
+    report: dict[str, dict[int, int]] = {b: {} for b in targets}
+    label_by_id = {b[0]: b[1] for b in BUOYS}
+
+    # NDBC stdmet archives are ~1 MB gzipped, and the server is comfortable
+    # with modest parallelism. Fan yearly fetches out across a thread pool
+    # so 56 (buoys × years) pulls finish in the time of ~7.
+    jobs: list[tuple[str, int]] = [(bid, yr)
+                                   for bid in targets
+                                   for yr in range(start_year, end_year + 1)]
+    if parallel <= 1:
+        for bid, yr in jobs:
+            n = _backfill_buoy_year(bid, yr, force=force)
+            report[bid][yr] = n
+            print(f"  {bid} {yr}: {n:>6} rows", flush=True)
+    else:
+        with ThreadPoolExecutor(max_workers=parallel) as pool:
+            fut_to_job = {pool.submit(_backfill_buoy_year, bid, yr, force=force):
+                          (bid, yr) for bid, yr in jobs}
+            for fut in as_completed(fut_to_job):
+                bid, yr = fut_to_job[fut]
+                try:
+                    n = fut.result()
+                except Exception as e:
+                    n = 0
+                    print(f"  {bid} {yr}: FAILED ({type(e).__name__}: {e})",
+                          flush=True)
+                report[bid][yr] = n
+                print(f"  {bid} ({label_by_id.get(bid,'?')}) {yr}: "
+                      f"{n:>6} rows", flush=True)
+
     elapsed = time.monotonic() - t0
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     with (LOGS_DIR / "ndbc_backfill.log").open("a") as f:
@@ -177,10 +197,13 @@ def main() -> int:
                     default=datetime.now(dtz.utc).year)
     ap.add_argument("--buoy", default=None)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--parallel", type=int, default=8,
+                    help="Concurrent yearly fetches (default 8).")
     args = ap.parse_args()
     ids = [args.buoy] if args.buoy else None
     report = run_backfill(start_year=args.start_year, end_year=args.end_year,
-                           buoy_ids=ids, force=args.force)
+                           buoy_ids=ids, force=args.force,
+                           parallel=args.parallel)
     total = sum(sum(v.values()) for v in report.values())
     print(f"\n[ndbc_backfill] done: {total} rows across {len(report)} buoys, "
           f"years {args.start_year}..{args.end_year}")

@@ -61,8 +61,8 @@ def _local_to_utc(time_str: str) -> str:
         return ""
 
 
-def _records_to_rows(records: list[dict], *, buoy_id: str, model: str,
-                      cycle_utc: str, ingest_utc: str) -> list[dict]:
+def records_to_rows(records: list[dict], *, buoy_id: str, model: str,
+                     cycle_utc: str, ingest_utc: str) -> list[dict]:
     """Flatten dashboard-format records into FORECAST_COLUMNS rows."""
     rows = []
     for r in records:
@@ -99,7 +99,8 @@ def _records_to_rows(records: list[dict], *, buoy_id: str, model: str,
     return rows
 
 
-def _shard_path(buoy_id: str, model: str, cycle_utc: str) -> Path:
+def shard_path(buoy_id: str, model: str, cycle_utc: str) -> Path:
+    """Parquet path for one (buoy, model, cycle) triple."""
     year = cycle_utc[:4]
     month = cycle_utc[4:6]
     return (FORECASTS_DIR / f"model={model}" / f"buoy={buoy_id}"
@@ -107,15 +108,36 @@ def _shard_path(buoy_id: str, model: str, cycle_utc: str) -> Path:
             / f"cycle={cycle_utc}.parquet")
 
 
-def _write_rows(buoy_id: str, model: str, cycle_utc: str,
-                 rows: list[dict]) -> int:
+# Archive-status cache invalidates quickly when any writer touches this
+# file — see csc2.archive_status._cache_is_stale.
+FORECASTS_SENTINEL = FORECASTS_DIR / ".last_write"
+
+
+def write_rows(buoy_id: str, model: str, cycle_utc: str,
+                rows: list[dict]) -> int:
+    """Write one cycle's rows to parquet and bump the archive-status
+    sentinel so the next /api/csc2/archive_status hit recomputes."""
     if not rows:
         return 0
-    path = _shard_path(buoy_id, model, cycle_utc)
+    path = shard_path(buoy_id, model, cycle_utc)
     path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows, columns=FORECAST_COLUMNS)
     df.to_parquet(path, index=False, compression="snappy")
+    # Touch the sentinel so archive_status knows something changed.
+    try:
+        FORECASTS_DIR.mkdir(parents=True, exist_ok=True)
+        FORECASTS_SENTINEL.touch()
+    except Exception:
+        pass
     return len(df)
+
+
+# Backward-compatible aliases. Any caller that already imported the
+# underscored names (e.g. a long-running subprocess spawned before this
+# rename) keeps working.
+_shard_path      = shard_path
+_write_rows      = write_rows
+_records_to_rows = records_to_rows
 
 
 def log_cycle(*, force: bool = False) -> dict:
@@ -144,7 +166,7 @@ def log_cycle(*, force: bool = False) -> dict:
             except Exception as e:
                 errors.append(f"EURO/{buoy_id}: {type(e).__name__}: {e}")
                 recs = None
-            rows = _records_to_rows(recs or [], buoy_id=buoy_id, model="EURO",
+            rows = records_to_rows(recs or [], buoy_id=buoy_id, model="EURO",
                                      cycle_utc=cycle_utc, ingest_utc=ingest_utc)
             coverage["EURO"][buoy_id] = _write_rows(buoy_id, "EURO", cycle_utc, rows)
 
@@ -161,7 +183,7 @@ def log_cycle(*, force: bool = False) -> dict:
             except Exception as e:
                 errors.append(f"GFS/{buoy_id}: {type(e).__name__}: {e}")
                 recs = None
-            rows = _records_to_rows(recs or [], buoy_id=buoy_id, model="GFS",
+            rows = records_to_rows(recs or [], buoy_id=buoy_id, model="GFS",
                                      cycle_utc=cycle_utc, ingest_utc=ingest_utc)
             coverage["GFS"][buoy_id] = _write_rows(buoy_id, "GFS", cycle_utc, rows)
 

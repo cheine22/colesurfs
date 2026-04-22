@@ -10,7 +10,7 @@ secondary, tertiary). Everything else stays in S3.
 
 For each cycle × buoy, extracted rows go through the same processing as the
 live logger: waves.py's `_parse_response`-equivalent logic (5.0 s period
-filter, energy-sort top-2, no combined fallback) via `_records_to_rows`
+filter, energy-sort top-2, no combined fallback) via `records_to_rows`
 from csc2.logger. Output shards are byte-compatible with live-logger
 output at `.csc2_data/forecasts/model=GFS/buoy=.../cycle=.parquet`.
 
@@ -44,7 +44,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from csc2.schema import BUOYS, FORECASTS_DIR, LOGS_DIR, ensure_dirs  # noqa: E402
-from csc2.logger import _shard_path, _records_to_rows, _write_rows  # noqa: E402
+from csc2.logger import shard_path, records_to_rows, write_rows  # noqa: E402
 from config import m_to_ft  # noqa: E402
 
 
@@ -244,7 +244,7 @@ def _process_cycle(cycle_dt: datetime, *, buoy_ids: list[str],
     ingest_utc = datetime.now(dtz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Skip whole cycle if every buoy's shard already exists.
-    if not force and all(_shard_path(bid, "GFS", cycle_id).exists() for bid in buoy_ids):
+    if not force and all(shard_path(bid, "GFS", cycle_id).exists() for bid in buoy_ids):
         return {"cycle": cycle_id, "skipped_whole": True, "rows_by_buoy": {}}
 
     by_buoy_rows: dict[str, list[dict]] = {bid: [] for bid in buoy_ids}
@@ -287,9 +287,9 @@ def _process_cycle(cycle_dt: datetime, *, buoy_ids: list[str],
             summary["rows_by_buoy"][buoy_id] = 0
             continue
         records = _raw_rows_to_records(raw_rows)
-        rows = _records_to_rows(records, buoy_id=buoy_id, model="GFS",
+        rows = records_to_rows(records, buoy_id=buoy_id, model="GFS",
                                  cycle_utc=cycle_id, ingest_utc=ingest_utc)
-        n = _write_rows(buoy_id, "GFS", cycle_id, rows)
+        n = write_rows(buoy_id, "GFS", cycle_id, rows)
         summary["rows_by_buoy"][buoy_id] = n
     return summary
 

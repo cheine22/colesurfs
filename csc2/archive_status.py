@@ -131,17 +131,14 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
         return t_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _cols_for(shard: Path) -> list[str] | None:
-        # The two on-disk schemas share partition/tp_s/dp_deg but differ on
-        # the Hs column (stdmet uses hs_m; live uses hs_ft).
+        # Both obs trees (stdmet historical + live_log) now share schema:
+        # buoy_id, valid_utc, partition, hs_m, tp_s, dp_deg, source, ingest_utc
         try:
             import pyarrow.parquet as pq
             names = set(pq.ParquetFile(shard).schema.names)
         except Exception:
             return None
-        hs_col = "hs_ft" if "hs_ft" in names else ("hs_m" if "hs_m" in names else None)
-        if hs_col is None:
-            return None
-        need = [hs_col, "tp_s", "dp_deg", "partition", "valid_utc"]
+        need = ["hs_m", "tp_s", "dp_deg", "partition", "valid_utc"]
         if not all(c in names for c in need):
             return None
         return need
@@ -158,9 +155,8 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
                 df = pd.read_parquet(shard, columns=cols)
             except Exception:
                 continue
-            hs_col = cols[0]
             df = df[df["partition"] == 0]
-            df = df.dropna(subset=[hs_col, "tp_s", "dp_deg", "valid_utc"])
+            df = df.dropna(subset=["hs_m", "tp_s", "dp_deg", "valid_utc"])
             for v in df["valid_utc"].astype(str).tolist():
                 snapped = _snap_to_hour(v)
                 if snapped:
@@ -169,12 +165,24 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
 
 
 def _cache_is_stale() -> bool:
+    """Bust the cache if (a) it's older than CACHE_TTL_SEC, (b) any writer
+    touched the sentinel since last compute, or (c) the sentinel is
+    missing (first run, or writer predates the sentinel mechanism). The
+    sentinel-only check runs in O(1); the full-tree rglob fallback is
+    kept as a safety net for shards written by processes that haven't
+    picked up the sentinel-touch path yet (e.g. a long-running
+    aws_gfs_backfill started before this code).
+    """
     if not CACHE_PATH.exists():
         return True
     mtime = CACHE_PATH.stat().st_mtime
     if datetime.now().timestamp() - mtime > CACHE_TTL_SEC:
         return True
-    # Invalidate if any forecast shard is newer than the cache
+    # Fast path: a single sentinel file is touched by every writer.
+    sentinel = FORECASTS_DIR / ".last_write"
+    if sentinel.exists() and sentinel.stat().st_mtime > mtime:
+        return True
+    # Safety-net fallback for writers that haven't been updated.
     for model in ("EURO", "GFS"):
         root = FORECASTS_DIR / f"model={model}"
         if not root.exists():
