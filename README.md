@@ -1,4 +1,4 @@
-# colesurfs · v1.6
+# colesurfs · v1.7
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -19,17 +19,18 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 - **Tide predictions** — NOAA CO-OPS harmonic predictions per spot, with Surfline-matched time corrections
 - **Wind condition rating** — 6 hierarchical tiers (Glassy / Groomed / Clean / Textured / Messy / Blown Out) per spot based on wind direction relative to the measured coast angle, sustained speed, and effective gust
 - **Model concordance** — "Model Agreement" badge appears when EURO and GFS predict the same swell category
+- **Fun+ Days column** (new in v1.7) — per-spot count of days in the 10-day forecast where GFS and EURO both classify the primary swell as fun-or-better for ≥6 daytime hours. Cell colour tracks the best `min(GFS, EURO)` window across the forecast.
+- **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or Preferences modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
 - **Smart API caching** — model-run-aware cache that skips API calls when cached data is still from the latest model run
 - **Light/dark mode** — system-aware with manual toggle
 - **Side-by-side mode** — table + map split; always on for desktop, portrait layout for mobile
-- **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control)
+- **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column.
 - **Mobile-specific map centers** — per-region map framing tuned for portrait aspect ratio
-- **Historical buoy popup** — BUOY HISTORY button opens a 5-day wave energy graph with spectral component tooltips, swell-category background coloring, and a buoy selector dropdown; in regional mode jumps directly to the active region's buoy
-- **Mobile buoy scrubber** — draggable slider below the buoy chart on mobile for scrubbing through the 5-day history with tooltip and vertical indicator line
-- **About Me modal** — accessible from mobile header and desktop footer; includes swell/wind color legend and usage tips
+- **Historical buoy popup** — BUOY HISTORY button opens a 3-day modal with two stacked charts: a live frequency spectrum at the scrubbed time (top) and energy-over-time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile.
+- **Preferences modal** (new in v1.7, formerly "About me") — tools and settings (refresh, CSC, theme, tuner, history toggle). The logo modal now hosts the welcome text, colour legends, tips, and Data Provenance section.
+- **Desktop toolbar toggles** (new in v1.7) — EURO/GFS, Hourly/3-Hour, and History OFF/ON all share the same pill-switch look; the resolution toggle now matches the model toggle styling.
 - **Smart refresh** — refresh button checks for new model data before clearing caches; shows toast if no new data available
-- **Mobile info popup** — tapping the logo on mobile opens a modal with a manual refresh button, current API/swell data summary, and version number
-- **Version display** — version number shown in desktop footer, mobile info popup, and About modal
+- **Version display** — version number shown in desktop footer, logo modal, and Preferences modal
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
 
 ---
@@ -189,6 +190,23 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.7.1
+- **Fix: GFS empty cells beyond day 5** — `_parse_response` in `waves.py` now falls back to the combined sea state (`wave_height` / `wave_peak_period`) when GFS swell partitions are absent (GFS drops them beyond ~5 days). Previously those timesteps returned null for height/period; they now show the combined Hs converted to feet with Tp. Direction is included when available; `components` remains empty to preserve downstream logic that distinguishes partition-backed cells from combined-sea cells.
+
+### v1.7
+- **Fun+ Days column** — new column between the spot name and BUOY NOW that counts forecast days where GFS and EURO both classify the primary swell as FUN-or-better for at least 6 daytime hours (two 3-hour windows). Cell background reflects the best `min(GFS_cat, EURO_cat)` across all daytime 3-hour windows in the forecast horizon. Analysis always runs at a 3-hour stride so the count is stable across the Hourly/3-Hour toggle. Region mode shows the column only on the dedicated buoy row; spot rows render blank cells.
+- **Historical buoy strip** — new toggle-gated `-240 h` section to the left of the Fun+ Days column, with cells drawn from the existing NDBC realtime2 file (no extra API calls). Each cell finds the closest-to-hour observation (tolerance ±30 min at 1 h cadence, ±90 min at 3 h). A ✓ glyph in the top-right marks cells where both archived EURO and GFS forecasts at that hour matched the observed classification. For CSC2-scoped buoys (44013, 44065, 44097, 44091, 44098) the glyph is sourced from local parquet archives; non-CSC2 buoys render obs-only.
+- **Toolbar reorganisation (desktop)** — `HISTORY OFF | ON` pill-switch sits next to the Resolution toggle; `HOURLY | 3-HOUR` restyled to match the EURO/GFS pill-switch (generic `.sw-btn.active` rule in place). Preferences-modal checkbox is now mobile-only; state syncs in both directions across toolbar, modal, and `localStorage['cs_show_history']`.
+- **Scroll-stable history toggle (desktop)** — `setShowHistory` anchors the rebuild on the Fun+ Days column so its screen-x doesn't jump when 80 historical cells are added or removed to its left. Measured viewport-x held constant across on/off cycles.
+- **Buoy modal rebuild** — two stacked charts (frequency spectrum on top, energy-over-time below), date/time label above the charts, swell readout below, dotted-line hover indicator on both platforms. Range shortened from 5 days to 3. Desktop tooltip removed; info now lives in the persistent time-label and info-strip elements on both platforms. Spectrum line uses `lineWidth = 1.0`; dot radius 1.25.
+- **Frequency-spectrum chart** — period ascending left→right (long period on the right, surfer convention). Default x-axis range 0 s–22 s; auto-extends when spectral bins or decomposed components carry energy beyond 22 s. Component markers draw with a contrast-pill background (`var(--bg1)` + `var(--border0)`) so labels read clearly over the translucent fill. Labels now try four candidate placements (right-above, left-above, right-below, left-below) and pick the first that fits in bounds without colliding with an already-placed label rect — no more overlap at close period spacing (verified at 1.6 s gap).
+- **Mobile slider behaviour** — with history on, `_sliderTimes` now includes historical timestamps so the slider maps linearly across `[oldest history … latest forecast]`. Dragging all the way left shows the -240 h column (oldest observation). Double-tap calls `_sliderResetToNow()`, which scrolls the Fun+ Days column flush against the sticky spot column and positions the handle at the history/forecast boundary (~53 % on a history-on slider). Fresh builds triggered by async historical-data arrival (`_scheduleHistRebuild`) no longer yank the table back to "now" mid-scroll — the one-shot `_sliderResetDone` flag preserves user scroll state after the first reset.
+- **Mobile horizontal-scroll lock** — `touch-action: pan-y !important` now cascades to every descendant of `.table-scroll` (not just the container), with `overscroll-behavior: contain`, `-webkit-overflow-scrolling: auto`, and `transform: translateZ(0)` on the sticky spot column. Vertical swipes no longer generate horizontal drift on iOS, and touches starting on a data cell can't initiate a horizontal pan gesture.
+- **Fun+ Days typography** — cell count rendered at 18 px, `font-weight: 800`, centred horizontally and vertically. Header reads "Fun+<br>Days".
+- **Modal content swap** — logo modal holds welcome text, the renamed "swell categories" legend, wind classifications, tips, and a new **Data provenance** section with the dl attributions (moved from its previous spot). The old About Me modal is renamed to **Preferences** with title `∿colesurfs · preferences`; button order is REFRESH → CSC → LIGHT → TUNER → show-historical-data toggle. Logo modal is scrollable (`max-height: 75vh; overflow-y: auto`). A new line reads "for my main site, visit coleheine.com" with the link inline-styled to match the GitHub link.
+- **Historical-context backend** — new `GET /api/buoy_historical_context?station_id=<id>&days=10` endpoint returns records with `observed_cat`, `model_agreement` (`true`/`false`/`null`), and the existing spectral-components array. `fetch_buoy_history` default bumped 5 → 10 days and now attaches a raw `spectrum` field (`[[freq_hz, energy_density_m2/Hz, direction_deg | null], …]`) per record, sourced from the same `_parse_spectral_file_all_rows` output we already parse for component decomposition. **No additional NDBC API calls** — the extra range and spectrum data come from bytes already on disk.
+- **mpiannucci wavespectra review** — evaluated `mpiannucci/wavespectra`, `surfnerd`, and `peakdetect` as potential swell-decomposition upgrades. Decision: stay with the existing in-repo `_spectral_components` pipeline, which is already validated byte-for-byte against Surfline's 44097 "Individual Swells" feed and doesn't require an xarray/netCDF dependency or additional NDBC file fetches.
 
 ### v1.6
 - **CSC2 housekeeping sweep** — following a three-agent codebase audit (redundancy, efficiency, documentation), applied every green-light finding in nine coordinated batches while the GFS backfill kept running

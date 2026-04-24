@@ -14,7 +14,8 @@ Routes:
   /api/sun                       Sunrise/sunset (computed locally, no external API)
   /api/status?model=             Model run estimate + daily API usage
   /api/debug/spectral/<id>       Diagnostic: raw spectral parse (COLESURFS_DEBUG=1 only)
-  /api/buoy_history/<station_id>  5-day historical buoy data with spectral components
+  /api/buoy_history/<station_id>  10-day historical buoy data with spectral components (?days= override)
+  /api/buoy_historical_context    Historical obs + per-hour model_agreement vs CSC2 archives
   /api/refresh (POST)            Clear caches + reload swell rules
 
 v1.5: EURO wave forecast migrated from Open-Meteo ECMWF-WAM to Copernicus Marine
@@ -33,7 +34,8 @@ from waitress import serve
 
 from config import SPOTS, WIND_SPOTS, MODEL_COLORS, WIND_BANDS, REGION_VIEWS
 import swell_rules
-from buoy  import fetch_buoy, fetch_buoy_history, _parse_spectral_file, _spectral_components
+from buoy  import (fetch_buoy, fetch_buoy_history, fetch_buoy_historical_context,
+                    _parse_spectral_file, _spectral_components)
 import requests as _req_buoy
 from waves import fetch_wave_forecast, fetch_all_wave_forecasts
 from waves_cmems import fetch_all_cmems_wave_forecasts
@@ -189,17 +191,36 @@ def api_wind_spots():
 
 @app.route("/api/region_wind")
 def api_region_wind():
-    """Hourly wind + gust forecast for all WIND_SPOTS — for Regional Mode table."""
+    """Hourly wind + gust forecast for all WIND_SPOTS — for Regional Mode table.
+
+    Optional `past_days` (0..30) extends the response backwards so the
+    dashboard's historical-data toggle can populate the -240h wind strip
+    in Regional Mode using the same model's analysis hours.
+    """
     model_key = request.args.get("model", "EURO").upper()
     if model_key not in ("EURO", "GFS"):
         model_key = "EURO"
-    return jsonify(fetch_region_wind_forecasts(model_key))
+    try:
+        past_days = int(request.args.get("past_days", 0))
+    except (TypeError, ValueError):
+        past_days = 0
+    past_days = max(0, min(past_days, 30))
+    return jsonify(fetch_region_wind_forecasts(model_key, past_days=past_days))
 
 
 @app.route("/api/tides")
 def api_tides():
-    """Hourly tide predictions (height ft + daily %) for all WIND_SPOT tide stations."""
-    return jsonify(fetch_tide_predictions())
+    """Hourly tide predictions (height ft + daily %) for all WIND_SPOT tide stations.
+
+    Optional `past_days` (0..30) extends the begin_date backwards for the
+    historical-data toggle.
+    """
+    try:
+        past_days = int(request.args.get("past_days", 0))
+    except (TypeError, ValueError):
+        past_days = 0
+    past_days = max(0, min(past_days, 30))
+    return jsonify(fetch_tide_predictions(past_days=past_days))
 
 
 @app.route("/api/status")
@@ -305,11 +326,36 @@ def api_refresh():
 
 @app.route("/api/buoy_history/<station_id>")
 def api_buoy_history(station_id):
-    """5-day historical buoy data with spectral swell components."""
+    """Historical buoy data with spectral swell components (default 10 days).
+    Optional ?days= query arg lets callers tune the window."""
     valid_ids = {s["buoy_id"] for s in SPOTS}
     if station_id not in valid_ids:
         return jsonify({"error": "unknown station"}), 404
-    data = fetch_buoy_history(station_id)
+    try:
+        days = int(request.args.get("days", 10))
+    except (TypeError, ValueError):
+        days = 10
+    days = max(1, min(days, 45))   # NDBC realtime2 covers ~45 days
+    data = fetch_buoy_history(station_id, days=days)
+    if data is None:
+        return jsonify({"error": "data unavailable"}), 503
+    return jsonify(data)
+
+
+@app.route("/api/buoy_historical_context")
+def api_buoy_historical_context():
+    """Observed history + per-record model_agreement vs local CSC2 archives.
+    Only CSC2-scope buoys get non-null agreement; others return null."""
+    station_id = request.args.get("station_id", "")
+    valid_ids = {s["buoy_id"] for s in SPOTS}
+    if station_id not in valid_ids:
+        return jsonify({"error": "unknown station"}), 404
+    try:
+        days = int(request.args.get("days", 10))
+    except (TypeError, ValueError):
+        days = 10
+    days = max(1, min(days, 45))
+    data = fetch_buoy_historical_context(station_id, days=days)
     if data is None:
         return jsonify({"error": "data unavailable"}), 503
     return jsonify(data)
@@ -561,6 +607,8 @@ def _add_cache_headers(response):
         response.headers["Cache-Control"] = "public, max-age=30, s-maxage=60, stale-if-error=1800"
     elif path == "/api/tides":
         response.headers["Cache-Control"] = "public, max-age=300, s-maxage=7200, stale-while-revalidate=14400, stale-if-error=86400"
+    elif path.startswith("/api/buoy_history/") or path == "/api/buoy_historical_context":
+        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=14400"
 
     return response
 

@@ -422,8 +422,16 @@ def _parse_spectral_file_all_rows(text: str, value_offset: int) -> dict:
 def _fetch_historical_spectral(station_id: str, cutoff_dt: datetime) -> dict:
     """
     Fetch .data_spec + .swdir for all available rows and compute spectral
-    components for each timestamp after cutoff_dt.
-    Returns {iso_timestamp: [component_dicts], ...}.
+    components for each timestamp after cutoff_dt. Also return the raw
+    energy+direction bins per timestamp for the buoy-modal spectrum graph.
+
+    Returns {iso_timestamp: {
+        "components": [component_dicts],
+        "spectrum":   [[freq, energy_density, direction_deg_or_None], ...],
+    }, ...}.
+
+    A timestamp is included if raw spectrum bins are available, even if no
+    swell-band components clear the Hm0 / period filter in _spectral_components.
     """
     try:
         rds = requests.get(NDBC_DATA_SPEC_URL.format(station_id=station_id),
@@ -440,22 +448,30 @@ def _fetch_historical_spectral(station_id: str, cutoff_dt: datetime) -> dict:
     cutoff_iso = cutoff_dt.isoformat()
 
     result = {}
-    for ts_key in spec_all:
+    for ts_key, spec_bins in spec_all.items():
         if ts_key < cutoff_iso:
             continue
-        if ts_key not in swdir_all:
-            continue
-        comps = _spectral_components(spec_all[ts_key], swdir_all[ts_key])
-        if comps:
-            result[ts_key] = comps
+        swdir_bins = swdir_all.get(ts_key)
+        # Build a freq→dir lookup for the spectrum bins; missing dirs → None.
+        # NDBC emits 999.0 as the swdir fill marker.
+        dir_by_freq = {f: (None if d in _FILL else d) for f, d in swdir_bins} if swdir_bins else {}
+        spectrum = [
+            [round(f, 5),
+             round(e, 6) if e is not None else None,
+             (round(dir_by_freq[f], 1) if dir_by_freq.get(f) is not None else None)]
+            for f, e in spec_bins
+        ]
+        comps = _spectral_components(spec_bins, swdir_bins) if swdir_bins else []
+        result[ts_key] = {"components": comps, "spectrum": spectrum}
     return result
 
 
 @ttl_cache(ttl_seconds=1800, skip_none=True)
-def fetch_buoy_history(station_id: str, days: int = 5) -> dict | None:
+def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
     """
     Fetch the last `days` of hourly buoy observations from NDBC realtime2,
-    plus spectral swell components for each timestamp where spectral data exists.
+    plus spectral swell components AND raw energy/direction bins for each
+    timestamp where spectral data exists.
 
     Energy is computed as height_ft * period_s**2 (wave energy proxy specified
     for the historical chart — intentionally differs from the height**2 * period
@@ -518,13 +534,17 @@ def fetch_buoy_history(station_id: str, days: int = 5) -> dict | None:
 
     records.reverse()  # oldest-first for charting
 
-    # Merge spectral components
+    # Merge spectral components + raw spectrum bins
     try:
         spec_map = _fetch_historical_spectral(station_id, cutoff)
         for rec in records:
-            ts_key = rec["timestamp"]
-            if ts_key in spec_map:
-                rec["components"] = spec_map[ts_key]
+            entry = spec_map.get(rec["timestamp"])
+            if not entry:
+                continue
+            if entry.get("components"):
+                rec["components"] = entry["components"]
+            if entry.get("spectrum"):
+                rec["spectrum"] = entry["spectrum"]
     except Exception as e:
         print(f"[buoy_history] {station_id}: spectral merge error — {type(e).__name__}: {e}")
 
@@ -602,3 +622,163 @@ def fetch_buoy(station_id: str) -> dict | None:
 
     print(f"[buoy] {station_id}: all URLs exhausted, returning offline marker")
     return {"_offline": True, "buoy_id": station_id}
+
+
+# ─── Historical context (obs + model-agreement indicator) ─────────────────────
+# Data source: fetch_buoy_history (already cached) for records, plus local
+# .csc2_data/forecasts/ parquets for per-hour EURO/GFS categories. No extra
+# NDBC traffic.
+
+def _hour_iso_z(ts_iso: str) -> str | None:
+    """Snap an observation timestamp to the nearest top-of-hour and return
+    the forecast-parquet `valid_utc` string form. NDBC obs land every 10 min;
+    forecasts are hourly, so we nearest-hour round for the lookup."""
+    from datetime import timedelta
+    if not ts_iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt = dt.astimezone(timezone.utc)
+    floor = dt.replace(minute=0, second=0, microsecond=0)
+    if (dt - floor) >= timedelta(minutes=30):
+        floor = floor + timedelta(hours=1)
+    return floor.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _primary_height_period(rec: dict) -> tuple[float | None, float | None]:
+    """Primary swell Hs/Tp for a history record: components[0] if present,
+    else the combined wave_height_ft / wave_period_s."""
+    comps = rec.get("components") or []
+    if comps:
+        c = comps[0]
+        return c.get("height_ft"), c.get("period_s")
+    return rec.get("wave_height_ft"), rec.get("wave_period_s")
+
+
+def _load_model_row_map(station_id: str, model: str, months: set[tuple[int, int]]) -> dict:
+    """Read the relevant cycle parquets for one model and build a
+    {valid_utc_z: (sw1_height_ft, sw1_period_s)} map keyed by the most-recent
+    cycle_utc ≤ valid_utc. Missing month folders or unreadable shards are
+    silently skipped.
+    """
+    import pandas as pd  # deferred: csc2 already installs pandas
+    from csc2.schema import FORECASTS_DIR
+
+    buoy_dir = FORECASTS_DIR / f"model={model}" / f"buoy={station_id}"
+    frames = []
+    for (y, m) in months:
+        mdir = buoy_dir / f"year={y}" / f"month={m:02d}"
+        if not mdir.exists():
+            continue
+        for p in sorted(mdir.glob("cycle=*.parquet")):
+            try:
+                df = pd.read_parquet(p, columns=[
+                    "valid_utc", "cycle_utc", "sw1_height_ft", "sw1_period_s",
+                ])
+            except Exception:
+                continue
+            frames.append(df)
+    if not frames:
+        return {}
+
+    try:
+        allrows = pd.concat(frames, ignore_index=True)
+        # Pick the row with the latest cycle_utc for each valid_utc
+        allrows = allrows.sort_values("cycle_utc").drop_duplicates(
+            subset=["valid_utc"], keep="last"
+        )
+    except Exception:
+        return {}
+
+    out = {}
+    for _, r in allrows.iterrows():
+        h = r.get("sw1_height_ft")
+        p = r.get("sw1_period_s")
+        # pandas NaN → None
+        h = None if (h is None or (isinstance(h, float) and math.isnan(h))) else float(h)
+        p = None if (p is None or (isinstance(p, float) and math.isnan(p))) else float(p)
+        out[str(r["valid_utc"])] = (h, p)
+    return out
+
+
+def _months_spanned(records: list[dict]) -> set[tuple[int, int]]:
+    months: set[tuple[int, int]] = set()
+    for rec in records:
+        ts = rec.get("timestamp")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            continue
+        months.add((dt.year, dt.month))
+    return months
+
+
+@ttl_cache(ttl_seconds=1800, skip_none=True)
+def fetch_buoy_historical_context(station_id: str, days: int = 10) -> dict | None:
+    """
+    Return observed buoy history enriched with a `model_agreement` field per
+    record (true | false | null). Null when either the buoy isn't in CSC2's
+    archive scope or no forecast row covers that hour.
+    """
+    try:
+        from csc2.schema import BUOY_IDS
+    except Exception:
+        BUOY_IDS = []  # csc2 unavailable → all records get model_agreement=null
+    import swell_rules
+
+    base = fetch_buoy_history(station_id, days=days)
+    if base is None:
+        return None
+
+    records = base.get("records") or []
+    out_records: list[dict] = []
+
+    has_archive = station_id in BUOY_IDS
+    euro_map: dict = {}
+    gfs_map: dict = {}
+    if has_archive and records:
+        months = _months_spanned(records)
+        try:
+            euro_map = _load_model_row_map(station_id, "EURO", months)
+        except Exception as e:
+            print(f"[buoy_historical_context] EURO load failed — {type(e).__name__}: {e}")
+            euro_map = {}
+        try:
+            gfs_map = _load_model_row_map(station_id, "GFS", months)
+        except Exception as e:
+            print(f"[buoy_historical_context] GFS load failed — {type(e).__name__}: {e}")
+            gfs_map = {}
+
+    for rec in records:
+        h_obs, p_obs = _primary_height_period(rec)
+        obs_cat = swell_rules.categorize(h_obs, p_obs) if (h_obs and p_obs) else None
+
+        agreement = None
+        if has_archive and obs_cat:
+            vkey = _hour_iso_z(rec.get("timestamp"))
+            euro = euro_map.get(vkey) if vkey else None
+            gfs  = gfs_map.get(vkey) if vkey else None
+            if euro and gfs and euro[0] is not None and euro[1] is not None \
+               and gfs[0] is not None and gfs[1] is not None:
+                euro_cat = swell_rules.categorize(euro[0], euro[1])
+                gfs_cat  = swell_rules.categorize(gfs[0], gfs[1])
+                agreement = (euro_cat == obs_cat) and (gfs_cat == obs_cat)
+
+        out = {
+            "timestamp":          rec.get("timestamp"),
+            "wave_height_ft":     rec.get("wave_height_ft"),
+            "wave_period_s":      rec.get("wave_period_s"),
+            "wave_direction_deg": rec.get("wave_direction_deg"),
+            "components":         rec.get("components") or [],
+            "observed_cat":       obs_cat,
+            "model_agreement":    agreement,
+        }
+        out_records.append(out)
+
+    return {"station_id": station_id, "records": out_records}

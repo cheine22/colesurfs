@@ -140,6 +140,7 @@
       transition: background .15s, color .15s;
     }
     .sw-btn:last-child { border-right: none; }
+    .sw-btn.active     { background: var(--accent-glow); color: var(--accent); }
     .sw-btn.active.EURO { background: var(--accent-glow); color: var(--accent); }
     .sw-btn.active.GFS  { background: var(--green-dim);   color: var(--green);  }
 
@@ -291,6 +292,18 @@
     td.cell.buoy-col {
       border-left: 1px solid var(--border1); min-width: 80px;
     }
+    td.cell.model-overview { min-width: 72px; text-align: center; }
+    td.cell.model-overview .cell-inner,
+    td.cell.model-overview .comp-line { justify-content: center; align-items: center; }
+    td.cell.model-overview .comp-line.p1 { font-size: 18px; font-weight: 800; letter-spacing: .02em; }
+    td.cell.model-overview-with-history-divider {
+      border-left: 1px solid var(--border0);
+    }
+    td.cell.historical-cell { min-width: 50px; position: relative; }
+    td.cell.historical-cell .hist-check {
+      position: absolute; top: 1px; right: 2px;
+      font-size: 9px; color: var(--text3); line-height: 1;
+    }
     td.cell.col-active {
       outline: 1.5px solid var(--accent); outline-offset: -1.5px;
       position: relative; z-index: 2;
@@ -365,16 +378,28 @@
     /* Theme toggle button (reuses footer-btn style) */
     #theme-btn { min-width: 64px; }
 
+    /* Collision-avoidance post-pass nudge — applied to the Leaflet marker
+       wrapper. Uses the standalone `translate` property so it stacks with
+       Leaflet's own `transform: translate3d(...)` without overwriting it. */
+    .leaflet-marker-icon.cs-nudged {
+      translate: var(--cs-nudge-x, 0) var(--cs-nudge-y, 0);
+    }
+
     /* ─── Swell arrow labels ─────────────────────────────── */
     .swell-arrow-label {
       font-family: var(--font); font-size: 9px; font-weight: 600;
       color: var(--text0); background: var(--bg1);
       padding: 1px 5px; border-radius: 3px;
       white-space: nowrap; pointer-events: none;
-      transform: translate(5px, -50%);
       display: inline-block;
+      /* Vertical centering on the Leaflet icon anchor; horizontal offset is
+         supplied by the collision solver via iconAnchor. */
+      transform: translateY(-50%);
     }
     .swell-arrow-sec { opacity: 0.65; }
+    /* Leader line from anchor point to a displaced label (drawn as an SVG
+       polyline in swellArrowLayer / regionWindLayer). */
+    .label-leader { stroke: var(--text2); stroke-width: 1; opacity: 0.55; fill: none; }
 
     /* ─── Regional mode ──────────────────────────────────── */
     .spot-cell.region-active { font-weight: 700; color: var(--text0); }
@@ -686,11 +711,42 @@
         overflow-x: hidden !important;   /* slider controls horizontal scroll programmatically */
         overflow-y: auto !important;     /* vertical scroll for spot rows */
         touch-action: pan-y;             /* block horizontal touch gestures */
+        overscroll-behavior: contain;    /* seal scroll chain so vertical momentum doesn't leak to ancestors or jog sticky cells horizontally */
+        -webkit-overflow-scrolling: auto; /* disable iOS bounce momentum that was shifting sticky cells horizontally mid-scroll */
         scrollbar-width: none;           /* Firefox: hide scrollbar */
         border-radius: 8px !important;
         border: 1px solid var(--border1) !important;
         margin: 2px 6px 4px !important;  /* match map left/right inset */
         max-width: calc(100vw - 12px) !important;
+      }
+      /* touch-action doesn't reliably inherit on iOS — some browsers let
+         descendant elements with the default `touch-action: auto` re-enable
+         horizontal pan even inside a `pan-y` parent. Force `pan-y` on every
+         child of the table so a drag starting on any cell stays vertical. */
+      .table-scroll,
+      .table-scroll * { touch-action: pan-y !important; }
+
+      /* ── Mobile horizontal positioning via transform, not scrollLeft ──
+         The underlying issue: when content is thousands of pixels wider
+         than the container, iOS Safari allows diagonal gestures to leak
+         horizontal motion even with overflow-x: hidden + touch-action: pan-y.
+         Structural fix — don't make the container horizontally scrollable.
+         Translate the whole table via a CSS custom property instead, and
+         counter-translate the sticky spot column so it stays at the left
+         edge. The slider JS writes to `--table-tx` on `.swell-table` to
+         simulate scrolling; `ts.scrollLeft` is no-op'd on mobile. */
+      .table-scroll .swell-table {
+        --table-tx: 0px;
+        transform: translateX(calc(-1 * var(--table-tx)));
+        will-change: transform;
+      }
+      .table-scroll td.spot-cell,
+      .table-scroll th.th-spot {
+        /* sticky has no reference when the container has overflow-x: hidden,
+           so re-implement "stick to the left edge" via a counter-translate */
+        position: relative !important;
+        left: auto !important;
+        transform: translateX(var(--table-tx, 0px));
       }
       .table-scroll::-webkit-scrollbar { display: none !important; } /* Chrome/Safari: hide scrollbar */
       /* Only spot-name links are tappable; data cells are inert */
@@ -735,6 +791,8 @@
       /* Buoy column */
       th.th-buoy { min-width: 64px; }
       td.cell.buoy-col { min-width: 64px; }
+      td.cell.model-overview { min-width: 56px; }
+      td.cell.historical-cell { min-width: 38px; }
 
       /* ── Time slider bar ── */
       .mobile-time-scrubber { display: flex !important; }
@@ -959,6 +1017,7 @@
       background: var(--bg1); border: 1px solid var(--border1);
       border-radius: 12px; padding: 22px 20px 18px;
       min-width: 230px; max-width: 82vw;
+      max-height: 75vh; overflow-y: auto;
       display: flex; flex-direction: column; gap: 12px;
       position: relative;
       box-shadow: 0 8px 32px rgba(0,0,0,.45);
@@ -1040,28 +1099,36 @@
       background: var(--bg0); overflow: hidden; position: relative;
     }
     .buoy-popup-chart-wrap canvas {
-      width: 100%; height: 280px; display: block;
+      width: 100%; height: 220px; display: block;
+    }
+    .buoy-time-label {
+      font-family: var(--font); font-size: 11px; color: var(--text1);
+      text-align: center; letter-spacing: .04em; margin: 2px 0 0;
+      white-space: nowrap;
+    }
+    .buoy-info-strip {
+      display: block;
+      font-family: var(--font); font-size: 11px; color: var(--text1);
+      text-align: center; margin-top: 4px; letter-spacing: .02em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .buoy-scrubber { display: none; }
     @media (max-width: 600px) {
       .buoy-popup-overlay { padding: 8px; align-items: center; }
       .buoy-popup { max-width: 100%; padding: 14px 12px; }
-      .buoy-popup-chart-wrap canvas { height: 180px; }
+      .buoy-popup-chart-wrap canvas { height: 140px; }
       .buoy-popup-title { font-size: 11px; }
-      .buoy-popup-tooltip { font-size: 8px; }
+      .buoy-popup-tooltip { display: none !important; }
+      .buoy-info-strip { display: block; font-size: 10px; }
       .buoy-scrubber {
         display: flex; align-items: center; gap: 6px;
         height: 28px; touch-action: none; user-select: none;
         -webkit-user-select: none;
-      }
-      .buoy-scrub-label {
-        font-size: 8px; font-weight: 700; color: var(--accent);
-        font-family: var(--font); white-space: nowrap; min-width: 44px;
-        text-align: center; letter-spacing: .04em;
+        padding-left: 24px; padding-right: 16px;
       }
       .buoy-scrub-track-wrap {
         flex: 1; height: 100%; display: flex; align-items: center;
-        position: relative; padding: 0 10px;
+        position: relative; padding: 0;
       }
       .buoy-scrub-track {
         width: 100%; height: 2px; background: var(--border1);
@@ -1166,6 +1233,29 @@
     .about-version {
       font-size: 8.5px; letter-spacing: .08em; color: var(--text3);
     }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 6px 2px; font-family: var(--font);
+      font-size: 11px; letter-spacing: .04em; color: var(--text1);
+      cursor: pointer; user-select: none;
+    }
+    /* Desktop: show toolbar toggle, hide prefs-modal toggle. Mobile: inverse. */
+    @media (min-width: 601px) { .toggle-row.toggle-history { display: none; } }
+    @media (max-width: 600px) { #desktop-history-switch,
+                                 .controls-bar span.ctrl-label-history { display: none; } }
+    .toggle-row input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none; width: 32px; height: 16px;
+      background: var(--bg3); border: 1px solid var(--border1); border-radius: 8px;
+      position: relative; cursor: pointer; transition: background .15s, border-color .15s;
+      margin: 0; flex-shrink: 0;
+    }
+    .toggle-row input[type="checkbox"]::after {
+      content: ''; position: absolute; top: 1px; left: 1px;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: var(--text2); transition: left .15s, background .15s;
+    }
+    .toggle-row input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+    .toggle-row input[type="checkbox"]:checked::after { left: 17px; background: var(--bg1); }
 
     .toast {
       position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
@@ -1208,7 +1298,7 @@
 <div class="app-header">
   <span class="header-logo" onclick="openInfoModal()"><span class="wave-glyph">∿</span>colesurfs</span>
   <div class="header-right">
-    <button class="header-about-btn" onclick="openAboutModal()">ABOUT ME</button>
+    <button class="header-about-btn" onclick="openAboutModal()">PREFERENCES</button>
   </div>
 </div>
 
@@ -1223,9 +1313,15 @@
   <button class="sw-btn" onclick="openBuoyPicker()" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1)">BUOY HISTORY</button>
   <div class="sep"></div>
   <span class="ctrl-label">Resolution</span>
-  <div class="pill-group">
-    <button class="pill"        onclick="setResolution(1,this)">Hourly</button>
-    <button class="pill active" onclick="setResolution(3,this)">3-Hour</button>
+  <div class="model-switch">
+    <button class="sw-btn"        data-res="1" onclick="setResolution(1,this)">HOURLY</button>
+    <button class="sw-btn active" data-res="3" onclick="setResolution(3,this)">3-HOUR</button>
+  </div>
+  <div class="sep ctrl-label-history"></div>
+  <span class="ctrl-label ctrl-label-history">History</span>
+  <div class="model-switch" id="desktop-history-switch">
+    <button class="sw-btn active" data-hist="off" onclick="setShowHistory(false)">OFF</button>
+    <button class="sw-btn"        data-hist="on"  onclick="setShowHistory(true)">ON</button>
   </div>
   <div class="status-bar">
     <span class="status-tag" id="model-run-tag">Run: <b>—</b></span>
@@ -1313,34 +1409,14 @@
   <div class="info-modal">
     <button class="info-modal-close" onclick="closeInfoModal()">✕</button>
     <div class="info-modal-title"><span class="wave-glyph">∿</span>colesurfs</div>
-    <button class="info-modal-refresh" onclick="refreshAll(); closeInfoModal()">↺ REFRESH MODEL NOW</button>
-    <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
-    <a class="info-modal-refresh" href="https://coleheine.com" target="_blank" rel="noopener noreferrer" style="text-decoration:none;text-align:center">COLE HEINE PHOTOGRAPHY</a>
-    <a class="info-modal-refresh" href="/csc" style="text-decoration:none;text-align:center">∿ CSC (BETA)</a>
-    <a class="info-modal-refresh" href="/tuner" style="text-decoration:none;text-align:center">⇞ TUNER</a>
-    <dl class="info-modal-sources">
-      <dt>Swell — EURO</dt><dd>Copernicus Marine (CMEMS) · ECMWF WAM ANFC</dd>
-      <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
-      <dt>Wind</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
-      <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
-      <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
-    </dl>
-    <span class="info-modal-version">v1.6.1</span>
-  </div>
-</div>
-
-<!-- ══ About Me Modal ═══════════════════════════════════════ -->
-<div class="about-modal-overlay" id="about-modal-overlay" onclick="closeAboutModalOutside(event)">
-  <div class="about-modal">
-    <button class="about-modal-close" onclick="closeAboutModal()">✕</button>
-    <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs</div>
     <div class="about-text">
       welcome to colesurfs<br><br>
       i designed this dashboard for staying on top of the swell forecast for the northeast<br><br>
       it is exactly the data i use for forecasting, consolidated into one interface<br><br>
-      claude helped with the code, you can review it <a href="https://github.com/cheine22/colesurfs" target="_blank" rel="noopener">on github</a>
+      claude helped with the code, you can review it <a href="https://github.com/cheine22/colesurfs" target="_blank" rel="noopener">on github</a><br><br>
+      for my main site, visit <a href="https://coleheine.com" target="_blank" rel="noopener">coleheine.com</a>
     </div>
-    <div class="about-section-title">swell coding</div>
+    <div class="about-section-title">swell categories</div>
     <div class="about-legend" id="about-swell-legend"></div>
     <div class="about-section-title">wind classifications</div>
     <div class="about-legend" id="about-wind-legend"></div>
@@ -1351,7 +1427,32 @@
       <li>compare the GFS and Euro models to get a sense of how reliable the forecast is: model agreement = more reliable forecast</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
     </ul>
-    <span class="about-version">v1.6.1</span>
+    <div class="about-section-title">Data provenance</div>
+    <dl class="info-modal-sources">
+      <dt>Swell — EURO</dt><dd>Copernicus Marine (CMEMS) · ECMWF WAM ANFC</dd>
+      <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
+      <dt>Wind</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
+      <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
+      <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
+    </dl>
+    <span class="info-modal-version">v1.7.1</span>
+  </div>
+</div>
+
+<!-- ══ Preferences Modal ════════════════════════════════════ -->
+<div class="about-modal-overlay" id="about-modal-overlay" onclick="closeAboutModalOutside(event)">
+  <div class="about-modal">
+    <button class="about-modal-close" onclick="closeAboutModal()">✕</button>
+    <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs · preferences</div>
+    <button class="info-modal-refresh" onclick="refreshAll(); closeAboutModal()">↺ REFRESH MODEL NOW</button>
+    <a class="info-modal-refresh" href="/csc" style="text-decoration:none;text-align:center">∿ CSC (BETA)</a>
+    <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
+    <a class="info-modal-refresh" href="/tuner" style="text-decoration:none;text-align:center">⇞ TUNER</a>
+    <label class="toggle-row toggle-history">
+      <span>show historical data</span>
+      <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
+    </label>
+    <span class="about-version">v1.7.1</span>
   </div>
 </div>
 
@@ -1361,12 +1462,13 @@
     <button class="buoy-popup-close" onclick="closeBuoyPopup()">✕</button>
     <div class="buoy-popup-title" id="buoy-popup-title">—</div>
     <select class="buoy-popup-select" id="buoy-popup-select" onchange="switchBuoyPopup(this.value)"></select>
+    <div class="buoy-time-label" id="buoy-time-label">—</div>
     <div class="buoy-popup-chart-wrap" id="buoy-popup-chart-wrap">
-      <canvas id="buoy-popup-canvas"></canvas>
-      <div class="buoy-popup-tooltip" id="buoy-popup-tooltip"></div>
+      <canvas id="buoy-popup-canvas-bot"></canvas>
+      <canvas id="buoy-popup-canvas-top"></canvas>
     </div>
+    <div class="buoy-info-strip" id="buoy-info-strip"></div>
     <div class="buoy-scrubber" id="buoy-scrubber">
-      <span class="buoy-scrub-label" id="buoy-scrub-label">—</span>
       <div class="buoy-scrub-track-wrap" id="buoy-scrub-track-wrap">
         <div class="buoy-scrub-track" id="buoy-scrub-track">
           <div class="buoy-scrub-fill" id="buoy-scrub-fill"></div>
@@ -1386,14 +1488,14 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.6.1</span>
+    <span class="footer-version">v1.7.1</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
     <span class="footer-divider">·</span>
     <button class="footer-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑ LIGHT</button>
     <span class="footer-divider">·</span>
-    <button class="footer-btn" onclick="openAboutModal()" title="About colesurfs">ABOUT ME</button>
+    <button class="footer-btn" onclick="openAboutModal()" title="Preferences">PREFERENCES</button>
   </div>
 </footer>
 
@@ -2073,6 +2175,16 @@ async function init() {
   const wfPromise = loadWindForecast();
   await loadAll();
   await wfPromise;   // wait for wind forecast before considering init complete
+  // Historical data starts OFF on every fresh page load — user toggles on
+  // explicitly via the toolbar (desktop) or Preferences modal (mobile).
+  // Clearing the key here means the global scroll state never carries over
+  // between sessions.
+  try { delete localStorage['cs_show_history']; } catch (_) {}
+  setShowHistory(false);
+  // Install the mobile horizontal scroll-lock once the table is in the DOM.
+  // Harmless on desktop (the listener compares scrollLeft to itself when no
+  // programmatic set has happened, so the snap-back is a no-op).
+  _installTableScrollLock();
   _loader.finish();
   _refreshStatus();
 }
@@ -2101,8 +2213,8 @@ async function loadAll() {
     track(_fetchWithTimeout('/api/forecast/EURO', T),                'EURO forecast loaded'),
     track(_fetchWithTimeout('/api/forecast/GFS', T),                 'GFS forecast loaded'),
     track(_fetchWithTimeout(`/api/wind?model=${activeModel}`, T),    'Wind grid loaded'),
-    track(_fetchWithTimeout(`/api/region_wind?model=${activeModel}`, T), 'Regional wind loaded'),
-    track(_fetchWithTimeout('/api/tides', T),                        'Tide data loaded'),
+    track(_fetchWithTimeout(_regionWindUrl(activeModel), T), 'Regional wind loaded'),
+    track(_fetchWithTimeout(_tidesUrl(), T),                         'Tide data loaded'),
   ]);
 
   buoyData = buoys.status === 'fulfilled' ? (buoys.value || {}) : {};
@@ -2261,6 +2373,166 @@ function buildLegend() {
   });
 }
 
+// Cache of historical buoy observations (populated by preloadHistoricalData).
+// Keyed by station_id → { records: [{timestamp, wave_height_ft, wave_period_s,
+// wave_direction_deg, components, observed_cat, model_agreement}, ...] }.
+let historicalData = {};
+
+// Index of a swell category name in CFG.swell_categories; -1 if unknown.
+function _swellCatIdx(catName) {
+  if (!CFG || !catName) return -1;
+  return CFG.swell_categories.findIndex(c => c.name === catName);
+}
+
+// Primary (h, p) for a forecast record, mirroring getAltModelCat / buildBuoyCell.
+function _primaryHP(rec) {
+  if (!rec || rec.wave_height_ft == null) return null;
+  const pc = rec.components && rec.components.length > 0 ? rec.components[0] : null;
+  return {
+    h: pc ? pc.height_ft : rec.wave_height_ft,
+    p: pc ? pc.period_s  : rec.wave_period_s,
+  };
+}
+
+// Local-time day key, matching the slider's existing dayKey scheme (line ~3554).
+function _dayKey(iso) {
+  const d = new Date(iso.replace('T', ' '));
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+// Compute the Model Overview summary for a spot.
+// Samples every 3h (independent of UI resolution) from first time ≥ now.
+// Returns { count, bg, fg, catName }.
+// count = days with ≥2 daytime 3h windows where min(GFS,EURO) ≥ FUN.
+// colour = swellColor of the (h,p) of the window with the highest min(GFS,EURO).
+function computeModelOverview(spotName) {
+  const euroRows = ((forecastData.EURO || {})[spotName]) || [];
+  const gfsRows  = ((forecastData.GFS  || {})[spotName]) || [];
+  const euroByT = {}; euroRows.forEach(r => { euroByT[r.time] = r; });
+  const gfsByT  = {}; gfsRows .forEach(r => { gfsByT[r.time]  = r; });
+
+  const nowFloor = new Date(); nowFloor.setMinutes(0, 0, 0);
+  // Union of times, sorted, filtered to future-or-now.
+  const timesSet = new Set([...Object.keys(euroByT), ...Object.keys(gfsByT)]);
+  const times = [...timesSet].sort()
+    .filter(t => new Date(t.replace('T', ' ')) >= nowFloor);
+  // Stride-3 sampling: every 3rd hour from the first.
+  const THREE_H = 10800000;
+  const sampled = [];
+  if (times.length) {
+    const t0 = new Date(times[0].replace('T', ' ')).getTime();
+    for (const t of times) {
+      const tMs = new Date(t.replace('T', ' ')).getTime();
+      if (((tMs - t0) / 3600000) % 3 === 0) sampled.push(t);
+    }
+  }
+
+  const funIdx = _swellCatIdx('FUN');
+  // Per-day count of fun-or-better windows.
+  const perDay = {};
+  let bestMinIdx = -1;
+  let bestHP = null;
+  for (const t of sampled) {
+    if (isNightCol(t, THREE_H)) continue;
+    const er = euroByT[t], gr = gfsByT[t];
+    const eHP = _primaryHP(er), gHP = _primaryHP(gr);
+    if (!eHP || !gHP) continue;
+    const [, , eCat] = swellColor(eHP.h, eHP.p);
+    const [, , gCat] = swellColor(gHP.h, gHP.p);
+    const ei = _swellCatIdx(eCat), gi = _swellCatIdx(gCat);
+    if (ei < 0 || gi < 0) continue;
+    const m = Math.min(ei, gi);
+    // Remember (h, p) of the lesser-classed side so colour matches min.
+    if (m > bestMinIdx) {
+      bestMinIdx = m;
+      bestHP = (ei <= gi) ? eHP : gHP;
+    }
+    if (m >= funIdx) {
+      const k = _dayKey(t);
+      perDay[k] = (perDay[k] || 0) + 1;
+    }
+  }
+  let count = 0;
+  for (const k in perDay) if (perDay[k] >= 2) count++;
+  let bg, fg, catName;
+  if (bestHP) {
+    [bg, fg, catName] = swellColor(bestHP.h, bestHP.p);
+  } else {
+    [bg, fg, catName] = [ _isDark() ? 'var(--bg1)' : 'var(--bg2)', 'var(--text3)', null ];
+  }
+  return { count, bg, fg, catName };
+}
+
+// Render a historical cell from an observation record. Mirrors buildBuoyCell
+// styling minus the "NOW" treatment; ✓ overlay when model_agreement === true.
+function buildHistoricalCell(obs, cellTime) {
+  const dtAttr = cellTime ? ` data-time="${cellTime}"` : '';
+  const comps = obs.components && obs.components.length > 0 ? obs.components : null;
+  const primaryH = comps ? comps[0].height_ft : obs.wave_height_ft;
+  const primaryP = comps ? comps[0].period_s  : obs.wave_period_s;
+  if (primaryH == null) {
+    return `<td class="cell historical-cell historical-empty"${dtAttr} style="background:var(--bg2)"></td>`;
+  }
+  const [bg, fg, catName] = swellColor(primaryH, primaryP);
+  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
+  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
+  if (comps) {
+    comps.forEach((c, ci) => {
+      const cls   = ['p1','p2','p3'][ci] || 'p3';
+      const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+      const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
+      inner += `<div class="comp-line ${cls}">
+        <span class="c-ht">${c.height_ft}</span>
+        <span>&nbsp;@${c.period_s ?? '?'}</span>
+        <span>&nbsp;${arrow}${dir}</span>
+      </div>`;
+    });
+  } else {
+    const dir   = obs.wave_direction_deg != null ? toCard(obs.wave_direction_deg) : '?';
+    const arrow = obs.wave_direction_deg != null ? toArrow(obs.wave_direction_deg) : '';
+    inner += `<div class="comp-line p1">
+      <span class="c-ht">${primaryH}</span>
+      <span>&nbsp;@${primaryP ?? '?'}</span>
+      <span>&nbsp;${arrow}${dir}</span>
+    </div>`;
+  }
+  inner += '</div>';
+  const check = obs.model_agreement === true ? `<span class="hist-check">✓</span>` : '';
+  return `<td class="cell historical-cell"${dtAttr} style="background:${bg}">${inner}${check}</td>`;
+}
+
+// Background-preload historical context for every buoy currently visible.
+// Stores into `historicalData[station_id]`. Idempotent per-buoy (skips in-flight).
+const _histInflight = {};
+let _histRebuildTimer = null;
+function _scheduleHistRebuild() {
+  if (localStorage['cs_show_history'] !== '1') return;
+  if (_histRebuildTimer) return;
+  _histRebuildTimer = setTimeout(() => {
+    _histRebuildTimer = null;
+    if (typeof buildTable === 'function') buildTable();
+  }, 400);
+}
+function preloadHistoricalData() {
+  if (!CFG) return;
+  const ids = new Set();
+  (CFG.spots || []).forEach(s => { if (s.buoy_id) ids.add(s.buoy_id); });
+  ids.forEach(id => {
+    if (_histInflight[id]) return;
+    _histInflight[id] = true;
+    fetch(`/api/buoy_historical_context?station_id=${id}&days=10`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (j) {
+          historicalData[id] = j;
+          _scheduleHistRebuild();
+        }
+      })
+      .catch(() => {})
+      .finally(() => { _histInflight[id] = false; });
+  });
+}
+
 // Get the swell category from the alternate model for concordance checking.
 function getAltModelCat(spotName, time) {
   const altModel = activeModel === 'EURO' ? 'GFS' : 'EURO';
@@ -2307,6 +2579,122 @@ function swellColor(height_ft, period_s) {
 
 // ═══ 9. TABLE BUILDING ══════════════════════════════════════
 
+// Historical-column cadence: 240h window ending "now", stepping by the
+// UI resolution (1h or 3h). Returns an array of ISO strings (UTC-naive, same
+// shape as forecast `time`s) from oldest to newest.
+function _historicalTimes(resolutionHours) {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  const stepMs  = resolutionHours * 3600 * 1000;
+  const count   = Math.floor(240 / resolutionHours);
+  const out = [];
+  for (let i = count; i >= 1; i--) {
+    const d = new Date(now.getTime() - i * stepMs);
+    const pad = n => String(n).padStart(2, '0');
+    // Naive local-ISO (matches `rec.time` strings "YYYY-MM-DDTHH:MM").
+    out.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`);
+  }
+  return out;
+}
+
+// Build the historical cells HTML for a single row (swell observations from
+// `historicalData[stationId]`). Returns '' when history is off or no data.
+function _buildHistoricalCellsHtml(stationId, resolutionHours) {
+  if (localStorage['cs_show_history'] !== '1') return '';
+  const data = historicalData[stationId];
+  const times = _historicalTimes(resolutionHours);
+  if (!data || !data.records || !data.records.length) {
+    // Render empty placeholders so column count matches row-to-row.
+    return times.map(t =>
+      `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`
+    ).join('');
+  }
+  // Pre-index records by epoch ms. Skip rows that have no usable wave data —
+  // NDBC publishes stdmet every 10 min but WVHT only every 20–30, so the raw
+  // array is peppered with null-WVHT rows that would otherwise match via the
+  // nearest-time binary search and leave cells empty despite valid readings
+  // being available a few minutes earlier.
+  const recsMs = data.records
+    .filter(r => r.wave_height_ft != null
+                 || (r.components && r.components.length > 0))
+    .map(r => {
+      const ts = r.timestamp || r.time;
+      return { ms: new Date(String(ts).replace('T', ' ')).getTime(), rec: r };
+    })
+    .sort((a, b) => a.ms - b.ms);
+  const tolMs = (resolutionHours === 1 ? 30 : 90) * 60 * 1000;
+  let html = '';
+  for (const t of times) {
+    const tMs = new Date(t.replace('T', ' ')).getTime();
+    // Binary search for closest.
+    let lo = 0, hi = recsMs.length - 1, best = null, bestDiff = Infinity;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const diff = Math.abs(recsMs[mid].ms - tMs);
+      if (diff < bestDiff) { bestDiff = diff; best = recsMs[mid].rec; }
+      if (recsMs[mid].ms < tMs) lo = mid + 1; else hi = mid - 1;
+    }
+    if (best && bestDiff <= tolMs) html += buildHistoricalCell(best, t);
+    else html += `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`;
+  }
+  return html;
+}
+
+// Row of blank historical cells (region-mode spot rows with no wind data).
+function _blankHistoricalCellsHtml(resolutionHours) {
+  if (localStorage['cs_show_history'] !== '1') return '';
+  const times = _historicalTimes(resolutionHours);
+  return times.map(t =>
+    `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`
+  ).join('');
+}
+
+// Region-mode historical wind cells for a spot row. Each cell pulls the
+// wind record at the matching historical hour from `regionWindData`
+// (populated by /api/region_wind?past_days=10 when history is on) AND
+// the tide reading from `regionTideData` (populated by /api/tides?past_days=10).
+// Uses the same `buildWindCell` renderer as forecast cells so styling stays
+// consistent with the rest of the wind strip.
+function _buildHistoricalWindCellsHtml(spotName, resolutionHours, shoreNormal) {
+  if (localStorage['cs_show_history'] !== '1') return '';
+  const times = _historicalTimes(resolutionHours);
+  const records = regionWindData[spotName] || [];
+  const stationTides = regionTideData[spotName] || {};
+  if (!records.length) {
+    return times.map(t =>
+      `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`
+    ).join('');
+  }
+  const byTime = {};
+  records.forEach(r => { byTime[r.time] = r; });
+  let html = '';
+  for (const t of times) {
+    const r = byTime[t];
+    if (!r) {
+      html += `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`;
+      continue;
+    }
+    const tide = _resolveTide(stationTides, t, resolutionHours);
+    html += buildWindCell(r, t, tide, shoreNormal, 'historical-cell');
+  }
+  return html;
+}
+
+// Build the correct region_wind URL based on the current history toggle.
+// history on → ask backend for past 10 days too, so historical wind cells
+// can populate from the same response.
+function _regionWindUrl(model) {
+  const past = localStorage['cs_show_history'] === '1' ? 10 : 0;
+  return `/api/region_wind?model=${model}` + (past ? `&past_days=${past}` : '');
+}
+
+// Matching helper for /api/tides — same past_days contract so historical
+// wind cells get tide readings alongside wind data.
+function _tidesUrl() {
+  const past = localStorage['cs_show_history'] === '1' ? 10 : 0;
+  return past ? `/api/tides?past_days=${past}` : '/api/tides';
+}
+
 function buildTable() {
   if (!CFG) return;
   if (regionMode) { buildRegionTable(); return; }
@@ -2344,9 +2732,21 @@ function buildTable() {
 
   // Overview mode: subtitle shows NY Harbor Entrance buoy's last-update time.
   const nyhBuoy = buoyData['NY Harbor Entrance'];
+  const historyOn = localStorage['cs_show_history'] === '1';
+  const histCount = historyOn ? Math.floor(240 / resolution) : 0;
+  const moDividerCls = historyOn ? ' model-overview-with-history-divider' : '';
+  const histTimes = historyOn ? _historicalTimes(resolution) : [];
   let hrow = `<tr>
-    <th class="th-spot">SPOT</th>
-    <th class="th-buoy">BUOY NOW${buoyUpdateHtml(nyhBuoy)}</th>`;
+    <th class="th-spot">SPOT</th>`;
+  // Historical headers — same date/time format as forecast columns, with
+  // night-column styling so the visual rhythm matches.
+  histTimes.forEach(t => {
+    const night = isNightCol(t, resolution * 3600 * 1000);
+    const moon  = night ? `<span class="night-moon">🌙</span>` : '';
+    hrow += `<th class="th-time th-historical${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+  });
+  hrow += `<th class="th-time th-model-overview">Fun+<br>Days</th>`;
+  hrow += `<th class="th-buoy">BUOY NOW${buoyUpdateHtml(nyhBuoy)}</th>`;
   times.forEach(t => {
     if (emptyTimes.has(t)) {
       hrow += `<th class="th-time col-empty">—</th>`;
@@ -2367,8 +2767,13 @@ function buildTable() {
     const clickAttr  = hasRegion
       ? ` style="cursor:pointer" onclick="enterRegionMode('${spot.name.replace(/'/g,"\\'")}')"`
       : '';
+    const mo = computeModelOverview(spot.name);
     html += `<tr>
       <td class="spot-cell${activeAttr}"${clickAttr}>${spot.name}</td>
+      ${_buildHistoricalCellsHtml(spot.buoy_id, resolution)}
+      <td class="cell model-overview${moDividerCls}" style="background:${mo.bg};color:${mo.fg}">
+        <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}</span></div></div>
+      </td>
       ${buildBuoyCell(b, spot.buoy_id)}`;
     times.forEach(t => {
       const nightClass = ovNightCols.has(t) && !emptyTimes.has(t) ? 'night-col' : '';
@@ -2377,13 +2782,14 @@ function buildTable() {
     });
     html += '</tr>';
     if (si < CFG.spots.length - 1) {
-      html += `<tr class="spot-sep"><td colspan="${2 + times.length}"></td></tr>`;
+      html += `<tr class="spot-sep"><td colspan="${3 + histCount + times.length}"></td></tr>`;
     }
   });
 
   document.getElementById('table-body').innerHTML =
     html || '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2)">No data</td></tr>';
   attachHoverListeners();
+  _afterBuildTable();
 }
 
 function buildRegionTable() {
@@ -2417,9 +2823,19 @@ function buildRegionTable() {
 
   // Regional mode: subtitle shows the current region's buoy last-update time.
   const regionBuoy = buoyData[buoySpot.name];
+  const historyOn = localStorage['cs_show_history'] === '1';
+  const histCount = historyOn ? Math.floor(240 / resolution) : 0;
+  const moDividerCls = historyOn ? ' model-overview-with-history-divider' : '';
+  const histTimes = historyOn ? _historicalTimes(resolution) : [];
   let hrow = `<tr>
-    <th class="th-spot">SPOT</th>
-    <th class="th-buoy">BUOY NOW${buoyUpdateHtml(regionBuoy)}</th>`;
+    <th class="th-spot">SPOT</th>`;
+  histTimes.forEach(t => {
+    const night = isNightCol(t, resolution * 3600 * 1000);
+    const moon  = night ? `<span class="night-moon">🌙</span>` : '';
+    hrow += `<th class="th-time th-historical${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+  });
+  hrow += `<th class="th-time th-model-overview">Fun+<br>Days</th>`;
+  hrow += `<th class="th-buoy">BUOY NOW${buoyUpdateHtml(regionBuoy)}</th>`;
   times.forEach(t => {
     const night = nightCols.has(t);
     const moon  = night ? `<span class="night-moon">🌙</span>` : '';
@@ -2428,12 +2844,17 @@ function buildRegionTable() {
   hrow += '</tr>';
   document.getElementById('table-head').innerHTML = hrow;
 
-  const colCount = 2 + times.length;
+  const colCount = 3 + histCount + times.length;
 
   const b = buoyData[buoySpot.name];
+  const mo = computeModelOverview(buoySpot.name);
   let html = `<tr>
     <td class="spot-cell region-active" style="cursor:pointer"
         onclick="exitRegionMode()">${buoySpot.name}</td>
+    ${_buildHistoricalCellsHtml(buoySpot.buoy_id, resolution)}
+    <td class="cell model-overview${moDividerCls}" style="background:${mo.bg};color:${mo.fg}">
+      <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}</span></div></div>
+    </td>
     ${buildBuoyCell(b, buoySpot.buoy_id)}`;
   times.forEach(t => {
     html += buildWaveCell(buoyByTime[t], t, nightCols.has(t) ? 'night-col' : '', buoySpot.name);
@@ -2446,6 +2867,10 @@ function buildRegionTable() {
       ? `<a href="${ws.surfline_url}" target="_blank" rel="noopener noreferrer">${ws.name}</a>`
       : ws.name;
     html += `<tr><td class="spot-cell wind-spot-cell">${nameHtml}</td>`;
+    // Region-mode spot rows: historical wind cells (populated from the same
+    // model when history is on) + blank model-overview (mirrors buoy-col).
+    html += _buildHistoricalWindCellsHtml(ws.name, resolution, ws.shore_normal);
+    html += `<td class="cell model-overview${moDividerCls}"></td>`;
     html += `<td class="cell" style="background:var(--bg1)"><div class="null-cell">—</div></td>`;
     times.forEach(t => {
       const tide = _resolveTide(stationTides, t, resolution);
@@ -2459,6 +2884,7 @@ function buildRegionTable() {
 
   document.getElementById('table-body').innerHTML = html;
   attachHoverListeners();
+  _afterBuildTable();
 }
 
 
@@ -2840,6 +3266,182 @@ function _geoOffset(lat, lon, bearingDeg, distKm) {
   return [lat + dlat, lon + dlon];
 }
 
+// Rough text width estimate for 9px / 10px system-ui font used in map labels.
+// Avoids paying for real DOM measurement; errs slightly wide (safer for
+// collision avoidance than running too narrow).
+function _estLabelWidth(text, fontPx) {
+  const k = fontPx >= 10 ? 6.2 : 5.6;
+  return Math.max(18, Math.round(text.length * k + 10));
+}
+
+// Collision-avoidance label placer. Each input item:
+//   { anchorPx:{x,y}, w, h, prefer:{dx,dy}, leaderThreshold }
+// Returns an array of the same length with { dx, dy, needsLeader, rect }.
+//
+// Algorithm: for each item in insertion order, try a sequence of offset
+// candidates (starting at `prefer`, then spiralling outward across 16
+// directions at increasing rings) and pick the first whose rectangle
+// doesn't overlap any already-placed one. Rects include padding so adjacent
+// labels don't kiss. Past a leaderThreshold distance from the preferred
+// offset, flag for a leader line.
+function _placeLabelsNoOverlap(items, opts) {
+  const PAD = (opts && opts.pad) || 2;
+  const STEP = (opts && opts.step) || 14;
+  const MAX_RING = (opts && opts.maxRing) || 10;
+  const placedRects = (opts && opts.seedRects) ? opts.seedRects.slice() : [];
+  const results = new Array(items.length);
+
+  // 16-way candidates; finer angular resolution lets us slot labels into
+  // narrow gaps between neighbours. dx/dy are unit directions; each ring
+  // scales them by `ring * STEP`.
+  const DIRS = [
+    [ 1,  0], [-1,  0], [ 0, -1], [ 0,  1],
+    [ 1, -1], [-1, -1], [ 1,  1], [-1,  1],
+    [ 2, -1], [-2, -1], [ 2,  1], [-2,  1],
+    [ 1, -2], [-1, -2], [ 1,  2], [-1,  2],
+  ];
+  const INV = 1 / Math.sqrt(5);   // normaliser for the ±2 unit directions
+
+  const overlaps = (r, list) => {
+    for (const p of list) {
+      if (r.x < p.x + p.w && r.x + r.w > p.x && r.y < p.y + p.h && r.y + r.h > p.y) return true;
+    }
+    return false;
+  };
+  const rectAt = (anchorPx, dx, dy, w, h) => ({
+    x: anchorPx.x + dx - PAD,
+    y: anchorPx.y + dy - h / 2 - PAD,
+    w: w + PAD * 2, h: h + PAD * 2,
+  });
+
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const { anchorPx, w, h, prefer } = it;
+    const leaderThr = it.leaderThreshold != null ? it.leaderThreshold : 18;
+    let chosen = null;
+
+    // Ring 0 — the prefer candidate itself.
+    const r0 = rectAt(anchorPx, prefer.dx, prefer.dy, w, h);
+    if (!overlaps(r0, placedRects)) {
+      chosen = { dx: prefer.dx, dy: prefer.dy, rect: r0 };
+    } else {
+      outer:
+      for (let ring = 1; ring <= MAX_RING; ring++) {
+        for (const [ux, uy] of DIRS) {
+          const scale = (Math.abs(ux) === 2 || Math.abs(uy) === 2) ? INV * ring * STEP : ring * STEP;
+          const dx = prefer.dx + ux * scale;
+          const dy = prefer.dy + uy * scale;
+          const rect = rectAt(anchorPx, dx, dy, w, h);
+          if (!overlaps(rect, placedRects)) {
+            chosen = { dx, dy, rect };
+            break outer;
+          }
+        }
+      }
+    }
+
+    if (!chosen) {
+      // Fallback: push further down past the ring limit.
+      const dy = prefer.dy + (MAX_RING + 2) * STEP;
+      chosen = { dx: prefer.dx, dy, rect: rectAt(anchorPx, prefer.dx, dy, w, h) };
+    }
+
+    placedRects.push(chosen.rect);
+    const moved = Math.hypot(chosen.dx - prefer.dx, chosen.dy - prefer.dy);
+    results[i] = { dx: chosen.dx, dy: chosen.dy, needsLeader: moved > leaderThr, rect: chosen.rect };
+  }
+  results._placedRects = placedRects;
+  return results;
+}
+
+// DOM-measurement post-pass. After Leaflet has rendered the markers, walk
+// the label elements, measure their actual rects, and if any still overlap
+// apply an extra CSS translate to the marker-icon wrapper. Returns the
+// final list of rects (viewport-coords) so a subsequent pass can seed it.
+//
+// `labelSelector` is a CSS selector matching the <div> inside each marker
+// (e.g. '.swell-arrow-label'). We walk up to the '.leaflet-marker-icon'
+// wrapper, read any existing transform we may have stamped in a prior pass,
+// and extend it. Leader lines are expressed as {x1,y1,x2,y2} viewport-coord
+// pairs returned in the second element so callers can redraw them.
+function _resolveLabelOverlapsDOM(labelSelector, seedRects) {
+  const MAX_ITERS = 6;
+  const PAD = 2;
+  const STEP = 14;
+  const DIRS = [
+    [ 1,  0], [-1,  0], [ 0, -1], [ 0,  1],
+    [ 1, -1], [-1, -1], [ 1,  1], [-1,  1],
+    [ 2, -1], [-2, -1], [ 2,  1], [-2,  1],
+  ];
+
+  const iconWrap = el => {
+    let n = el;
+    while (n && !(n.classList && n.classList.contains('leaflet-marker-icon'))) n = n.parentElement;
+    return n;
+  };
+  const getNudge = wrap => {
+    const d = wrap && wrap.dataset;
+    return d ? { x: parseFloat(d.nudgeX || '0') || 0, y: parseFloat(d.nudgeY || '0') || 0 } : { x: 0, y: 0 };
+  };
+  const setNudge = (wrap, nx, ny) => {
+    if (!wrap) return;
+    wrap.dataset.nudgeX = String(nx);
+    wrap.dataset.nudgeY = String(ny);
+    // Leaflet writes its own `transform: translate3d(Ax, Ay, 0)` on the
+    // wrapper. We append an extra translate via CSS var so we don't fight it.
+    wrap.style.setProperty('--cs-nudge-x', nx + 'px');
+    wrap.style.setProperty('--cs-nudge-y', ny + 'px');
+    wrap.classList.add('cs-nudged');
+  };
+  const overlapsR = (r, list) => {
+    for (const p of list) {
+      if (r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top) return true;
+    }
+    return false;
+  };
+  const padRect = r => ({ left: r.left - PAD, right: r.right + PAD, top: r.top - PAD, bottom: r.bottom + PAD, width: r.width, height: r.height });
+
+  const nodes = Array.from(document.querySelectorAll(labelSelector));
+  const entries = nodes.map(n => ({ node: n, wrap: iconWrap(n) })).filter(e => e.wrap);
+
+  for (let iter = 0; iter < MAX_ITERS; iter++) {
+    const placed = (seedRects || []).slice();
+    let anyMoved = false;
+    for (const e of entries) {
+      const r = padRect(e.node.getBoundingClientRect());
+      if (!overlapsR(r, placed)) { placed.push(r); continue; }
+      // Try candidate nudges; pick the first that resolves overlap.
+      const nudge0 = getNudge(e.wrap);
+      let resolved = false;
+      for (let ring = 1; ring <= 8 && !resolved; ring++) {
+        for (const [ux, uy] of DIRS) {
+          const tryNx = nudge0.x + ux * ring * STEP;
+          const tryNy = nudge0.y + uy * ring * STEP;
+          const dx = tryNx - nudge0.x, dy = tryNy - nudge0.y;
+          const trial = padRect({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy, width: r.width, height: r.height });
+          if (!overlapsR(trial, placed)) {
+            setNudge(e.wrap, tryNx, tryNy);
+            placed.push(trial);
+            resolved = true; anyMoved = true;
+            break;
+          }
+        }
+      }
+      if (!resolved) {
+        // Hard fallback: push down by ring * STEP past the limit.
+        const nx = nudge0.x, ny = nudge0.y + 9 * STEP;
+        setNudge(e.wrap, nx, ny);
+        const trial = padRect({ left: r.left + (nx - nudge0.x), right: r.right + (nx - nudge0.x), top: r.top + (ny - nudge0.y), bottom: r.bottom + (ny - nudge0.y), width: r.width, height: r.height });
+        placed.push(trial);
+        anyMoved = true;
+      }
+    }
+    if (!anyMoved) return placed;
+  }
+  // Return the final rect list measured fresh.
+  return entries.map(e => padRect(e.node.getBoundingClientRect()));
+}
+
 function _drawSwellArrow(lat, lon, dirDeg, heightFt, periodS, isPrimary, skipLabel, filtered) {
   if (!map || !swellArrowLayer || dirDeg == null) return;
   const dark   = _isDark();
@@ -2930,41 +3532,68 @@ function buildSwellArrows(timeStr, source) {
   // Draw arrows (no labels yet)
   arrows.forEach(a => _drawSwellArrow(a.lat, a.lon, a.dir, a.ht, a.per, a.primary, true, a.filtered));
 
-  // Now place labels with collision avoidance.
-  // Convert each arrow's tail position to container pixels, then nudge any
-  // overlapping labels vertically so they don't stack on top of each other.
-  const LABEL_H = 14;   // approx label height in px
-  const LABEL_W = 75;   // approx label width in px
-  const placed = [];     // [{px, py}] in container coords
-
-  arrows.forEach(a => {
-    if (a.ht == null || a.per == null) return;
+  // Build label items for the shared collision solver.
+  const LABEL_H = 15;
+  const PREFER_DX = 6;    // matches old CSS translate(5px) + a hair of slack
+  const labelled = arrows.filter(a => a.ht != null && a.per != null);
+  const items = labelled.map(a => {
     const arrowKm = _ARROW_KM * _arrowScale;
     const [tailLat, tailLon] = _geoOffset(a.lat, a.lon, a.dir, arrowKm);
     const pt = map.latLngToContainerPoint([tailLat, tailLon]);
-    let offY = 0;
-    // Check against already-placed labels and shift down if overlapping
-    for (let iter = 0; iter < 8; iter++) {
-      let collision = false;
-      for (const p of placed) {
-        if (Math.abs(pt.x - p.px) < LABEL_W && Math.abs((pt.y + offY) - p.py) < LABEL_H) {
-          collision = true;
-          break;
-        }
-      }
-      if (!collision) break;
-      offY += LABEL_H;
-    }
-    placed.push({ px: pt.x, py: pt.y + offY });
+    const text = `${a.ht}ft @${a.per}s`;
+    return {
+      anchorPx: pt, tailLat, tailLon, text,
+      w: _estLabelWidth(text, 9), h: LABEL_H,
+      prefer: { dx: PREFER_DX, dy: 0 },
+      leaderThreshold: 14,
+      meta: a,
+    };
+  });
 
+  // Place primary labels first so they stay close to their arrows; secondary
+  // labels yield when they must.
+  items.sort((a, b) => (a.meta.primary ? 0 : 1) - (b.meta.primary ? 0 : 1));
+  const placements = _placeLabelsNoOverlap(items, { pad: 2, step: 15, maxRing: 6 });
+  // Expose rects so buildRegionWindMarkers (called immediately after in
+  // regional mode) can avoid colliding with swell labels.
+  window._swellLabelRects = placements._placedRects || [];
+
+  items.forEach((it, idx) => {
+    const p = placements[idx];
+    const a = it.meta;
     const secCls = a.primary ? '' : ' swell-arrow-sec';
-    L.marker([tailLat, tailLon], {
+    L.marker([it.tailLat, it.tailLon], {
       icon: L.divIcon({
-        html: `<div class="swell-arrow-label${secCls}">${a.ht}ft @${a.per}s</div>`,
-        className: '', iconSize: null, iconAnchor: [0, -offY],
+        html: `<div class="swell-arrow-label${secCls}">${it.text}</div>`,
+        className: '',
+        iconSize: null,
+        // Negative iconAnchor shifts the icon origin (top-left) in the
+        // opposite direction, i.e. iconAnchor[0] = -dx moves the icon right
+        // by dx. Combined with the label's own translateY(-50%) this centres
+        // the label vertically on (anchor.y + dy).
+        iconAnchor: [-p.dx, -p.dy],
       }),
       interactive: false,
     }).addTo(swellArrowLayer);
+
+    if (p.needsLeader) {
+      // Anchor point lat/lon is already the arrow tail; the label's left-mid
+      // point is offset by (dx, dy) in container px. Convert back to latlng
+      // for a Leaflet polyline so it tracks pan correctly.
+      const labelLeftMid = L.point(it.anchorPx.x + p.dx, it.anchorPx.y + p.dy);
+      const labelLatLng  = map.containerPointToLatLng(labelLeftMid);
+      L.polyline([[it.tailLat, it.tailLon], labelLatLng], {
+        color: '#888', weight: 1, opacity: 0.55, interactive: false, dashArray: '2 3',
+      }).addTo(swellArrowLayer);
+    }
+  });
+
+  // DOM post-pass — Leaflet has now positioned the markers in the DOM. Walk
+  // the rendered rects and apply an extra CSS translate to any label that
+  // still overlaps a neighbour. Runs in the next frame so layout is stable.
+  requestAnimationFrame(() => {
+    const rects = _resolveLabelOverlapsDOM('.swell-arrow-label', []);
+    window._swellLabelRectsDOM = rects;
   });
 }
 
@@ -3008,51 +3637,72 @@ function buildRegionWindMarkers(timeStr) {
     return { ws, rec };
   });
 
-  // Screen-space label collision resolution (iterative, handles chains of 3+ close spots)
-  const LABEL_H = 36, LABEL_W = 92, LABEL_X = 8, GAP = 3;
-  const screenPts = spotItems.map(({ ws }) => map.latLngToContainerPoint([ws.lat, ws.lon]));
-  const nudge = new Array(spotItems.length).fill(0);
-
-  for (let pass = 0; pass < 12; pass++) {
-    let moved = false;
-    for (let i = 0; i < spotItems.length; i++) {
-      for (let j = i + 1; j < spotItems.length; j++) {
-        const liL = screenPts[i].x + LABEL_X, liR = liL + LABEL_W;
-        const ljL = screenPts[j].x + LABEL_X, ljR = ljL + LABEL_W;
-        if (liR < ljL || ljR < liL) continue;
-        const yi = screenPts[i].y + nudge[i];
-        const yj = screenPts[j].y + nudge[j];
-        const overlap = (LABEL_H + GAP) - Math.abs(yi - yj);
-        if (overlap <= 0) continue;
-        const half = overlap / 2;
-        if (yi <= yj) { nudge[i] -= half; nudge[j] += half; }
-        else          { nudge[i] += half; nudge[j] -= half; }
-        moved = true;
-      }
-    }
-    if (!moved) break;
-  }
-
-  spotItems.forEach(({ ws, rec }, idx) => {
+  // Draw spot dots first; they're anchors for labels and leader lines.
+  spotItems.forEach(({ ws, rec }) => {
     const cond   = rec ? windCondition(rec.speed_mph, rec.direction_deg, ws.shore_normal, rec.gust_mph) : null;
     const dotCol = cond ? windCondColor(cond).text : '#3d7ab5';
     L.circleMarker([ws.lat, ws.lon], {
       radius: 5, color: dotCol, fillColor: dotCol, fillOpacity: 0.9, weight: 1, interactive: false,
     }).addTo(regionWindLayer);
-    if (rec && rec.speed_mph != null) {
+  });
+
+  // Build label items for each wind spot with a valid record, then run the
+  // shared collision solver.
+  const LABEL_H = 32;   // two-line label, ~line-height 1.4 × 10px + padding
+  const PREFER_DX = 9;
+  const labelItems = spotItems
+    .map(({ ws, rec }) => ({ ws, rec }))
+    .filter(({ rec }) => rec && rec.speed_mph != null)
+    .map(({ ws, rec }) => {
       const line1 = `${rec.speed_mph} mph ${rec.direction_cardinal}`;
       const effGust = rec.gust_mph != null ? Math.round(Math.min(rec.gust_mph, rec.speed_mph * 1.5) * 10) / 10 : null;
       const line2 = effGust != null ? `${effGust} mph gusts` : '';
-      const yTransform = `calc(-50% + ${nudge[idx]}px)`;
-      const labelHtml = `<div class="swell-arrow-label region-wind-label"
-          style="transform: translate(8px, ${yTransform})">
-        <span>${line1}</span>${line2 ? `<br><span class="wind-gust-line">${line2}</span>` : ''}
-      </div>`;
-      L.marker([ws.lat, ws.lon], {
-        icon: L.divIcon({ html: labelHtml, className: '', iconSize: null, iconAnchor: [0, 0] }),
-        interactive: false,
+      const text  = line2 || line1;   // widest line for width estimate
+      const w = Math.max(_estLabelWidth(text, 10), 72);
+      const h = line2 ? LABEL_H : 18;
+      const pt = map.latLngToContainerPoint([ws.lat, ws.lon]);
+      return {
+        anchorPx: pt, lat: ws.lat, lon: ws.lon,
+        w, h,
+        prefer: { dx: PREFER_DX, dy: 0 },
+        leaderThreshold: 16,
+        line1, line2,
+      };
+    });
+
+  // Seed with swell-label rects from the most recent buildSwellArrows pass
+  // (regional mode always draws a swell arrow for the buoy, and its label
+  // can overlap wind labels otherwise).
+  const placements = _placeLabelsNoOverlap(labelItems, {
+    pad: 3, step: 16, maxRing: 7,
+    seedRects: window._swellLabelRects || [],
+  });
+
+  labelItems.forEach((it, idx) => {
+    const p = placements[idx];
+    const labelHtml = `<div class="swell-arrow-label region-wind-label"
+        style="transform: translate(${p.dx}px, calc(-50% + ${p.dy}px))">
+      <span>${it.line1}</span>${it.line2 ? `<br><span class="wind-gust-line">${it.line2}</span>` : ''}
+    </div>`;
+    L.marker([it.lat, it.lon], {
+      icon: L.divIcon({ html: labelHtml, className: '', iconSize: null, iconAnchor: [0, 0] }),
+      interactive: false,
+    }).addTo(regionWindLayer);
+
+    if (p.needsLeader) {
+      const labelLeftMid = L.point(it.anchorPx.x + p.dx, it.anchorPx.y + p.dy);
+      const labelLatLng  = map.containerPointToLatLng(labelLeftMid);
+      L.polyline([[it.lat, it.lon], labelLatLng], {
+        color: '#888', weight: 1, opacity: 0.55, interactive: false, dashArray: '2 3',
       }).addTo(regionWindLayer);
     }
+  });
+
+  // DOM post-pass — measure rendered label rects and nudge overlaps. Seed
+  // with the swell-label rects measured in the spot-mode pass so region
+  // wind labels avoid the buoy swell arrow label.
+  requestAnimationFrame(() => {
+    _resolveLabelOverlapsDOM('.swell-arrow-label', []);
   });
 
   // Drive wind particles from the same records used above.
@@ -3170,9 +3820,12 @@ function initMap() {
   map.on('zoomstart', () => { _lastZoom = map.getZoom(); WindRenderer.stop(); });
   map.on('zoomend',   () => {
     _resubmitWind();
-    // Redraw swell arrows at the new zoom-compensated scale
+    // Redraw swell arrows at the new zoom-compensated scale.
     if (_displayTime) buildSwellArrows(_displayTime, 'forecast');
     else buildSwellArrows(null, 'buoy');
+    // Regional-mode wind labels also re-run collision avoidance on zoom,
+    // since spot spacing in screen-px changes with zoom level.
+    if (regionMode) buildRegionWindMarkers(_displayTime);
   });
   map.on('moveend',   () => {
     // If zoom just changed, zoomend already handled the restart
@@ -3220,6 +3873,14 @@ function initMap() {
     },
   });
   window._overviewCtrl = new OverviewControl().addTo(map);
+
+  // Test hooks — expose map + rebuild helpers for the loop-test harness.
+  window._map = map;
+  window._rebuildMapLabels = () => {
+    if (_displayTime) buildSwellArrows(_displayTime, 'forecast');
+    else buildSwellArrows(null, 'buoy');
+    if (regionMode) buildRegionWindMarkers(_displayTime);
+  };
 }
 
 function recenterMap() {
@@ -3258,7 +3919,7 @@ async function enterRegionMode(spotName) {
   if (!Object.keys(regionWindData).length) {
     console.warn('[enterRegionMode] regionWindData empty — re-fetching…');
     try {
-      const data = await fetch(`/api/region_wind?model=${activeModel}`).then(r => r.json());
+      const data = await fetch(_regionWindUrl(activeModel)).then(r => r.json());
       if (data) regionWindData = data;
     } catch(e) { console.warn('[enterRegionMode] region_wind re-fetch failed:', e); }
   }
@@ -3353,8 +4014,9 @@ function _scrollTableToTime(anchor) {
   const cell = document.querySelector(`#table-body tr:first-child td.cell[data-time="${time}"]`);
   if (!cell) return;
   const wrapRect = wrap.getBoundingClientRect();
-  const cellContentOffset = cell.getBoundingClientRect().left - wrapRect.left + wrap.scrollLeft;
-  wrap.scrollLeft = cellContentOffset - stickyWidth - offset;
+  const cellContentOffset = cell.getBoundingClientRect().left - wrapRect.left + _getTableScrollX(wrap);
+  _setTableScrollX(wrap, cellContentOffset - stickyWidth - offset);
+  _markExpectedScroll(wrap);
 }
 
 function setModel(model, btn) {
@@ -3411,7 +4073,7 @@ function setModel(model, btn) {
   // mode after a switch shows data from the newly selected model, not stale
   // data from the previous model.
   regionWindData = {};
-  fetch(`/api/region_wind?model=${model}`)
+  fetch(_regionWindUrl(model))
     .then(r => r.json())
     .then(data => {
       if (data) {
@@ -3430,9 +4092,9 @@ function setModel(model, btn) {
 
 function setResolution(r, btn) {
   resolution = r;
-  document.querySelectorAll('.pill-group .pill').forEach(p => p.classList.remove('active'));
-  btn.classList.add('active');
-  // Sync mobile resolution buttons
+  document.querySelectorAll('.controls-bar .model-switch .sw-btn[data-res]').forEach(p => p.classList.remove('active'));
+  const desktopBtn = btn || document.querySelector(`.sw-btn[data-res="${r}"]`);
+  if (desktopBtn) desktopBtn.classList.add('active');
   _syncMobileRes(r);
   buildTable();
 }
@@ -3500,6 +4162,99 @@ function _syncMobileModel(model) {
 let _sliderTimes = [];       // ISO time strings matching table data columns
 let _sliderActive = null;    // currently highlighted ISO time
 let _sliderDragging = false; // true while handle is being dragged
+
+// ── Mobile horizontal positioning via CSS transform ──────────────────────
+// On mobile we deliberately make `.table-scroll` non-scrollable horizontally
+// and instead translate the inner `<table>` via a CSS custom property. This
+// eliminates iOS's ability to leak horizontal motion during vertical-ish
+// gestures when the table is much wider than the container. On desktop
+// this reduces to `ts.scrollLeft = value` — no behavioural change there.
+function _setTableScrollX(ts, value) {
+  if (!ts) return;
+  const v = Math.max(0, Math.round(value || 0));
+  if (_isMobile()) {
+    ts.__tableHorizOffset = v;
+    const tbl = ts.querySelector('.swell-table');
+    if (tbl) tbl.style.setProperty('--table-tx', v + 'px');
+    // Keep the native scrollLeft pinned at 0 so nothing can drift.
+    if (ts.scrollLeft !== 0) ts.scrollLeft = 0;
+  } else {
+    ts.scrollLeft = v;
+  }
+}
+function _getTableScrollX(ts) {
+  if (!ts) return 0;
+  if (_isMobile()) return ts.__tableHorizOffset || 0;
+  return ts.scrollLeft;
+}
+
+// ── Mobile horizontal scroll-lock ────────────────────────────────────────
+// `overflow-x: hidden` + `touch-action: pan-y` should be enough on paper,
+// but iOS Safari still lets a diagonal gesture leak horizontally on wide
+// tables (history-on makes the table ~14000 px, with scrollLeft sitting
+// mid-range so iOS can pan in both directions).
+//
+// Approach: listen at document level with `capture: true` so we run
+// BEFORE the native scroll machinery decides the scroll axis. Only fire
+// for touches inside `.table-scroll`. Commit to 'y' on the first frame
+// with dominant vertical motion — subsequent frames fast-path so iOS
+// momentum decay runs uninterrupted. Any horizontal drift that slips
+// through the axis commit gets clamped at `touchend` by snapping
+// `scrollLeft` back to the value it had at `touchstart`.
+let _expectedScrollLeft = 0;
+function _markExpectedScroll(ts) {
+  if (ts) _expectedScrollLeft = ts.scrollLeft;
+}
+function _installTableScrollLock() {
+  const ts = document.querySelector('.table-scroll');
+  if (!ts || ts.__scrollLockInstalled) return;
+  ts.__scrollLockInstalled = true;
+  _expectedScrollLeft = ts.scrollLeft;
+
+  let tx = 0, ty = 0, axis = null, gestureSL = 0, inTable = false;
+
+  const isInTable = (node) => {
+    while (node && node !== document) {
+      if (node === ts) return true;
+      node = node.parentNode;
+    }
+    return false;
+  };
+
+  document.addEventListener('touchstart', (e) => {
+    if (!isInTable(e.target)) { inTable = false; return; }
+    inTable = true;
+    const t = e.touches[0];
+    tx = t.clientX; ty = t.clientY; axis = null;
+    gestureSL = ts.scrollLeft;
+  }, { passive: true, capture: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!inTable) return;
+    if (axis === 'y') return;
+    if (axis === 'x') { e.preventDefault(); return; }
+    const t = e.touches[0];
+    const dx = Math.abs(t.clientX - tx);
+    const dy = Math.abs(t.clientY - ty);
+    if (dx < 3 && dy < 3) return;
+    if (dy >= dx) { axis = 'y'; return; }
+    axis = 'x';
+    e.preventDefault();
+  }, { passive: false, capture: true });
+
+  const _snapBack = () => {
+    if (inTable && ts.scrollLeft !== gestureSL && axis !== 'y') {
+      // If the axis never committed to 'y' yet scrollLeft drifted,
+      // the browser stole a frame. Put it back.
+      ts.scrollLeft = gestureSL;
+      _expectedScrollLeft = gestureSL;
+    }
+    axis = null;
+    inTable = false;
+  };
+  document.addEventListener('touchend',   _snapBack, { passive: true, capture: true });
+  document.addEventListener('touchcancel', _snapBack, { passive: true, capture: true });
+}
 
 // ── Velocity-based scrubbing state ──────────────────────────────────────
 let _scrubAnchorX  = 0;   // clientX at drag start (or last anchor reset)
@@ -3573,7 +4328,15 @@ function buildScrubber() {
 
 function _tableMaxScroll() {
   const ts = document.querySelector('.table-scroll');
-  return ts ? ts.scrollWidth - ts.clientWidth : 1;
+  if (!ts) return 1;
+  // On mobile we use transforms (scrollWidth ≈ clientWidth since the table
+  // is no longer overflowing the container in scroll terms). Fall back to
+  // measuring the table's natural width minus the visible width.
+  if (_isMobile()) {
+    const tbl = ts.querySelector('.swell-table');
+    if (tbl) return Math.max(1, tbl.offsetWidth - ts.clientWidth);
+  }
+  return ts.scrollWidth - ts.clientWidth;
 }
 
 function _sliderPctFromX(clientX) {
@@ -3598,24 +4361,34 @@ function _updateSliderLabel(timeStr) {
 }
 
 /** Map slider percentage to a column index.
- *  Index -1 = buoy (scrollLeft 0), 0..N-1 = data columns. */
+ *  When history is OFF: index -1 = buoy (scrollLeft 0) for a small pct
+ *  slice, 0..N-1 = forecast columns. When history is ON: the slider maps
+ *  linearly across the full history+forecast timeline so dragging to the
+ *  far left shows the oldest history (-240h), not the buoy view. */
 function _colIndexFromPct(pct) {
-  if (!_sliderTimes.length) return -1;
-  // Reserve the first small slice of the slider for the buoy view.
-  // buoy occupies pct [0, buoyEnd), columns occupy [buoyEnd, 1].
   const N = _sliderTimes.length;
-  const buoyEnd = 1 / (N + 1);
-  if (pct < buoyEnd) return -1;
-  return Math.min(N - 1, Math.round(((pct - buoyEnd) / (1 - buoyEnd)) * (N - 1)));
+  if (!N) return -1;
+  const historyOn = localStorage['cs_show_history'] === '1';
+  if (!historyOn) {
+    const buoyEnd = 1 / (N + 1);
+    if (pct < buoyEnd) return -1;
+    return Math.min(N - 1, Math.round(((pct - buoyEnd) / (1 - buoyEnd)) * (N - 1)));
+  }
+  return Math.min(N - 1, Math.max(0, Math.round(pct * (N - 1))));
 }
 
-/** Map a column index (-1 = buoy, 0..N-1 = data) back to slider pct. */
+/** Inverse of `_colIndexFromPct`. */
 function _pctFromColIndex(idx) {
   const N = _sliderTimes.length;
   if (!N) return 0;
-  const buoyEnd = 1 / (N + 1);
+  const historyOn = localStorage['cs_show_history'] === '1';
+  if (!historyOn) {
+    const buoyEnd = 1 / (N + 1);
+    if (idx < 0) return 0;
+    return buoyEnd + (idx / (N - 1)) * (1 - buoyEnd);
+  }
   if (idx < 0) return 0;
-  return buoyEnd + (idx / (N - 1)) * (1 - buoyEnd);
+  return N > 1 ? idx / (N - 1) : 0;
 }
 
 // ── Core: apply a slider percentage → scroll table → highlight → sync map ─
@@ -3633,8 +4406,27 @@ function _sliderApplyPct(pct) {
   clearHighlight();
 
   if (colIdx < 0) {
-    // Buoy view — scroll all the way left
-    ts.scrollLeft = 0;
+    // Buoy view — when history is ON, scroll so the model-overview / buoy-col
+    // sit at the left edge (past the historical cells). Otherwise scroll all
+    // the way left.
+    const historyOn = localStorage['cs_show_history'] === '1';
+    if (historyOn) {
+      // Find the buoy-col cell and scroll so it lands at the sticky-spot boundary.
+      const buoyCell = ts.querySelector('td.cell.buoy-col');
+      const spotCol  = ts.querySelector('td.spot-cell');
+      const stickyW  = spotCol ? spotCol.offsetWidth : 0;
+      if (buoyCell) {
+        // Place the model-overview cell just past the sticky spot column.
+        const moCell = ts.querySelector('td.cell.model-overview');
+        const leftEdge = (moCell || buoyCell).offsetLeft - stickyW;
+        _setTableScrollX(ts, Math.max(0, leftEdge));
+      } else {
+        _setTableScrollX(ts, 0);
+      }
+    } else {
+      _setTableScrollX(ts, 0);
+    }
+    _markExpectedScroll(ts);
     _sliderActive = null;
     _updateSliderLabel('LIVE');
     return;
@@ -3655,7 +4447,8 @@ function _sliderApplyPct(pct) {
     // but clamp to [0, maxScroll].
     const ideal = cellLeft - visibleW * 0.1;
     const max   = _tableMaxScroll();
-    ts.scrollLeft = Math.max(0, Math.min(max, Math.round(ideal)));
+    _setTableScrollX(ts, Math.max(0, Math.min(max, Math.round(ideal))));
+    _markExpectedScroll(ts);
   }
 
   // Highlight + sync map
@@ -3737,10 +4530,17 @@ function _attachScrubListeners() {
   const wrap     = document.getElementById('slider-track-wrap');
   if (!scrubber || !wrap) return;
 
-  // ── Handle drag (touch) — velocity-based scrubbing ─────────────────────
+  // Double-tap state: a "tap" = touchstart → touchend within 250ms with
+  // no meaningful drag. Two consecutive taps within 350ms snap the slider
+  // back to the now-boundary (the default position used when history is on).
+  let _tapStartT = 0, _tapStartX = 0, _tapMoved = false, _lastTapT = 0;
+
   scrubber.addEventListener('touchstart', (e) => {
     e.preventDefault();
     const t = e.touches[0];
+    _tapStartT = Date.now();
+    _tapStartX = t.clientX;
+    _tapMoved  = false;
     _scrubStart(t.clientX, t.clientY);
   }, { passive: false });
 
@@ -3748,10 +4548,21 @@ function _attachScrubListeners() {
     if (!_sliderDragging) return;
     e.preventDefault();
     const t = e.touches[0];
+    if (Math.abs(t.clientX - _tapStartX) > 6) _tapMoved = true;
     _scrubApply(t.clientX, t.clientY);
   }, { passive: false });
 
-  scrubber.addEventListener('touchend',   () => { _scrubEnd(); });
+  scrubber.addEventListener('touchend', () => {
+    const now = Date.now();
+    const wasTap = !_tapMoved && (now - _tapStartT) < 250;
+    if (wasTap && (now - _lastTapT) < 350) {
+      _sliderResetToNow();
+      _lastTapT = 0;
+    } else if (wasTap) {
+      _lastTapT = now;
+    }
+    _scrubEnd();
+  });
   scrubber.addEventListener('touchcancel', () => { _scrubEnd(); });
 
   // ── Handle drag (mouse, for desktop testing) — velocity-based ─────────
@@ -3777,23 +4588,10 @@ if (_isMobile()) {
   _attachScrubListeners();
 }
 
-function openInfoModal() {
-  document.getElementById('info-modal-overlay').classList.add('open');
-}
-function closeInfoModal() {
-  document.getElementById('info-modal-overlay').classList.remove('open');
-}
-function closeInfoModalOutside(e) {
-  if (e.target === document.getElementById('info-modal-overlay')) closeInfoModal();
-}
-
-// ═══ ABOUT ME MODAL ══════════════════════════════════════════
-
 const _WIND_TIERS = ['Glassy','Groomed','Clean','Textured','Messy','Blown Out'];
 
-function openAboutModal() {
+function _populateAboutLegends() {
   const dark = _isDark();
-  // Populate swell legend
   const swellEl = document.getElementById('about-swell-legend');
   if (swellEl && CFG) {
     swellEl.innerHTML = '';
@@ -3809,7 +4607,6 @@ function openAboutModal() {
       swellEl.appendChild(p);
     });
   }
-  // Populate wind legend
   const windEl = document.getElementById('about-wind-legend');
   if (windEl) {
     windEl.innerHTML = '';
@@ -3825,6 +4622,129 @@ function openAboutModal() {
       windEl.appendChild(p);
     });
   }
+}
+
+function openInfoModal() {
+  _populateAboutLegends();
+  document.getElementById('info-modal-overlay').classList.add('open');
+}
+function closeInfoModal() {
+  document.getElementById('info-modal-overlay').classList.remove('open');
+}
+function closeInfoModalOutside(e) {
+  if (e.target === document.getElementById('info-modal-overlay')) closeInfoModal();
+}
+
+// ═══ PREFERENCES MODAL ═══════════════════════════════════════
+
+function setShowHistory(val) {
+  const on = !!val;
+  localStorage['cs_show_history'] = on ? '1' : '0';
+  // Sync desktop toolbar toggle
+  document.querySelectorAll('#desktop-history-switch .sw-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.hist === (on ? 'on' : 'off'));
+  });
+  // Sync prefs-modal checkbox
+  const cb = document.getElementById('pref-show-history');
+  if (cb) cb.checked = on;
+  // Anchor the rebuild on the model-overview (Fun+ Days) column so that
+  // toggling history doesn't appear to jump the viewport — the target column
+  // stays at the same screen x after 80 historical cells are added/removed
+  // to its left.
+  const ts = document.querySelector('.table-scroll');
+  let anchorViewportX = null;
+  if (ts) {
+    const moCell = ts.querySelector('td.cell.model-overview');
+    if (moCell) anchorViewportX = moCell.offsetLeft - _getTableScrollX(ts);
+  }
+  if (typeof buildTable === 'function') buildTable();
+  if (ts && anchorViewportX != null) {
+    const newMo = ts.querySelector('td.cell.model-overview');
+    if (newMo) _setTableScrollX(ts, Math.max(0, newMo.offsetLeft - anchorViewportX));
+    _markExpectedScroll(ts);
+  }
+  // In Regional Mode we need region_wind AND tides to include past_days
+  // when history flips on (and to drop the extra payload when it flips
+  // off). Re-fetch both so the per-spot wind strip has historical records
+  // to render against.
+  if (regionMode) {
+    Promise.all([
+      fetch(_regionWindUrl(activeModel)).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(_tidesUrl()).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([wind, tides]) => {
+      if (wind)  regionWindData = wind;
+      if (tides) regionTideData = tides;
+      if (wind || tides) buildTable();
+    });
+  }
+}
+
+// Post-build hook: preload historical data and reset slider to the
+// "history boundary" (buoy cell column) when history is on.
+let _historyPreloaded = false;
+function _afterBuildTable() {
+  const historyOn = localStorage['cs_show_history'] === '1';
+  // Trigger preload (idempotent). Immediate when history just flipped on and
+  // cache is empty; otherwise idle-callback so initial paint isn't blocked.
+  const runPreload = () => { preloadHistoricalData(); _historyPreloaded = true; };
+  if (historyOn && !Object.keys(historicalData).length) {
+    runPreload();
+  } else if (!_historyPreloaded) {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(runPreload, { timeout: 2000 });
+    } else {
+      setTimeout(runPreload, 1000);
+    }
+  }
+  // Snap the slider to the "now" view ONCE — on the first build after the
+  // slider exists. After that, preserve whatever scroll position the user
+  // has landed on. Rebuilds triggered by async historical-data arrival
+  // (`_scheduleHistRebuild`) previously yanked the table back to the "now"
+  // anchor mid-scroll, which read as a horizontal glitch on mobile.
+  if (!_sliderResetDone && !_sliderDragging
+      && typeof _sliderResetToNow === 'function'
+      && Array.isArray(_sliderTimes) && _sliderTimes.length) {
+    _sliderResetToNow();
+    _sliderResetDone = true;
+  }
+}
+let _sliderResetDone = false;
+
+// Snap the table to the "now" view: the model-overview (Fun+ Days) column
+// flush against the sticky spot column, and the slider handle positioned
+// at the history/forecast boundary so it visually reads as "now" on the
+// timeline (rather than the far-left "LIVE" pin from pct=0).
+function _sliderResetToNow() {
+  const ts = document.querySelector('.table-scroll');
+  if (!ts) return;
+  const moCell   = ts.querySelector('td.cell.model-overview');
+  const buoyCell = ts.querySelector('td.cell.buoy-col');
+  const spotCol  = ts.querySelector('td.spot-cell');
+  const stickyW  = spotCol ? spotCol.offsetWidth : 0;
+  const anchor   = moCell || buoyCell;
+  if (anchor) _setTableScrollX(ts, Math.max(0, anchor.offsetLeft - stickyW));
+  _markExpectedScroll(ts);
+
+  const historyOn = localStorage['cs_show_history'] === '1';
+  const histCount = historyOn ? Math.floor(240 / resolution) : 0;
+  const N = _sliderTimes.length;
+  let pct = 0;
+  if (N > 0 && historyOn) pct = _pctFromColIndex(Math.min(histCount, N - 1));
+  _setSliderPct(pct);
+  _sliderCurrentPct = pct;
+  _sliderActive = null;
+  clearHighlight();
+  _updateSliderLabel('LIVE');
+}
+
+// Retained for callers that want a raw pct; after the buoy-view refactor
+// the only real consumer is post-build initialisation which just calls
+// _sliderResetToNow() directly below.
+function _sliderDefaultPct() { return 0; }
+
+function openAboutModal() {
+  const cb = document.getElementById('pref-show-history');
+  if (cb) cb.checked = localStorage['cs_show_history'] === '1';
   document.getElementById('about-modal-overlay').classList.add('open');
 }
 function closeAboutModal() {
@@ -3861,7 +4781,7 @@ function switchBuoyPopup(stationId) {
 
 function openBuoyPopup(spotName, stationId) {
   document.getElementById('buoy-popup-title').innerHTML =
-    `${spotName} <span>· last 5 days · buoy ${stationId}</span>`;
+    `${spotName} <span>· last 3 days · buoy ${stationId}</span>`;
   // Populate buoy selector
   if (CFG) {
     const sel = document.getElementById('buoy-popup-select');
@@ -3876,24 +4796,35 @@ function openBuoyPopup(spotName, stationId) {
   }
   document.getElementById('buoy-popup-overlay').classList.add('open');
 
-  const canvas = document.getElementById('buoy-popup-canvas');
-  const ctx = canvas.getContext('2d');
+  const topC = document.getElementById('buoy-popup-canvas-top');
+  const botC = document.getElementById('buoy-popup-canvas-bot');
+  const topCtx = topC.getContext('2d');
+  const botCtx = botC.getContext('2d');
   _buoyPopupData = null;
   _buoyPopupMeta = null;
-  _drawChartLoading(ctx, canvas);
+  _drawChartLoading(topCtx, topC);
+  _drawChartLoading(botCtx, botC);
 
-  fetch(`/api/buoy_history/${stationId}`)
+  fetch(`/api/buoy_history/${stationId}?days=3`)
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(data => {
       if (!document.getElementById('buoy-popup-overlay').classList.contains('open')) return;
       _buoyPopupData = (data.records || []).filter(r => r.energy != null);
-      if (_buoyPopupData.length === 0) { _drawChartError(ctx, canvas, 'No data'); return; }
-      _drawBuoyChart(ctx, canvas);
-      _attachChartHover(canvas);
+      if (_buoyPopupData.length === 0) {
+        _drawChartError(topCtx, topC, 'No data');
+        _drawChartError(botCtx, botC, 'No data');
+        return;
+      }
+      _drawBuoyChartTop(topCtx, topC);
+      _attachChartHover(topC);
+      _attachChartHover(botC);
       _initBuoyScrubber();
+      // Initial positioning: latest record
+      _buoyScrubApply(1.0);
     })
     .catch(err => {
-      _drawChartError(ctx, canvas, 'Failed to load data');
+      _drawChartError(topCtx, topC, 'Failed to load data');
+      _drawChartError(botCtx, botC, 'Failed to load data');
       console.warn('[buoy_history]', err);
     });
 }
@@ -3902,8 +4833,11 @@ function closeBuoyPopup() {
   document.getElementById('buoy-popup-overlay').classList.remove('open');
   _buoyPopupData = null;
   _buoyPopupMeta = null;
+  _buoyActiveIdx = null;
   const tooltip = document.getElementById('buoy-popup-tooltip');
   if (tooltip) tooltip.classList.remove('visible');
+  const strip = document.getElementById('buoy-info-strip');
+  if (strip) strip.textContent = '';
 }
 function closeBuoyPopupOutside(e) {
   if (e.target === document.getElementById('buoy-popup-overlay')) closeBuoyPopup();
@@ -3935,7 +4869,7 @@ function _drawChartError(ctx, canvas, msg) {
   ctx.fillText(msg, w / 2, h / 2);
 }
 
-function _drawBuoyChart(ctx, canvas) {
+function _drawBuoyChartTop(ctx, canvas) {
   const recs = _buoyPopupData;
   if (!recs || recs.length === 0) return;
 
@@ -4035,7 +4969,7 @@ function _drawBuoyChart(ctx, canvas) {
   // ── Energy line ──
   const lineColor = dark ? style.getPropertyValue('--text0') : '#333';
   ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.0;
   ctx.lineJoin = 'round';
   ctx.beginPath();
   for (let i = 0; i < recs.length; i++) {
@@ -4051,90 +4985,271 @@ function _drawBuoyChart(ctx, canvas) {
     const x = xOf(timestamps[i]);
     const y = yOf(recs[i].energy);
     ctx.beginPath();
-    ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+    ctx.arc(x, y, 1.25, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
+// ── Bottom chart: static frequency spectrum at scrubbed time ─────────────
+function _drawBuoySpectrum(ctx, canvas, record) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = canvas.clientWidth  * dpr;
+  canvas.height = canvas.clientHeight * dpr;
+  ctx.scale(dpr, dpr);
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+
+  const style = getComputedStyle(document.documentElement);
+  const textColor = style.getPropertyValue('--text3');
+  const gridColor = style.getPropertyValue('--border0');
+
+  // No-data fallback: missing/empty spectrum OR all-zero energy
+  const spec = record && record.spectrum;
+  const hasEnergy = Array.isArray(spec) && spec.some(b => (b[1] || 0) > 0);
+  if (!hasEnergy) {
+    ctx.fillStyle = textColor;
+    ctx.font = '10px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('no spectrum data', W / 2, H / 2);
+    return;
+  }
+
+  // Same padding as top chart so handle aligns visually
+  const padLeft = 24, padRight = 16, padTop = 12, padBottom = 20;
+  const cw = W - padLeft - padRight;
+  const ch = H - padTop - padBottom;
+
+  // Keep every non-trivial bin (freq > 0) so that, if a buoy reports energy
+  // beyond the default 22s surf-band, the chart extends to include it.
+  const bins = spec
+    .filter(b => b[0] > 0)
+    .map(b => ({ period: 1 / b[0], energy: b[1] || 0 }))
+    .filter(b => b.period > 0)
+    .sort((a, b) => a.period - b.period); // ascending period L→R so long period is on right
+  if (bins.length === 0) {
+    ctx.fillStyle = textColor;
+    ctx.font = '10px JetBrains Mono';
+    ctx.textAlign = 'center';
+    ctx.fillText('no spectrum data', W / 2, H / 2);
+    return;
+  }
+
+  // Default x-axis: 0s → 22s. Extend only when a bin (or a decomposed
+  // component) carries energy at a longer period.
+  const minP = 0;
+  let maxP = 22;
+  const nonZero = bins.filter(b => b.energy > 0);
+  if (nonZero.length) {
+    const maxPeriodWithEnergy = nonZero[nonZero.length - 1].period;
+    if (maxPeriodWithEnergy > maxP) maxP = Math.ceil(maxPeriodWithEnergy);
+  }
+  if (record.components) {
+    record.components.forEach(c => {
+      if (c.period_s != null && c.period_s > maxP) maxP = Math.ceil(c.period_s);
+    });
+  }
+  const maxE = Math.max(...bins.map(b => b.energy)) * 1.1 || 1;
+
+  // x-axis: period ascending left→right (long period on right, surfer convention)
+  function xOf(period) { return padLeft + ((period - minP) / (maxP - minP)) * cw; }
+  function yOf(e)      { return padTop + ch - (e / maxE) * ch; }
+
+  // Horizontal gridlines
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 5; i++) {
+    const y = padTop + ch * (i / 5);
+    ctx.beginPath(); ctx.moveTo(padLeft, y); ctx.lineTo(W - padRight, y); ctx.stroke();
+  }
+
+  // Vertical gridlines + labels — evenly spaced across the range so they
+  // remain meaningful if the axis extends past the default 22s.
+  ctx.fillStyle = textColor;
+  ctx.font = '9px JetBrains Mono';
+  ctx.textAlign = 'center';
+  const tickStep = maxP <= 22 ? 5 : 10;
+  const ticks = [];
+  for (let p = tickStep; p < maxP; p += tickStep) ticks.push(p);
+  ticks.forEach(p => {
+    const x = xOf(p);
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x, padTop); ctx.lineTo(x, padTop + ch); ctx.stroke();
+    ctx.fillText(`${p}s`, x, H - padBottom + 12);
+  });
+
+  // Line + fill
+  const dark = _isDark();
+  const lineColor = dark ? style.getPropertyValue('--text0') : '#333';
+  ctx.beginPath();
+  ctx.moveTo(xOf(bins[0].period), padTop + ch);
+  for (let i = 0; i < bins.length; i++) {
+    ctx.lineTo(xOf(bins[i].period), yOf(bins[i].energy));
+  }
+  ctx.lineTo(xOf(bins[bins.length - 1].period), padTop + ch);
+  ctx.closePath();
+  ctx.fillStyle = lineColor;
+  ctx.globalAlpha = 0.15;
+  ctx.fill();
+  ctx.globalAlpha = 1.0;
+
+  ctx.beginPath();
+  for (let i = 0; i < bins.length; i++) {
+    const x = xOf(bins[i].period), y = yOf(bins[i].energy);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1.0;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Component markers (max 2). Track placed label rectangles so a second
+  // label can nudge vertically (or flip sides horizontally) to avoid
+  // overlapping a first one when two swells share a similar period.
+  if (record.components && record.components.length > 0) {
+    const placed = [];  // array of {x0,y0,x1,y1}
+    const rectsOverlap = (a, b) =>
+      !(a.x1 < b.x0 || b.x1 < a.x0 || a.y1 < b.y0 || b.y1 < a.y0);
+
+    record.components.slice(0, 2).forEach(c => {
+      if (c.period_s == null) return;
+      const p = c.period_s;
+      if (p < minP || p > maxP) return;
+      // Interpolate spectrum energy at this period
+      let eAt = 0;
+      for (let i = 0; i < bins.length - 1; i++) {
+        const a = bins[i], b = bins[i + 1];
+        const lo = Math.min(a.period, b.period), hi = Math.max(a.period, b.period);
+        if (p >= lo && p <= hi) {
+          const t = (p - a.period) / (b.period - a.period);
+          eAt = a.energy + t * (b.energy - a.energy);
+          break;
+        }
+      }
+      const x = xOf(p), y = yOf(eAt);
+      ctx.fillStyle = style.getPropertyValue('--accent');
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+      const dir = c.direction_deg != null ? toCard(c.direction_deg) : '';
+      ctx.font = '9px JetBrains Mono';
+      ctx.textAlign = 'left';
+      const label = `${c.height_ft}ft @ ${c.period_s}s ${dir}`;
+      const tw = ctx.measureText(label).width;
+
+      // Candidate placements, in preference order: right-above, left-above,
+      // right-below, left-below. First that fits in bounds AND doesn't
+      // overlap an already-placed label wins.
+      const pad = 3;
+      const boxW = tw + pad * 2, boxH = 12;
+      const candidates = [
+        { lx: x + 5,       ly: y - 4 },
+        { lx: x - 5 - tw,  ly: y - 4 },
+        { lx: x + 5,       ly: y + 14 },
+        { lx: x - 5 - tw,  ly: y + 14 },
+      ];
+      let chosen = null;
+      for (const cand of candidates) {
+        const r = { x0: cand.lx - pad, y0: cand.ly - 9,
+                    x1: cand.lx - pad + boxW, y1: cand.ly - 9 + boxH };
+        const inBounds = r.x0 >= padLeft - pad && r.x1 <= W - padRight + pad
+                         && r.y0 >= padTop    && r.y1 <= padTop + ch;
+        if (!inBounds) continue;
+        if (placed.some(p => rectsOverlap(p, r))) continue;
+        chosen = { cand, r };
+        break;
+      }
+      // Fallback: first candidate, clamped — overlap is preferable to
+      // drawing off-canvas.
+      if (!chosen) {
+        const cand = candidates[0];
+        let lx = cand.lx;
+        if (lx + tw > W - padRight) lx = x - 5 - tw;
+        const ly = Math.max(cand.ly, padTop + 9);
+        chosen = { cand: { lx, ly },
+                   r: { x0: lx - pad, y0: ly - 9,
+                        x1: lx - pad + boxW, y1: ly - 9 + boxH } };
+      }
+
+      const { lx, ly } = chosen.cand;
+      ctx.fillStyle = style.getPropertyValue('--bg1');
+      ctx.globalAlpha = 0.92;
+      ctx.fillRect(lx - pad, ly - 9, boxW, boxH);
+      ctx.globalAlpha = 1.0;
+      ctx.strokeStyle = style.getPropertyValue('--border0');
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(lx - pad, ly - 9, boxW, boxH);
+      ctx.fillStyle = style.getPropertyValue('--text0');
+      ctx.fillText(label, lx, ly);
+      placed.push(chosen.r);
+    });
+  }
+
+  // y-axis label
+  ctx.save();
+  ctx.translate(10, padTop + ch / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = textColor;
+  ctx.font = '8px JetBrains Mono';
+  ctx.fillText('energy density (m²/Hz)', 0, 0);
+  ctx.restore();
+}
+
 function _attachChartHover(canvas) {
-  const wrap = document.getElementById('buoy-popup-chart-wrap');
-  const tooltip = document.getElementById('buoy-popup-tooltip');
-  if (!wrap || !tooltip) return;
+  // Bottom canvas is the period spectrum — hovering it shouldn't re-select time.
+  const isBot = canvas.id === 'buoy-popup-canvas-bot';
 
   function _handleMove(clientX, clientY) {
     const recs = _buoyPopupData;
     const meta = _buoyPopupMeta;
     if (!recs || !meta) return;
+    if (isBot) return; // hover on bottom is a no-op; time-label/strip already reflect _buoyActiveIdx
 
     const rect = canvas.getBoundingClientRect();
     const mx = clientX - rect.left;
-    const my = clientY - rect.top;
 
-    // Map mouse X to time
+    // Map mouse X to nearest record
     const t = meta.minT + ((mx - meta.padLeft) / meta.cw) * (meta.maxT - meta.minT);
-
-    // Find nearest record
     let best = 0, bestDist = Infinity;
     for (let i = 0; i < recs.length; i++) {
       const rt = new Date(recs[i].timestamp).getTime();
       const d = Math.abs(rt - t);
       if (d < bestDist) { bestDist = d; best = i; }
     }
-    const r = recs[best];
-    const ts = new Date(r.timestamp);
-    const timeStr = ts.toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-      hour12: false, timeZone: 'America/New_York'
-    }) + ' EST';
-
-    let html = `<div class="tt-label">${timeStr}</div>`;
-    if (r.components && r.components.length > 0) {
-      r.components.forEach(c => {
-        const dir = c.direction_deg != null ? toCard(c.direction_deg) : '?';
-        const arrow = c.direction_deg != null ? toArrow(c.direction_deg) : '';
-        html += `<div class="tt-comp">${c.height_ft}ft @ ${c.period_s}s ${arrow}${dir}</div>`;
-      });
-    } else {
-      html += `<div>${r.wave_height_ft != null ? r.wave_height_ft + 'ft' : '—'} @ ${r.wave_period_s != null ? r.wave_period_s + 's' : '—'}`;
-      if (r.wave_direction_deg != null) html += ` ${toArrow(r.wave_direction_deg)}${toCard(r.wave_direction_deg)}`;
-      html += `</div>`;
-    }
-    tooltip.innerHTML = html;
-    tooltip.classList.add('visible');
-
-    // Position tooltip
-    const wrapRect = wrap.getBoundingClientRect();
-    let tx = mx + 14;
-    let ty = my - 10;
-    // Keep within bounds
-    if (tx + tooltip.offsetWidth > wrapRect.width - 8) tx = mx - tooltip.offsetWidth - 14;
-    if (ty < 4) ty = 4;
-    if (ty + tooltip.offsetHeight > wrapRect.height - 4) ty = wrapRect.height - tooltip.offsetHeight - 4;
-    tooltip.style.left = tx + 'px';
-    tooltip.style.top  = ty + 'px';
+    _buoyActiveIdx = best;
+    const topC = document.getElementById('buoy-popup-canvas-top');
+    const botC = document.getElementById('buoy-popup-canvas-bot');
+    if (topC) _drawBuoyChartTopIndicator(best);
+    if (botC) _drawBuoySpectrum(botC.getContext('2d'), botC, recs[best]);
+    _updateBuoyTimeLabel(recs[best]);
+    _updateBuoyInfoStrip(recs[best]);
   }
 
   canvas.addEventListener('mousemove', e => _handleMove(e.clientX, e.clientY));
-  canvas.addEventListener('mouseleave', () => tooltip.classList.remove('visible'));
+  canvas.addEventListener('mouseleave', () => {
+    // Clear indicator line by redrawing top without it — leave labels as-is
+    // so the last-hovered reading stays on screen.
+    if (!isBot) {
+      const topC = document.getElementById('buoy-popup-canvas-top');
+      if (topC) _drawBuoyChartTop(topC.getContext('2d'), topC);
+    }
+  });
   canvas.addEventListener('touchmove', e => {
     e.preventDefault();
     const touch = e.touches[0];
     _handleMove(touch.clientX, touch.clientY);
   }, { passive: false });
-  canvas.addEventListener('touchend', () => tooltip.classList.remove('visible'));
 }
 
-// ── Buoy chart mobile scrubber ─────────────────────────────────────────────
+// ── Buoy chart scrubber (mobile) + shared active-idx state ────────────────
 let _buoyScrubDragging = false;
+let _buoyActiveIdx = null;
 
 function _initBuoyScrubber() {
-  if (!_isMobile() || !_buoyPopupData || _buoyPopupData.length === 0) return;
+  if (!_buoyPopupData || _buoyPopupData.length === 0) return;
   const handle = document.getElementById('buoy-scrub-handle');
   const fill   = document.getElementById('buoy-scrub-fill');
-  const label  = document.getElementById('buoy-scrub-label');
-  if (handle) handle.style.left = '0%';
-  if (fill)   fill.style.width  = '0%';
-  if (label)  label.textContent = '—';
+  if (handle) handle.style.left = '100%';
+  if (fill)   fill.style.width  = '100%';
 }
 
 function _buoyScrubPctFromX(clientX) {
@@ -4144,73 +5259,67 @@ function _buoyScrubPctFromX(clientX) {
   return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
 }
 
+// Update the standalone time label above the charts.
+function _updateBuoyTimeLabel(r) {
+  const el = document.getElementById('buoy-time-label');
+  if (!el || !r) return;
+  const ts = new Date(r.timestamp);
+  el.textContent = ts.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: false, timeZone: 'America/New_York'
+  }) + ' EST';
+}
+
+// Update the swell readout strip below the charts (components only — time
+// lives in the standalone label above).
+function _updateBuoyInfoStrip(r) {
+  const strip = document.getElementById('buoy-info-strip');
+  if (!strip || !r) return;
+  const parts = [];
+  if (r.components && r.components.length > 0) {
+    r.components.forEach(c => {
+      const dir = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+      parts.push(`${c.height_ft}ft @ ${c.period_s}s ${dir}`);
+    });
+  } else if (r.wave_height_ft != null && r.wave_period_s != null) {
+    const dir = r.wave_direction_deg != null ? toCard(r.wave_direction_deg) : '';
+    parts.push(`${r.wave_height_ft}ft @ ${r.wave_period_s}s ${dir}`.trim());
+  }
+  strip.textContent = parts.length ? parts.join(' · ') : '—';
+}
+
 function _buoyScrubApply(pct) {
   const handle = document.getElementById('buoy-scrub-handle');
   const fill   = document.getElementById('buoy-scrub-fill');
-  const label  = document.getElementById('buoy-scrub-label');
   if (handle) handle.style.left = (pct * 100) + '%';
   if (fill)   fill.style.width  = (pct * 100) + '%';
 
   const recs = _buoyPopupData;
-  const meta = _buoyPopupMeta;
-  if (!recs || !recs.length || !meta) return;
+  if (!recs || !recs.length) return;
 
   const idx = Math.min(recs.length - 1, Math.round(pct * (recs.length - 1)));
+  _buoyActiveIdx = idx;
   const r = recs[idx];
 
-  // Update label
-  const ts = new Date(r.timestamp);
-  const timeStr = ts.toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    hour12: false, timeZone: 'America/New_York'
-  });
-  if (label) label.textContent = timeStr;
+  _updateBuoyTimeLabel(r);
+  _updateBuoyInfoStrip(r);
 
-  // Show tooltip
-  const tooltip = document.getElementById('buoy-popup-tooltip');
-  if (tooltip) {
-    let html = `<div class="tt-label">${timeStr} EST</div>`;
-    if (r.components && r.components.length > 0) {
-      r.components.forEach(c => {
-        const dir = c.direction_deg != null ? toCard(c.direction_deg) : '?';
-        const arrow = c.direction_deg != null ? toArrow(c.direction_deg) : '';
-        html += `<div class="tt-comp">${c.height_ft}ft @ ${c.period_s}s ${arrow}${dir}</div>`;
-      });
-    } else {
-      html += `<div>${r.wave_height_ft != null ? r.wave_height_ft + 'ft' : '—'} @ ${r.wave_period_s != null ? r.wave_period_s + 's' : '—'}`;
-      if (r.wave_direction_deg != null) html += ` ${toArrow(r.wave_direction_deg)}${toCard(r.wave_direction_deg)}`;
-      html += `</div>`;
-    }
-    tooltip.innerHTML = html;
-    tooltip.classList.add('visible');
-
-    // Position tooltip near the data point on the chart
-    const canvas = document.getElementById('buoy-popup-canvas');
-    const wrap   = document.getElementById('buoy-popup-chart-wrap');
-    if (canvas && wrap) {
-      const rt = new Date(r.timestamp).getTime();
-      const px = meta.padLeft + ((rt - meta.minT) / (meta.maxT - meta.minT)) * meta.cw;
-      let tx = px + 14;
-      if (tx + tooltip.offsetWidth > wrap.clientWidth - 8) tx = px - tooltip.offsetWidth - 14;
-      tooltip.style.left = tx + 'px';
-      tooltip.style.top  = '4px';
-    }
-  }
-
-  // Draw vertical indicator line on chart
-  _drawBuoyChartIndicator(idx);
+  // Redraw top w/ indicator + redraw bot spectrum at this time
+  _drawBuoyChartTopIndicator(idx);
+  const botC = document.getElementById('buoy-popup-canvas-bot');
+  if (botC) _drawBuoySpectrum(botC.getContext('2d'), botC, r);
 }
 
-function _drawBuoyChartIndicator(activeIdx) {
-  const canvas = document.getElementById('buoy-popup-canvas');
+// Top-canvas indicator: redraw chart then overlay a dashed vertical line
+function _drawBuoyChartTopIndicator(activeIdx) {
+  const canvas = document.getElementById('buoy-popup-canvas-top');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const recs = _buoyPopupData;
   const meta = _buoyPopupMeta;
   if (!recs || !meta) return;
 
-  // Redraw the chart first, then overlay the indicator
-  _drawBuoyChart(ctx, canvas);
+  _drawBuoyChartTop(ctx, canvas);
 
   const r = recs[activeIdx];
   const rt = new Date(r.timestamp).getTime();
@@ -4305,6 +5414,10 @@ async function refreshAll() {
   await loadAll();
   await wfPromise;
   _refreshStatus();
+  // Freshen historical cache after a manual refresh.
+  historicalData = {};
+  _historyPreloaded = false;
+  preloadHistoricalData();
 }
 
 

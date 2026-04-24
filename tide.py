@@ -24,10 +24,15 @@ NOAA_TIDES_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 
 
 @ttl_cache(ttl_seconds=3600)
-def fetch_tide_predictions() -> dict:
+def fetch_tide_predictions(past_days: int = 0) -> dict:
     """
     Fetch hourly + hilo tide predictions for all unique tide_station IDs in WIND_SPOTS.
     Returns per-spot annotated data with Surfline-matched time corrections applied.
+
+    `past_days` (0..30) extends the begin_date backwards so the dashboard's
+    historical-data toggle can populate tide cells in the -240 h strip. Since
+    tides are harmonic predictions (not observations), NOAA serves them for
+    any date window — past or future — with the same reliability.
 
     Returns:
       { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, pct, hilo_time?, hilo_type?} } }
@@ -37,8 +42,9 @@ def fetch_tide_predictions() -> dict:
     hilo_type = "H" or "L"
     Times are in America/New_York local time (LST/LDT), matching Open-Meteo format.
     """
+    past_days = max(0, min(int(past_days or 0), 30))
     today    = datetime.now()
-    begin_dt = today.strftime("%Y%m%d")
+    begin_dt = (today - timedelta(days=past_days)).strftime("%Y%m%d")
     end_dt   = (today + timedelta(days=FORECAST_DAYS - 1)).strftime("%Y%m%d")
 
     # Fetch raw data once per unique station

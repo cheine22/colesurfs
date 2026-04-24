@@ -17,8 +17,8 @@ status; the model button will appear on the main dashboard once trained.
 
 ## Where things live
 
-- `app.py` — Flask routes, `Cache-Control` rules, background cache warmer
-- `buoy.py` — NDBC fetch + spectral swell decomposition
+- `app.py` — Flask routes, `Cache-Control` rules, background cache warmer. In v1.7 added `/api/buoy_historical_context` (per-hour observed + model-agreement record, backed by `.csc2_data/forecasts/` reads for CSC2 buoys).
+- `buoy.py` — NDBC fetch + spectral swell decomposition. In v1.7 `fetch_buoy_history` default range bumped 5→10 days; each record now carries a raw `spectrum: [[freq_hz, energy_density_m2/Hz, direction_deg | null], …]` field, sourced from the same `.data_spec` + `.swdir` bytes we already parse for component decomposition (no extra HTTP).
 - `waves.py` — Open-Meteo GFS-Wave partition fetch (EURO migrated to CMEMS in v1.5)
 - `waves_cmems.py` — Copernicus Marine ANFC EURO fetch + shared processing pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2)
 - `wind.py`, `tide.py`, `sun.py` — other data sources
@@ -26,7 +26,7 @@ status; the model button will appear on the main dashboard once trained.
 - `config.py` — loads `regions.yaml`; defines palette, wind bands, grid
 - `regions.yaml` — single source of truth for regions / buoys / spots
 - `swell_rules.py` + `swell-categorization-scheme.toml` — swell → color
-- `templates/index.html` — the main dashboard frontend, ~4.5 k lines
+- `templates/index.html` — the main dashboard frontend, ~5 k lines (grew in v1.7 with the Fun+ Days column, historical strip, two-chart buoy modal, and mobile slider expansion to cover history)
 - `templates/csc.html` — the CSC2 eval page (archive table, model defs, metric tables)
 - `csc2/` — CSC2 package (see subsection below)
 - Deployment specifics (how the app is served, restarted, tunneled) live in
@@ -48,6 +48,48 @@ Local-only data directories (gitignored):
 - `.csc2_data/forecasts/model={EURO,GFS}/buoy=<id>/year=Y/month=M/cycle=*.parquet` — forecast shards
 - `.csc2_data/archive_status_cache.json` — cached `/api/csc2/archive_status` payload
 - `.csc2_models/` — trained model weights (not yet populated)
+
+## v1.7 frontend additions (key landmarks in `templates/index.html`)
+
+- **Fun+ Days column** — `computeModelOverview(spotName)` (samples both
+  models on a fixed 3-hour stride regardless of UI resolution; tracks
+  best `min(GFS_cat, EURO_cat)` for the cell colour and counts days
+  with ≥2 daytime windows ≥ FUN). Cell rendered between `spot-cell`
+  and `buoy-col` with class `model-overview`.
+- **Historical strip** — `_buildHistoricalCellsHtml(stationId, resolutionHours)`
+  + `buildHistoricalCell(obs, cellTime)`. Cells carry `data-time` so the
+  mobile slider's `_sliderTimes` array picks them up alongside forecast
+  cells. Toggle state lives in `localStorage['cs_show_history']`.
+  `setShowHistory(val)` syncs the desktop toolbar pill-switch
+  (`#desktop-history-switch`) and the Preferences modal checkbox
+  (`#pref-show-history`), then anchors the rebuild on the model-overview
+  column to keep its viewport-x stable across toggles.
+- **Background preload** — `preloadHistoricalData()` fires
+  `/api/buoy_historical_context` for every buoy in `CFG.spots` after
+  initial render (idle-callback). `_scheduleHistRebuild()` debounces
+  re-renders as data arrives.
+- **Mobile slider** — `_colIndexFromPct(pct)` and `_pctFromColIndex(idx)`
+  switch between two mappings based on `localStorage['cs_show_history']`:
+  history-off keeps the legacy "small buoy slot at pct=0" buoy view;
+  history-on maps `pct ∈ [0, 1]` linearly across the full timeline so
+  pct=0 lands on the oldest historical cell. `_sliderResetToNow()` is
+  the canonical "snap to now" action (called by double-tap and on the
+  first build via the `_sliderResetDone` one-shot).
+- **Touch-action lock** — `.table-scroll *` carries
+  `touch-action: pan-y !important` so any descendant cell can't initiate
+  a horizontal pan. Combined with `overscroll-behavior: contain`,
+  `-webkit-overflow-scrolling: auto`, and `transform: translateZ(0)`
+  on `td.spot-cell`, this is the v1.7 mobile-scroll-stability stack.
+- **Buoy modal** — two stacked canvases (`#buoy-popup-canvas-bot` for
+  the spectrum on top visually, `#buoy-popup-canvas-top` for the energy
+  history below). `_drawBuoyChartTop` renders the energy line;
+  `_drawBuoySpectrum` renders the static spectrum at the scrubbed time
+  (default x-axis 0–22 s, auto-extends if energy/components reach further).
+  `_updateBuoyTimeLabel` and `_updateBuoyInfoStrip` keep the date/time
+  label above the charts and the swell readout below in sync on both
+  hover (`_attachChartHover`) and scrub (`_buoyScrubApply`).
+  Component labels on the spectrum use a four-candidate placement loop
+  to avoid overlap.
 
 ## Caching architecture (important when debugging staleness)
 
@@ -72,6 +114,12 @@ The background cache warmer (`_cache_warmer_loop` in `app.py`) runs every
 1800 s and pre-fetches everything; it piggybacks on the TTL cache, so a
 fetcher's TTL must be shorter than 1800 s for the warmer to reliably
 refresh it.
+
+In v1.7 the historical-context endpoint adds a fourth cache layer: the
+frontend's in-memory `historicalData[buoy_id]` dict, populated by
+`preloadHistoricalData()` after the initial render. It's invalidated on
+`refreshAll()` so a manual refresh re-pulls the historical-context endpoint
+in addition to clearing the origin caches.
 
 To force-clear all caches at runtime: `POST /api/refresh` (rate-limited to
 1 call per 30 s per IP).

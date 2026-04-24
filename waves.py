@@ -125,6 +125,23 @@ def _parse_response(data) -> list:
         # not the combined wave_height — consistent with what is displayed.
         primary = comps[0] if comps else None
 
+        # GFS fallback: swell partitions are absent beyond ~5 days (GFS drops them),
+        # but combined Hs/Tp remain valid. Use combined sea state rather than null.
+        # Only triggers when partitions are genuinely absent, not on fetch errors
+        # (fetch errors prevent _parse_response from being called at all).
+        if primary is None:
+            combined_h = _safe(wh[i])
+            combined_p = _safe(wp_peak[i]) or _safe(wp[i])
+            if combined_h and combined_h > 0:
+                h_ft = m_to_ft(combined_h)
+                primary = {
+                    "height_ft":     h_ft,
+                    "period_s":      round(combined_p, 1) if combined_p else None,
+                    "direction_deg": _safe(wd[i]),
+                    "energy":        round(h_ft ** 2 * combined_p, 1) if (h_ft and combined_p) else None,
+                    "type":          "combined",
+                }
+
         # Raw direction: always include the best available swell direction even
         # when components are filtered out (period < 6s etc.), so the map can
         # still draw an arrow showing where the swell is coming from.

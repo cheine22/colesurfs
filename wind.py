@@ -424,13 +424,18 @@ def fetch_spot_wind_forecasts() -> dict | None:
 
 # ─── Regional wind spot hourly forecasts (for Regional Mode table) ─────────────
 @ttl_cache(ttl_seconds=3600)
-def fetch_region_wind_forecasts(model_key: str = "EURO") -> dict | None:
+def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> dict | None:
     """
     Hourly wind + gust forecast for all WIND_SPOTS, respecting model_key.
     Returns {spot_name: [{time, speed_mph, direction_deg, direction_cardinal,
                           gust_mph, gust_cardinal}, ...]}
     Uses WIND_MODELS[model_key] atmospheric model (same as wind grid).
     Falls back to API default if the requested model fails.
+
+    `past_days` (0..30) instructs Open-Meteo to include this many days of
+    historical hours BEFORE today in the response. Used by the dashboard's
+    historical-data toggle so the per-spot wind strip can show observed
+    wind from the same model for each historical cell.
 
     Deduplicates spots that share the same lat/lon (e.g. spots appearing in
     multiple regions) so the API call uses only unique coordinates, saving
@@ -463,6 +468,7 @@ def fetch_region_wind_forecasts(model_key: str = "EURO") -> dict | None:
     lats = ",".join(str(c[0]) for c in unique_coords)
     lons = ",".join(str(c[1]) for c in unique_coords)
 
+    past_days = max(0, min(int(past_days or 0), 30))
     base_params = {
         "latitude":        lats,
         "longitude":       lons,
@@ -471,6 +477,8 @@ def fetch_region_wind_forecasts(model_key: str = "EURO") -> dict | None:
         "forecast_days":   FORECAST_DAYS,
         "timezone":        TIMEZONE,
     }
+    if past_days > 0:
+        base_params["past_days"] = past_days
 
     print(f"[region_wind] fetching {n_unique} unique pts "
           f"(from {len(WIND_SPOTS)} total spots)…")
