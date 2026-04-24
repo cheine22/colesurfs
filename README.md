@@ -2,7 +2,7 @@
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
-A surf forecast dashboard for the NJ / NY / New England coast. Pulls live buoy data from NOAA and wave/wind model forecasts from Open-Meteo and Copernicus Marine (CMEMS), then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
+A surf forecast dashboard for the NY / NJ / New England coast. Designed to provide the best tools for the experienced surfer & surf forecaster to anticipate windows of good waves and plan surf sessions. Guiding principle: interpretation of the agreement between the different models provides the most accurate predictive information. Pulls live buoy data from NOAA and swell/wind model forecasts from Open-Meteo and Copernicus Marine (CMEMS), then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
 
 Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authenticates via the `copernicusmarine` CLI; everything else uses free unauthenticated NOAA / Open-Meteo endpoints.
 
@@ -10,28 +10,21 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 
 ## Features
 
-- **NOAA buoy readings** — live wave height, dominant period, and direction per buoy
-- **Individual swell components** — spectral analysis producing primary + secondary swell partitions from raw NDBC spectral files
-- **EURO & GFS wave forecasts** — hourly or 3-hour swell table with up to 3 swell partitions per cell, color-coded by swell category
-- **Animated wind map** — Leaflet.js with a custom HiDPI canvas particle system (Windy-style), synced to the swell table by hover time. Retina-aware tiles and rendering
-- **Model switch** — toggle between ECMWF (EURO) and GFS wave + wind models
-- **Regional mode** — click a buoy row to zoom into its surf spots: per-spot hourly wind forecasts and tide data
-- **Tide predictions** — NOAA CO-OPS harmonic predictions per spot, with Surfline-matched time corrections
-- **Wind condition rating** — 6 hierarchical tiers (Glassy / Groomed / Clean / Textured / Messy / Blown Out) per spot based on wind direction relative to the measured coast angle, sustained speed, and effective gust
+- **Easy toggling between EURO & GFS wave forecasts** — hourly or 3-hour swell table with up to 3 swell partitions per cell, color-coded by swell category
 - **Model concordance** — "Model Agreement" badge appears when EURO and GFS predict the same swell category
-- **Fun+ Days column** (new in v1.7) — per-spot count of days in the 10-day forecast where GFS and EURO both classify the primary swell as fun-or-better for ≥6 daytime hours. Cell colour tracks the best `min(GFS, EURO)` window across the forecast.
+- **Customized swell rating scale** — 7 hierarchical tiers (Flat / Weak / Fun / Solid / Firing / Hectic / Monstro) per swell (current or modeled) based on swell size and period
+- **At-a-glance swell forecast evaluation** (new in v1.7) — per-spot count of days in the 10-day forecast where GFS and EURO both classify the primary swell as fun-or-better for ≥6 daytime hours. Cell colour tracks the best `min(GFS, EURO)` window across the forecast.
 - **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or Preferences modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
-- **Smart API caching** — model-run-aware cache that skips API calls when cached data is still from the latest model run
-- **Light/dark mode** — system-aware with manual toggle
-- **Side-by-side mode** — table + map split; always on for desktop, portrait layout for mobile
-- **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column.
-- **Mobile-specific map centers** — per-region map framing tuned for portrait aspect ratio
+- **NOAA buoy readings** — live wave height, dominant period, and direction per buoy
 - **Historical buoy popup** — BUOY HISTORY button opens a 3-day modal with two stacked charts: a live frequency spectrum at the scrubbed time (top) and energy-over-time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile.
-- **Preferences modal** (new in v1.7, formerly "About me") — tools and settings (refresh, CSC, theme, tuner, history toggle). The logo modal now hosts the welcome text, colour legends, tips, and Data Provenance section.
-- **Desktop toolbar toggles** (new in v1.7) — EURO/GFS, Hourly/3-Hour, and History OFF/ON all share the same pill-switch look; the resolution toggle now matches the model toggle styling.
+- **Tide predictions** — NOAA CO-OPS harmonic predictions per spot, with Surfline-matched time corrections
+- **Individual swell components** — spectral analysis producing primary + secondary swell partitions from raw NDBC spectral files
+- **Animated wind map** — Leaflet.js with a custom HiDPI canvas particle system (Windy-style), synced to the swell table by hover time. Retina-aware tiles and rendering
+- **Customized wind condition rating scale** — 6 hierarchical tiers (Glassy / Groomed / Clean / Textured / Messy / Blown Out) per spot based on wind direction relative to the measured coast angle and speed
+- **Smart API caching** — model-run-aware cache that skips API calls when cached data is still from the latest model run
 - **Smart refresh** — refresh button checks for new model data before clearing caches; shows toast if no new data available
-- **Version display** — version number shown in desktop footer, logo modal, and Preferences modal
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
+- **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column.
 
 ---
 
@@ -49,7 +42,7 @@ All data is fetched from free or free-tier public services:
 
 ---
 
-## CSC2 — Colesurfs Correction v2 (lead-time-aware forecast correction)
+## In beta: CSC2 — Colesurfs Correction v2 (lead-time-aware forecast correction)
 
 **Goal.** A forecast-correction model that predicts the primary + secondary
 swells (height, period, direction) at a fixed set of NDBC buoys using patterns
@@ -98,7 +91,7 @@ a live forecast row showing CSC2 vs EURO vs GFS for the selected buoy out to
 +240 h, activated once the model is trained.
 
 **Cadence to first training.** First model trains once we've accumulated
-~3 months of paired cycles; target is 24 months so the model can learn
+paired cycle coverage for >=90% of days of the year; target is 60 months so the model can learn
 seasonal pattern changes. The GEE backfill brings us to ~12 months of
 lead-resolved CMEMS coverage at kickoff; GFS and NDBC backfills cover
 the same window with full lead structure; live loggers top both up daily.
@@ -113,15 +106,15 @@ dashboard until explicitly promoted.
 
 The app uses a **7-category 2D lookup system** based on both wave height (ft) and period (s), capturing how a given wave height reads very differently at 6 s vs 16 s.
 
-| Category | Description |
-|---|---|
-| **FLAT** | Wind chop / no surfable energy |
-| **WEAK** | Small, marginal |
-| **FUN** | Solid fun-sized surf |
-| **SOLID** | Well overhead, quality energy |
-| **FIRING** | Pumping — big, powerful surf |
-| **HECTIC** | Maxing out — dangerously large |
-| **MONSTRO** | XXL / tow-in territory |
+| Category    | Description                                                                        |
+| ----------- | ---------------------------------------------------------------------------------- |
+| **FLAT**    | Nothing to surf                                                                    |
+| **WEAK**    | Marginal conditions but something to surf                                          |
+| **FUN**     | Promising swell for a fun session                                                  |
+| **SOLID**   | Likely overhead surf, high quality waves on tap at the right place                 |
+| **FIRING**  | Longer period surf with good size. Potential for absolutely firing conditions.     |
+| **HECTIC**  | Potential for maxed out spots, difficult to find a decent wave with so much energy |
+| **MONSTRO** | Good luck finding a break that can handle it                                       |
 
 Thresholds are defined per period band in `swell-categorization-scheme.toml`.
 
@@ -129,18 +122,18 @@ Thresholds are defined per period band in `swell-categorization-scheme.toml`.
 
 ## Wind Condition Rating
 
-In regional mode, each spot is classified by surf-quality based on wind direction relative to the coast, sustained speed, and effective gust. The 6 tiers are evaluated hierarchically (first match wins):
+In regional mode, each spot is classified by surf-quality based on wind direction relative to the coast and sustained wind speed. The 6 tiers are evaluated hierarchically (first match wins):
 
 | Rating | Color | Condition |
 |---|---|---|
-| **Glassy** | Green | Offshore, effective gust < 10 mph |
+| **Glassy** | Green | Offshore, sustained < 9 mph |
 | **Groomed** | Green | Offshore, sustained > 20 mph |
-| **Clean** | Green | Offshore (any speed), or any direction with sustained < 5 mph |
-| **Textured** | Gold | Sideshore + gust < 15 mph, or onshore + gust < 10 mph |
-| **Messy** | Blue | Sideshore + gust < 25 mph, or onshore + gust < 20 mph |
+| **Clean** | Green | Offshore at any speed in between, or any direction with sustained < 3 mph |
+| **Textured** | Gold | Sideshore + sustained < 15 mph, or onshore + sustained < 8 mph |
+| **Messy** | Blue | Sideshore + sustained < 18 mph, or onshore + sustained < 13 mph |
 | **Blown Out** | Grey | Everything else |
 
-Wind direction zones are defined relative to each spot's measured shore normal: offshore (≤ 32° from offshore direction), sideshore (32°–115°), onshore (> 115°). Effective gust is capped at sustained × 1.5 to normalize ECMWF's over-reporting.
+Wind direction zones are defined relative to each spot's measured shore normal: offshore (≤ 32° from offshore direction), sideshore (32°–115°), onshore (> 115°). Thresholds are tunable per-spot via `/tuner`; live values are stored in `wind-categorization-scheme.toml`.
 
 ---
 
@@ -181,11 +174,9 @@ Why not Git?
 
 ## Known Limitations
 
-- No wave breaking / beach angle correction — offshore buoy and model data only
-- When all three partition streams from a wave source are empty for a given hour, the dashboard displays no swell rather than falling back to combined sea (v1.5 change — honest empty over faked values)
-- 46268 Topanga Nearshore sits ~200 m from the coast; the nearest 0.083° CMEMS grid cell is masked as land, so CSC2 skips that buoy's EURO stream until a seaward sample-point shim is added
+- No wave breaking / beach angle correction — offshore buoy and model data only. This model is not meant to be a one-stop-shop to compare the surf height at different locations, it is meant to provide a data that can be verified on the day through the buoy for session planning based on local knowledge. 
 - The wind particle field is drawn at the model grid resolution (144 points at 4° spacing), not interpolated to a finer mesh
-- Tide corrections were calibrated on a single date (2026-04-01) against Surfline and are fixed constants
+- Tide corrections were calibrated on a single date (2026-04-01) against Surfline's spot data and are fixed constants
 
 ---
 
@@ -206,7 +197,6 @@ Why not Git?
 - **Fun+ Days typography** — cell count rendered at 18 px, `font-weight: 800`, centred horizontally and vertically. Header reads "Fun+<br>Days".
 - **Modal content swap** — logo modal holds welcome text, the renamed "swell categories" legend, wind classifications, tips, and a new **Data provenance** section with the dl attributions (moved from its previous spot). The old About Me modal is renamed to **Preferences** with title `∿colesurfs · preferences`; button order is REFRESH → CSC → LIGHT → TUNER → show-historical-data toggle. Logo modal is scrollable (`max-height: 75vh; overflow-y: auto`). A new line reads "for my main site, visit coleheine.com" with the link inline-styled to match the GitHub link.
 - **Historical-context backend** — new `GET /api/buoy_historical_context?station_id=<id>&days=10` endpoint returns records with `observed_cat`, `model_agreement` (`true`/`false`/`null`), and the existing spectral-components array. `fetch_buoy_history` default bumped 5 → 10 days and now attaches a raw `spectrum` field (`[[freq_hz, energy_density_m2/Hz, direction_deg | null], …]`) per record, sourced from the same `_parse_spectral_file_all_rows` output we already parse for component decomposition. **No additional NDBC API calls** — the extra range and spectrum data come from bytes already on disk.
-- **mpiannucci wavespectra review** — evaluated `mpiannucci/wavespectra`, `surfnerd`, and `peakdetect` as potential swell-decomposition upgrades. Decision: stay with the existing in-repo `_spectral_components` pipeline, which is already validated byte-for-byte against Surfline's 44097 "Individual Swells" feed and doesn't require an xarray/netCDF dependency or additional NDBC file fetches.
 
 ### v1.6
 - **CSC2 housekeeping sweep** — following a three-agent codebase audit (redundancy, efficiency, documentation), applied every green-light finding in nine coordinated batches while the GFS backfill kept running
@@ -233,15 +223,8 @@ Why not Git?
 - **Provenance moved** — data-source attribution now lives in the logo-tap info modal; outage modal no longer links to external issue trackers
 - **Dependencies** — `copernicusmarine>=2.4`, `xarray`, `netCDF4`
 
-### v1.3.3
-- **Fix:** Mobile slider no longer jumps on tap — anchor is taken from the current handle position rather than the tap location, so the chart only moves when the finger actually slides
-
-### v1.3.2
-- **Fix:** Long Island buoy updated to active buoy 44025 (44017 was decommissioned Feb 2023)
-- **Fix:** Buoy "Now" reading now matches the most recent buoy history point — `_parse()` prefers rows with both valid WVHT and DPD (matching the history chart's energy filter)
-
-### v1.3.1
-- **Scroll preservation on model switch** — switching between EURO and GFS now keeps the same date/time column at the left edge of the visible table area; previously the table would jump to a different date because column widths differ between models
+### v1.4
+- **CSC v1 (Colesurfs Correction)** — primary-swell bias-correction model; superseded by CSC2 in v1.5.1
 
 ### v1.3
 - **Batched wave forecast API** — all spot forecasts fetched in a single multi-location Open-Meteo call (7 calls → 1); cold-cache load time dropped from ~14 s to ~2–3 s
@@ -253,30 +236,9 @@ Why not Git?
 - **Inlined `/api/config`** — config embedded in the HTML template at render time, saving one round-trip on load
 - **Batch fallback** — if the batched wave API call fails, falls back to per-spot fetches
 
-### v1.2.5
-- **Outage banner auto-clear** — banner is dismissed automatically on a successful `loadAll` so stale outage warnings don't persist
-- **Smart-refresh bypass** — manual refresh skips the "no new data" check when an outage banner is visible, allowing immediate retry
-- **Outage dismissed flag reset** — `_outageDismissed` resets on each manual refresh
-- **Backend: wind cache retry** — `skip_none=True` added to `fetch_spot_wind` and `fetch_spot_wind_forecasts` so failed wind lookups are retried on the next request rather than serving a cached `None`
-
-### v1.2.4
-- **Dynamic outage modal** — modal now shows PARTIAL or FULL DATA OUTAGE based on severity, and dynamically lists which data types are affected (Swell/wave, Wind, Region wind, Tide) based on actual failure conditions
-- **Structured failure info** — `_showOutageBanner()` accepts structured failure details from `loadAll()`; graceful fallback when called without arguments
-
-### v1.2.3
-- **Broadened outage detection** — outage modal now triggers when any data source fails (spot winds, region wind, swell, tides, wind grid, or timeouts) for any model
-- **Outage modal → centered popup** — outage indicator converted from a top banner to a centered modal popup
-- **GitHub issue auto-check** — outage modal auto-fetches open open-meteo/open-meteo issues and shows count + link
-- **Wind API: double-request fix** — `_RATE_LIMITED` sentinel in `fetch_wind_grid` prevents wasteful hourly fallback on 429 responses
-- **Wind API: negative cache TTL** — increased from 10 min to 30 min for rate-limited responses
-- **Footer layout** — API usage and swell data text consolidated on one line (desktop)
-
-### v1.2.2
-- **Outage banner** — fixed amber top banner appears when any upstream data source fails; includes retry button, dismiss button, and link to Open-Meteo issues
-
-### v1.2.1
-- **Photography link** — COLE HEINE PHOTOGRAPHY button linking to coleheine.com added to the logo info modal
-- **Info modal polish** — refresh button text standardized to all caps; API call count moved to its own line below swell data attribution
+### v1.2.1–v1.2.5
+- **Outage detection & modal** — fixed amber top banner evolved into a centered modal that dynamically reports PARTIAL or FULL outages with affected data types, auto-clears on successful reload, and skips the smart-refresh "no new data" check while visible. Wind API gained a `_RATE_LIMITED` sentinel and 30-min negative-cache TTL; failed wind lookups retry via `skip_none=True`. (External-issue-tracker link removed in v1.5.)
+- **Photography link & info-modal polish** — COLE HEINE PHOTOGRAPHY button added to the logo info modal; refresh button text standardized to all caps.
 
 ### v1.2
 - **Smart refresh** — refresh button checks `/api/status` for new model data before clearing caches; shows toast notification if no new run is available
@@ -288,9 +250,3 @@ Why not Git?
 - **Wind particle rendering** — replaced `destination-in` alpha compositing with explicit per-particle trail history; eliminates ghost trail artifacts on dark backgrounds caused by 8-bit alpha quantization floor
 - **Wind particle coverage** — particles in regional mode now spawn across the full visible map area (was limited to a small bounding box around observation points); IDW interpolation cutoff increased to 4° for full-map coverage
 - **Backend: buoy history API** — new `GET /api/buoy_history/<station_id>` endpoint returns 5 days of historical buoy readings with spectral swell components, cached for 30 minutes
-
-### v1.1.1
-- **Wind forecast fix** — `regionWindData` fetch moved outside the `regionMode` guard in `setModel()`, so switching models while in spot view (or before first entering it) no longer returns stale data from the previous model
-- **Version number** — added `v1.1.1` label; displayed in desktop footer and mobile info popup
-- **Mobile info modal** — tapping the header logo on mobile opens a popup with a "Refresh Model Now" button, live API usage/swell data tag, and version string
-- **Loading screen** — content shifted slightly north of center (`padding-bottom: 18%`) for better visual balance
