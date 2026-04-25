@@ -28,6 +28,7 @@ import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from flask_compress import Compress
 from waitress import serve
@@ -408,11 +409,116 @@ def csc_page():
     )
 
 
+@app.route("/csc-model")
+def csc_model_page():
+    """CSC2 model documentation — explains the training pipeline end-to-end."""
+    return render_template("csc-model.html")
+
+
 @app.route("/api/csc2/archive_status")
 def api_csc2_archive_status():
     """How much CMEMS/GFS/buoy archive we've accumulated so far, per buoy."""
     from csc2.archive_status import summarize
     return jsonify(summarize())
+
+
+@app.route("/api/csc2/models")
+def api_csc2_models():
+    """Trained-model registry. Returns the 3-model selection that surfaces
+    on /csc — #1 by composite skill (vs raw EURO holdout MAE) plus the
+    two most recent additional models — alongside the full inventory."""
+    from csc2.registry import selection_payload
+    scope = request.args.get("scope", "east")
+    if scope not in ("east", "west"):
+        scope = "east"
+    return jsonify(selection_payload(scope))
+
+
+@_cache.ttl_cache(ttl_seconds=1800, skip_none=True)
+def _csc2_forecast_payload(buoy_id: str, scope: str) -> dict | None:
+    """Compute /api/csc2/forecast and cache for 30 min.
+
+    The cycle anchor only changes every 12 h (CMEMS publish cadence) so
+    response-level caching is safe. The cache warmer pre-fills this for
+    every east buoy on startup, so users essentially never pay the cold
+    cost (~7 s for CMEMS + ~600 ms for the 3 model predictions)."""
+    from csc2.registry import selection_payload
+    from csc2.predict import predict_for_cycle
+    from csc2.schema import buoy_meta, CSC2_MODELS_DIR
+    from datetime import datetime, timezone as _tz
+    from waves_cmems import fetch_cmems_point
+    from waves import fetch_wave_forecast
+
+    try:
+        meta = buoy_meta(buoy_id)
+    except KeyError:
+        return None
+
+    now = datetime.now(_tz.utc)
+    cyc_h = 0 if now.hour < 12 else 12
+    cycle_utc = now.replace(hour=cyc_h, minute=0, second=0, microsecond=0
+                            ).strftime("%Y%m%dT%HZ")
+
+    try:
+        euro_recs = fetch_cmems_point(meta["lat"], meta["lon"]) or []
+        euro_err = None
+    except Exception as e:
+        euro_recs, euro_err = [], f"{type(e).__name__}: {e}"
+    try:
+        gfs_recs = fetch_wave_forecast(meta["lat"], meta["lon"], "GFS") or []
+        gfs_err = None
+    except Exception as e:
+        gfs_recs, gfs_err = [], f"{type(e).__name__}: {e}"
+
+    sel = selection_payload(scope).get("selected", [])
+    by_model = []
+    for s in sel:
+        try:
+            rows = predict_for_cycle(
+                CSC2_MODELS_DIR / scope / s["name"],
+                buoy_id=buoy_id, euro_recs=euro_recs, gfs_recs=gfs_recs,
+                cycle_utc=cycle_utc,
+            )
+            by_model.append({
+                "name": s["name"], "arch": s["arch"],
+                "is_top_performer": s["is_top_performer"],
+                "composite_skill": s["composite_skill"],
+                "rows": rows, "error": None,
+            })
+        except Exception as e:
+            by_model.append({
+                "name": s["name"], "arch": s["arch"],
+                "is_top_performer": s["is_top_performer"],
+                "composite_skill": s["composite_skill"],
+                "rows": [], "error": f"{type(e).__name__}: {e}",
+            })
+
+    return {
+        "buoy_id":      buoy_id,
+        "buoy_label":   meta["label"],
+        "cycle_utc":    cycle_utc,
+        "generated_utc": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "n_euro_rows":  len(euro_recs),
+        "n_gfs_rows":   len(gfs_recs),
+        "euro_error":   euro_err,
+        "gfs_error":    gfs_err,
+        "models":       by_model,
+    }
+
+
+@app.route("/api/csc2/forecast")
+def api_csc2_forecast():
+    """Live CSC2 correction for one buoy. Cached 30 min via the helper above."""
+    from csc2.schema import buoy_meta
+    buoy_id = request.args.get("buoy_id", "44065")
+    try:
+        scope = buoy_meta(buoy_id)["scope"]
+    except KeyError:
+        return jsonify({"error": f"unknown buoy {buoy_id}"}), 400
+    payload = _csc2_forecast_payload(buoy_id, scope)
+    if payload is None:
+        return jsonify({"error": "compute failed"}), 500
+    return jsonify(payload)
 
 
 @app.route("/palette-preview")
@@ -665,6 +771,20 @@ def _warm_all_caches():
         fetch_tide_predictions()
     except Exception as e:
         errors.append(f"tides: {e}")
+
+    # CSC2 forecast — pre-compute predictions for every east buoy so the
+    # /csc page never pays the cold cost. Skipped if no models are trained.
+    try:
+        from csc2.schema import buoys_in as _csc2_buoys_in
+        from csc2.registry import list_models as _csc2_list_models
+        if _csc2_list_models("east"):
+            for _bid in _csc2_buoys_in("east"):
+                try:
+                    _csc2_forecast_payload(_bid, "east")
+                except Exception as e:
+                    errors.append(f"csc2_forecast/{_bid}: {e}")
+    except Exception as e:
+        errors.append(f"csc2_forecast: {e}")
 
     elapsed = time.monotonic() - t0
     if errors:

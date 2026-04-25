@@ -1,4 +1,4 @@
-# colesurfs · v1.7
+# colesurfs · v1.8
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -72,10 +72,18 @@ difference.
 | GFS (Open-Meteo)  | same plist, same schedule                           | AWS `s3://noaa-gfs-bdp-pds/` byte-range GRIB2 fetch (scope A: 2025-04 → today)   |
 | Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet yearly archives (2021 → today)                                       |
 
-**Model (planned).** Two tiers reported side-by-side on the eval page:
+**Model architectures.** Two tiers reported side-by-side on the eval page:
 
-- *CSC2 (baseline)* — per-[buoy × lead-hour × variable] linear bias correction. Simple floor; no learned interactions.
-- *CSC2 (model)* — gradient-boosted trees (LightGBM) over features: raw EURO partitions, raw GFS partitions, EURO–GFS deltas per lead, sin/cos day-of-year, buoy identity, and **lead hour as a first-class feature** (since the archive preserves full 0..+240 h lead structure for every cycle). One model per output variable.
+- *CSC2+baseline* — per-[buoy × lead-hour × variable] linear bias correction. Simple floor; no learned interactions.
+- *CSC2+ML* — gradient-boosted trees (LightGBM) over features: raw EURO partitions, raw GFS partitions, EURO–GFS deltas per lead, sin/cos day-of-year, buoy identity, and **lead hour as a first-class feature** (since the archive preserves full 0..+240 h lead structure for every cycle). One model per output variable.
+
+**Naming.** "CSC2" alone refers to the *training dataset* (paired GFS + EURO + buoy obs). A trained model instance is always named:
+
+```
+CSC2+{baseline|ML}_{YYMMDD}_{coverage}_v{N}
+```
+
+`YYMMDD` = train date (UTC, sorts lexicographically); `coverage` = fraction of 365 with ≥1 paired GFS + EURO + **spectral-swell-buoy** day pooled across the 5 east buoys, rounded to 0.01 (>1.0 once we cross into year 2). "Spectral-swell-buoy" means a hour where at least one of partition=1 (primary swell) or partition=2 (secondary swell) — produced by the same `_spectral_components` decomposition the dashboard uses — has Hs/Tp/Dp; partition=0 (combined sea, basic NDBC stdmet WVHT/DPD/MWD) does NOT count, because the model targets sw1/sw2 to match dashboard cells. `v{N}` = architecture/hyperparameter variant for same-day comparisons. Example: `CSC2+ML_260424_0.77_v2`. Weights land in `.csc2_models/east/<full-name>/`. The west track uses identical naming under `.csc2_models/west/`.
 
 **Evaluation.** [`/csc`](http://localhost:5151/csc) renders two tables with a
 buoy picker (individual or combined):
@@ -181,6 +189,29 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.8
+- **CSC2 leaves "data collection only" — models are trained, ranked, and live on `/csc`.** End-to-end pipeline shipped: `csc2/train.py` (paired-data loader + CSC2+baseline (per-(buoy × lead × variable) additive bias) + CSC2+ML (LightGBM, 8 boosters) + holdout eval); `csc2/registry.py` (composite-skill ranking, weighted **sw1 height 0.25 / sw1 period 0.25 / sw1 dir 0.05 / sw2 each 0.05 / surfer FUN-OR-BETTER F1 0.30**, with a min-test-rows gate so noisy small-holdout scores don't take TOP); `csc2/predict.py` (live inference matching the dashboard fallback path byte-for-byte). The `/csc` page now surfaces the **#1 performer + 2 most recent additional models** with a 10-day live forecast chart, surfer metrics (Sens/Spec/PPV/NPV per FUN/SOLID/FIRING/HECTIC/MONSTRO + combined FUN-OR-BETTER), traditional MAE/RMSE/bias, and the running archive accumulation panel.
+- **Spectral backfill closes the partition=1/2 obs gap on every buoy.** Three new modules:
+  - `csc2/ndbc_spectral_backfill.py` — yearly + monthly + realtime NDBC swden+swdir → run through the dashboard's `_spectral_components` for byte-identical decomposition.
+  - `csc2/cdip_spectral_backfill.py` — CDIP THREDDS `historic.nc` + `_rt.nc` for buoys NDBC doesn't archive (44091 USACE, 44097 UConn, 44098 UNH-NERACOOS, 46221 SM Bay).
+  - Combined east-pool paired-cycle coverage: 36 → ~265-286 per buoy. East-pool calendar coverage **0.77 → 0.80** (`coverage` figure in model names now reflects partition=1/2-gated days, not partition=0).
+- **Quarterly retrain + daily live-eval scheduled.** Two new launchd jobs: `com.colesurfs.csc2-retrain` (1st of Mar/Jun/Sep/Dec at 04:00 — wipes archive cache, recomputes coverage, writes both architectures as `_v1` of the date), `com.colesurfs.csc2-eval` (daily 05:00, runs every saved model on cycles that post-date its training, appends rolling-30d skill to `.csc2_data/live_eval/<model>.parquet`).
+- **CSC2 model naming convention.** `CSC2+{baseline|ML}_{YYMMDD}_{coverage}_v{N}`. `coverage` = east-pool fraction of 365 with ≥1 paired GFS+EURO+spectral-buoy day. `vN` = same-day architecture variant. Documented in CLAUDE.md and the new `/csc-model` flowchart page.
+- **`/csc-model` documentation page.** Single-page docs explaining anatomy of the data, processing pathway, model architectures, evaluation metrics, and naming convention with a horizontal SVG flowchart. Theme-aware (light/dark, mirrors main dashboard's `wave-theme` localStorage). Linked from the `/csc` subtitle.
+- **Buoy modal upgrades.**
+  - **Tap on BUOY NOW cell opens the modal preloaded to that buoy.** Previously only the BUOY HISTORY toolbar button could open the modal (defaulting to the regional buoy). The blocker was a leftover mobile-CSS `pointer-events: none` rule on `.swell-table td.cell` that made data cells inert; the new selector `.swell-table td.cell.buoy-now[onclick]` re-enables only the cells that carry an open-modal handler.
+  - **Spectrum chart Y axis = wave energy flux (kW/m).** Replaced the spectral-density / per-bin-Hs view with `(ρg²/4π)·E·Δf·T` per bin, which captures the surfer-energy intuition that long-period swells punch above their Hs weight. Y-axis ticks read directly in kW/m.
+  - **Constant Y-axis ceiling across the 3-day window.** New `_computeSpectrumMaxFlux(records)` pre-scans every record's spectrum on data load and locks the Y-axis to the global max so peaks at quiet times correctly read smaller than peaks at active times.
+  - **Spectrum chart 2× taller** (220 → 440 px desktop, 140 → 280 px mobile). Modal `max-height: 96vh` + `overflow-y: auto` as a safety net so the page itself doesn't scroll on phones.
+- **Main dashboard tweaks.**
+  - **Fun+ Days format** changed from a single `count` to **`{count}/{forecast-window-days}`** (e.g. `5/10`).
+  - **Fun+ wind filter.** A 3-hour window only counts as Fun+ if at least one spot in the same `buoy_region` has Glassy/Groomed/Clean/Textured wind at the same time per `windCondition()`. Honest-empty fallback: if regional wind data isn't loaded yet the filter no-ops so the column doesn't go blank during partial load.
+  - **Desktop CSC2 (BETA) button** in the toolbar between History toggle and the status bar — direct link to `/csc`, mobile bottom-bar already had a CSC entry inside Preferences.
+  - **Mobile header now shows the model run-time + next-run ETA** (was previously in the bottom bar). The PREFERENCES button moves to the bottom bar in the slot the run-tag vacated. Stacked layout matches the original `mob-meta-run` / `mob-meta-next` styling exactly.
+- **Buoy + forecast logger expansion to all 8 CSC2 buoys.** West-coast buoys (46025, 46221) get the same NDBC + CDIP backfill treatment as east; daily 30-min obs collection already covered them. Post-backfill west-pool paired counts: **231 (46025) / 237 (46221)**.
+- **Audit fix: time-snap mismatch.** `archive_status._snap_to_hour` and `train.py:_snap_to_hour_iso` previously rounded `:30:00` differently (down vs up), causing silent off-by-hour mis-joins. Both now round half-up consistently.
+- **Mobile CSC2 page polish.** Tables wrap into `display: block; overflow-x: auto` containers so wide comparison tables (active models, Table 1, Table 2 categories, archive) scroll horizontally inside the viewport instead of overflowing the page. Sticky 44px header (mirroring main dashboard's `.app-header`), sticky footer with buoy-picker + made-by-cole-and-claude credit, light/dark theme toggle, archive section moved to the bottom.
 
 ### v1.7.1
 - **Fix: GFS empty cells beyond day 5** — `_parse_response` in `waves.py` now falls back to the combined sea state (`wave_height` / `wave_peak_period`) when GFS swell partitions are absent (GFS drops them beyond ~5 days). Previously those timesteps returned null for height/period; they now show the combined Hs converted to feet with Tp. Direction is included when available; `components` remains empty to preserve downstream logic that distinguishes partition-backed cells from combined-sea cells.

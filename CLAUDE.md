@@ -40,7 +40,8 @@ status; the model button will appear on the main dashboard once trained.
 - `csc2/obs_logger.py` — live NDBC observation logger (`com.colesurfs.csc2-obs`, every 30 min). Appends to the shared `.csc_data/live_log/observations/` tree with dedup on (valid_utc, partition)
 - `csc2/gee_backfill.py` — historical EURO backfill via Google Earth Engine ImageCollection (`COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`). Cycle-preserving archive back to 2025-04-28
 - `csc2/aws_gfs_backfill.py` — historical GFS backfill via AWS S3 (`noaa-gfs-bdp-pds`) with byte-range GRIB2 fetches driven by `.idx` sidecars
-- `csc2/ndbc_backfill.py` — historical buoy-obs backfill from NDBC stdmet yearly archives
+- `csc2/ndbc_backfill.py` — historical buoy-obs backfill from NDBC stdmet yearly archives (partition=0 / combined sea only)
+- `csc2/ndbc_spectral_backfill.py` — historical buoy spectral decomposition (partition=1 / partition=2). Reuses dashboard-identical `_spectral_components` from `buoy.py`. Three sources, in fallback order: `data/historical/swden,swdir/<sta>w<year>.txt.gz` (yearly closed); `data/swden,swdir/<Mon>/<sta><M><year>.txt.gz` (monthly closed); `data/realtime2/<sta>.data_spec`,`.swdir` (~45 days). Buoys 44091/44097/44098 are not NDBC-archived (USACE/UCONN/UNH-owned), so realtime is their only source — invoke `--realtime` to cover them. Output: `.csc_data/observations/buoy=<id>/year=Y/spectral[-YYYY-MM | -realtime].parquet` with the same schema as stdmet, populated for partition=1 and partition=2 only.
 - `csc2/archive_status.py` — computes paired-cycle coverage per buoy with file-cache; backs `/api/csc2/archive_status`
 
 Local-only data directories (gitignored):
@@ -48,6 +49,97 @@ Local-only data directories (gitignored):
 - `.csc2_data/forecasts/model={EURO,GFS}/buoy=<id>/year=Y/month=M/cycle=*.parquet` — forecast shards
 - `.csc2_data/archive_status_cache.json` — cached `/api/csc2/archive_status` payload
 - `.csc2_models/` — trained model weights (not yet populated)
+
+### Nomenclature
+
+- **CSC2** refers to the *training dataset* (full GFS + EURO model runs paired
+  with buoy obs), not any model. A "CSC2 model" is always a trained instance
+  with a name following the convention below.
+- **Model instance name:** `CSC2+{baseline|ML}_{YYMMDD}_{coverage}_v{N}`
+  - `baseline` vs `ML` — architecture per README §CSC2 ("CSC2 baseline" =
+    per-[buoy × lead-hour × variable] linear bias correction; "CSC2 ML" =
+    LightGBM GBT over EURO/GFS/delta features + lead hour + DOY).
+  - `YYMMDD` — train date in UTC, sorts lexicographically (e.g. `260424`).
+  - `coverage` — fraction of 365 (always 365, not 366) where the **east-coast
+    pool has ≥1 paired GFS + EURO + spectral-swell-buoy day**, rounded to
+    0.01. "Spectral-swell-buoy" means partition=1 (primary swell) or
+    partition=2 (secondary swell) from the dashboard's spectral
+    decomposition (`buoy._spectral_components`); partition=0 (combined
+    sea, basic NDBC stdmet) is **not** trainable because it doesn't match
+    the dashboard quantity the model is predicting against. Computed as
+    `len(histograms.combined_east.paired_by_doy) / 365` from
+    `archive_status_cache.json` (with `BUOY_OBS_PARTITIONS = (1, 2)` in
+    `archive_status.py`). The metric counts unique paired calendar dates
+    uncollapsed across years, so once we cross into year 2 the value can
+    exceed 1.0.
+  - `v{N}` — architecture/hyperparameter variant trained on the same date's
+    snapshot. Bump for any structural change (different feature set,
+    different LightGBM params, different baseline binning, etc.).
+- **Examples:** `CSC2+baseline_260424_0.77_v2`, `CSC2+ML_260424_0.77_v2`.
+- **Weights land in:** `.csc2_models/east/<full-name>/`. The west track uses
+  the identical convention under `.csc2_models/west/<full-name>/` and never
+  surfaces on the dashboard until explicitly promoted.
+
+### GFS combined-sea fallback (v3+ trainers)
+
+The dashboard's `waves.py:_parse_response` synthesizes a primary swell
+from combined Hs/Tp_peak/Dp when GFS swell partitions are absent (per
+v1.7.1 fix; GFS drops partitions beyond ~5 days). The forecast logger
+writes raw partition data (sw1=null when partitions absent) PLUS the
+combined_* columns alongside, so the dashboard quantity can always be
+reconstituted from disk.
+
+The CSC2 trainer mirrors this fallback at read time in
+`csc2.train._apply_dashboard_fallback_gfs`: when `gfs_sw1_height_ft` is
+null and `gfs_combined_height_m` is populated, sw1 is filled from the
+combined fields (m→ft for height) and tagged with
+`gfs_sw1_source = "combined_fallback"`. Rows where both are null are
+tagged "missing" and excluded from training. This keeps on-disk shards
+raw (preserving the partition-vs-fallback distinction) while making
+training inputs byte-identical to dashboard rendering.
+
+EURO has no equivalent fallback per the v1.5 honest-empty policy
+(CMEMS partition-null cells are genuinely empty, not fallback-eligible).
+
+### Ongoing performance assessment
+
+Strategy for tracking how every saved model performs against fresh live
+data, between scheduled retrains:
+
+1. **Daily live-eval pass** (proposed launchd: `com.colesurfs.csc2-eval`,
+   runs ~04:30 ET after the morning forecast cycle has been logged and
+   the prior day's obs are largely complete):
+   - Pick every model under `.csc2_models/east/` whose `meta.trained_utc`
+     pre-dates yesterday.
+   - For each: re-run inference (`csc2.predict.predict_for_cycle`) on
+     yesterday's logged forecast cycles, compare against the obs that
+     have since landed (partition=1/2 obs at the matched valid_utc).
+   - Compute MAE / RMSE / surfer F1 over a rolling 30-day window per
+     model and append to `.csc2_data/live_eval/<model_name>.parquet`
+     with columns (eval_date, n_samples, sw1_h_mae, sw1_p_mae, sw1_d_mae,
+     sw2_*, surfer_F1_FUN_OR_BETTER).
+
+2. **Drift watchdog**: on each daily run, compare the rolling-30d skill
+   to the model's training-time holdout skill. If skill degrades more
+   than ~25 % (configurable), surface a flag so we know to schedule an
+   off-cycle retrain rather than wait for the next quarter.
+
+3. **Surface on /csc**: extend `/api/csc2/models` to merge the latest
+   live-eval row into each model's payload, and render a small "Live
+   skill (last 30d)" column in the active-models table. The composite
+   skill in the registry stays training-holdout-based for stability;
+   the live column is informational.
+
+4. **Trigger conditions for ad-hoc retrain**:
+   - Top performer's live skill drops 25 % for ≥3 consecutive days
+   - East-pool paired-cycle coverage gains ≥30 days since last train
+   - Any new buoy-data source backfilled (new `spectral-*.parquet`
+     under `.csc_data/observations/`)
+
+The skeleton lives in `csc2/eval_live.py` (TODO — stub only). The
+quarterly `com.colesurfs.csc2-retrain` plist is loaded today and
+covers the calendar-driven trigger; the drift-driven trigger is the
+follow-on.
 
 ## v1.7 frontend additions (key landmarks in `templates/index.html`)
 
@@ -151,5 +243,6 @@ The production stack runs as user-agent plists at `~/Library/LaunchAgents/`:
 - `com.cloudflare.cloudflared` — tunnel to `surfreport.coleheine.com`
 - `com.colesurfs.csc2-log` — CSC2 forecast logger @ 3 AM + 3 PM ET
 - `com.colesurfs.csc2-obs` — CSC2 observation logger every 30 min
+- `com.colesurfs.csc2-retrain` — quarterly retrain (1st of Mar/Jun/Sep/Dec at 04:00 local). Wipes the archive-status cache, recomputes coverage, then runs `python -m csc2.train --version v1 --force` for both architectures. Auto-derives YYMMDD + coverage so naming stays correct.
 
 To reload any service after a code change: `launchctl kickstart -k gui/$(id -u)/<label>`.

@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSC2 model · documentation · colesurfs</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f; --bg3:#222228;
+    --bd0:#1e1e24; --bd1:#2e2e38; --bd2:#3e3e4e;
+    --fg0:#e8e8f0; --fg1:#a0a0b8; --fg2:#606075; --fg3:#404055;
+    --accent:#7c6af7; --accent-glow:#7c6af733;
+    --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --chart-euro:   #7c6af7;
+    --chart-gfs:    #d29922;
+  }
+  /* Light mode — system preference (only when user hasn't forced a theme). */
+  @media (prefers-color-scheme: light) {
+    html:not([data-theme="dark"]) {
+      --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+      --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
+      --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+      --accent-glow:#7c6af718;
+    }
+  }
+  /* Light mode — forced via theme toggle (mirrors index.html data-theme). */
+  html[data-theme="light"] {
+    --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+    --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
+    --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+    --accent-glow:#7c6af718;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; background:var(--bg0); color:var(--fg0);
+    font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  code { background: var(--bg2); border:1px solid var(--bd0); border-radius:3px;
+         padding: 1px 5px; font-size: 11.5px; color: var(--fg0); }
+
+  /* Sticky header — mirrors csc.html / index.html. */
+  .app-header {
+    position: sticky; top: 0; z-index: 200;
+    background: var(--bg1); border-bottom: 1px solid var(--bd0);
+    padding: 0 24px; height: 44px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
+                  color: var(--accent); display:inline-flex; align-items:center; gap:3px; }
+  .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+  .header-right { display:flex; align-items:center; gap: 14px; }
+  .btn-theme { padding:5px 11px; border:1px solid var(--bd2); border-radius:5px;
+    color:var(--fg1); background:var(--bg1); font:inherit; cursor:pointer;
+    letter-spacing:.04em; }
+  .btn-theme:hover { border-color:var(--accent); color:var(--fg0); }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 22px 24px 100px; }
+  .page-header { padding: 0 0 14px; }
+  .title { font-size: 18px; color: var(--accent); }
+  .subtitle { color: var(--fg1); font-size: 12px; margin-top: 4px; }
+
+  section { margin: 26px 0; }
+  h2 { font-size:14px; color:var(--fg1); margin: 0 0 10px; padding-bottom:5px;
+    border-bottom: 1px dashed var(--bd1); letter-spacing:0.06em;
+    text-transform: uppercase; font-weight:500; }
+  h3 { font-size: 12px; color: var(--fg0); margin: 18px 0 6px;
+       letter-spacing: .04em; text-transform: uppercase; }
+  h4 { font-size: 11.5px; color: var(--accent); margin: 14px 0 4px;
+       letter-spacing: .04em; }
+  p { margin: 6px 0 10px; color: var(--fg0); }
+  .muted { color: var(--fg2); }
+  ul, ol { margin: 4px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+
+  .notice { background:var(--bg2); border:1px solid var(--bd1); border-radius:6px;
+    padding: 14px 16px; margin: 12px 0; line-height: 1.6; }
+  .notice b { color: var(--fg0); }
+  .notice-kicker { color: var(--amber); font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; margin-bottom: 6px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card { background: var(--bg1); border: 1px solid var(--bd1); border-radius: 6px;
+          padding: 12px 14px; }
+  .card h4 { margin-top: 0; }
+
+  table { width:100%; border-collapse:collapse; margin: 4px 0; }
+  th, td { border: 1px solid var(--bd0); padding: 6px 9px; text-align:left;
+    vertical-align: top; font-size: 11.5px; }
+  th { color:var(--fg1); font-weight:500; text-transform:uppercase;
+    letter-spacing: .05em; font-size: 10.5px; background: var(--bg2); }
+
+  .path { color: var(--accent); font-size: 11.5px; }
+  .file-ref { color: var(--fg1); font-style: normal; }
+  .kbd { background: var(--bg3); border: 1px solid var(--bd1); border-radius: 3px;
+         padding: 1px 5px; font-size: 10.5px; color: var(--fg0); }
+
+  /* Footer — same style + credit as csc.html. */
+  .app-footer {
+    position: sticky; bottom: 0; z-index: 199;
+    background: var(--bg1); border-top: 1px solid var(--bd0);
+    padding: 8px 24px; display: flex; align-items: center;
+    gap: 14px; min-height: 44px; flex-wrap: wrap;
+  }
+  .footer-credit { color: var(--fg2); font-size: 10.5px;
+                    letter-spacing: .04em; margin-left: auto; }
+  .footer-credit a { color: var(--fg1); }
+  .footer-credit a:hover { color: var(--accent); text-decoration: underline; }
+
+  /* Flowchart container. SVG resizes; nodes use CSS variables so theme
+     swaps without redrawing. */
+  .flow-wrap { background: var(--bg1); border: 1px solid var(--bd1);
+               border-radius: 6px; padding: 14px; overflow-x: auto; }
+  .flow-svg { width: 100%; height: auto; min-width: 720px; display: block; }
+  .flow-svg .node-bg { fill: var(--bg2); stroke: var(--bd2); stroke-width: 1; }
+  .flow-svg .node-bg.obs { stroke: var(--green); }
+  .flow-svg .node-bg.fcst { stroke: var(--amber); }
+  .flow-svg .node-bg.proc { stroke: var(--accent); }
+  .flow-svg .node-bg.out { stroke: var(--bd2); fill: var(--bg3); }
+  .flow-svg .node-text { fill: var(--fg0); font:
+       11px ui-monospace, monospace; }
+  .flow-svg .node-sub { fill: var(--fg2); font:
+       9.5px ui-monospace, monospace; }
+  .flow-svg .arrow { stroke: var(--fg2); stroke-width: 1.4; fill: none;
+                     marker-end: url(#arrow-head); }
+  .flow-svg .arrow-head-fill { fill: var(--fg2); }
+  .flow-legend { display: flex; flex-wrap: wrap; gap: 14px;
+                 font-size: 11px; color: var(--fg1);
+                 padding: 8px 4px 0; }
+  .flow-legend .swatch { display: inline-block; width: 10px; height: 10px;
+                         border-radius: 2px; margin-right: 6px;
+                         vertical-align: -1px; border: 1px solid var(--bd2); }
+
+  /* Math/equation block — same monospace, slight indent. */
+  .eq { background: var(--bg2); border-left: 2px solid var(--accent);
+        padding: 8px 12px; margin: 8px 0; font-size: 11.5px;
+        color: var(--fg0); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-logo"><span class="wave-glyph">∿</span>colesurfs · CSC2 model docs</div>
+  <div class="header-right">
+    <button id="theme-btn" class="btn-theme" type="button">◑ LIGHT</button>
+    <a class="btn-theme" href="/csc">← BACK TO CSC2</a>
+  </div>
+</header>
+
+<div class="page">
+
+<div class="page-header">
+  <div class="title">CSC2 · model training pipeline</div>
+  <div class="subtitle">
+    End-to-end documentation of how the CSC2 forecast-correction model is built — from raw
+    EURO/GFS forecast cycles and NDBC/CDIP buoy observations through pairing, feature
+    engineering, fitting, evaluation, and registry surfacing.
+  </div>
+</div>
+
+<!-- ─── Flowchart ─────────────────────────────────────────────────────── -->
+<section>
+  <h2>Pipeline overview</h2>
+  <div class="flow-wrap">
+    <svg class="flow-svg" viewBox="0 0 1080 520" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="arrow-head" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="arrow-head-fill"/>
+        </marker>
+      </defs>
+
+      <!-- Sources column (left). -->
+      <g>
+        <!-- NDBC realtime/historical -->
+        <rect class="node-bg obs" x="14"  y="20"  width="190" height="46" rx="6"/>
+        <text class="node-text" x="109" y="40" text-anchor="middle">NDBC realtime + historical</text>
+        <text class="node-sub"  x="109" y="56" text-anchor="middle">stdmet · swden · swdir</text>
+
+        <!-- CDIP THREDDS -->
+        <rect class="node-bg obs" x="14"  y="80"  width="190" height="46" rx="6"/>
+        <text class="node-text" x="109" y="100" text-anchor="middle">CDIP THREDDS</text>
+        <text class="node-sub"  x="109" y="116" text-anchor="middle">historic.nc · realtime.nc</text>
+
+        <!-- obs_logger 30 min -->
+        <rect class="node-bg obs" x="14"  y="140" width="190" height="46" rx="6"/>
+        <text class="node-text" x="109" y="160" text-anchor="middle">obs_logger · 30 min cron</text>
+        <text class="node-sub"  x="109" y="176" text-anchor="middle">com.colesurfs.csc2-obs</text>
+
+        <!-- waves.fetch_wave_forecast (GFS) -->
+        <rect class="node-bg fcst" x="14"  y="220" width="190" height="46" rx="6"/>
+        <text class="node-text" x="109" y="240" text-anchor="middle">waves.fetch_wave_forecast</text>
+        <text class="node-sub"  x="109" y="256" text-anchor="middle">model_key="GFS" · Open-Meteo</text>
+
+        <!-- waves_cmems.fetch_cmems_point -->
+        <rect class="node-bg fcst" x="14"  y="280" width="190" height="46" rx="6"/>
+        <text class="node-text" x="109" y="300" text-anchor="middle">waves_cmems.fetch_cmems_point</text>
+        <text class="node-sub"  x="109" y="316" text-anchor="middle">EURO · CMEMS ANFC</text>
+
+        <!-- csc2.logger 12h cron -->
+        <rect class="node-bg fcst" x="14"  y="340" width="190" height="46" rx="6"/>
+        <text class="node-text" x="109" y="360" text-anchor="middle">csc2.logger · 12 h cron</text>
+        <text class="node-sub"  x="109" y="376" text-anchor="middle">com.colesurfs.csc2-log</text>
+      </g>
+
+      <!-- Storage column (mid-left). -->
+      <g>
+        <!-- .csc_data/observations -->
+        <rect class="node-bg out" x="248" y="80" width="200" height="60" rx="6"/>
+        <text class="node-text" x="348" y="103" text-anchor="middle">.csc_data/observations/</text>
+        <text class="node-sub"  x="348" y="120" text-anchor="middle">stdmet · spectral parquet</text>
+        <text class="node-sub"  x="348" y="134" text-anchor="middle">partitions 0/1/2</text>
+
+        <!-- .csc2_data/forecasts -->
+        <rect class="node-bg out" x="248" y="270" width="200" height="60" rx="6"/>
+        <text class="node-text" x="348" y="293" text-anchor="middle">.csc2_data/forecasts/</text>
+        <text class="node-sub"  x="348" y="310" text-anchor="middle">model={EURO,GFS}</text>
+        <text class="node-sub"  x="348" y="324" text-anchor="middle">cycle=YYYYMMDDTHHZ.parquet</text>
+      </g>
+
+      <!-- Source → storage arrows. -->
+      <path class="arrow" d="M204,43  C220,43 232,103 248,103"/>
+      <path class="arrow" d="M204,103 C220,103 232,108 248,108"/>
+      <path class="arrow" d="M204,163 C220,163 232,118 248,118"/>
+      <path class="arrow" d="M204,243 C220,243 232,290 248,290"/>
+      <path class="arrow" d="M204,303 C220,303 232,300 248,300"/>
+      <path class="arrow" d="M204,363 C220,363 232,310 248,310"/>
+
+      <!-- build_paired_dataset -->
+      <rect class="node-bg proc" x="500" y="180" width="180" height="50" rx="6"/>
+      <text class="node-text" x="590" y="201" text-anchor="middle">build_paired_dataset</text>
+      <text class="node-sub"  x="590" y="217" text-anchor="middle">csc2/train.py</text>
+
+      <!-- Storage → build_paired_dataset arrows. -->
+      <path class="arrow" d="M448,110 C470,110 480,196 500,196"/>
+      <path class="arrow" d="M448,300 C470,300 480,212 500,212"/>
+
+      <!-- add_features + holdout split -->
+      <rect class="node-bg proc" x="500" y="260" width="180" height="50" rx="6"/>
+      <text class="node-text" x="590" y="281" text-anchor="middle">add_features</text>
+      <text class="node-sub"  x="590" y="297" text-anchor="middle">+ time-aware holdout (last 15%)</text>
+
+      <path class="arrow" d="M590,230 L590,260"/>
+
+      <!-- fit_baseline / fit_ml -->
+      <rect class="node-bg proc" x="420" y="345" width="160" height="46" rx="6"/>
+      <text class="node-text" x="500" y="365" text-anchor="middle">fit_baseline</text>
+      <text class="node-sub"  x="500" y="381" text-anchor="middle">per-cell additive bias</text>
+
+      <rect class="node-bg proc" x="600" y="345" width="160" height="46" rx="6"/>
+      <text class="node-text" x="680" y="365" text-anchor="middle">fit_ml</text>
+      <text class="node-sub"  x="680" y="381" text-anchor="middle">LightGBM · 8 boosters</text>
+
+      <path class="arrow" d="M560,310 L520,345"/>
+      <path class="arrow" d="M620,310 L660,345"/>
+
+      <!-- Models on disk -->
+      <rect class="node-bg out" x="500" y="420" width="180" height="50" rx="6"/>
+      <text class="node-text" x="590" y="441" text-anchor="middle">.csc2_models/east/&lt;name&gt;/</text>
+      <text class="node-sub"  x="590" y="457" text-anchor="middle">trained weights · meta · metrics</text>
+
+      <path class="arrow" d="M500,391 L570,420"/>
+      <path class="arrow" d="M680,391 L610,420"/>
+
+      <!-- Registry composite skill -->
+      <rect class="node-bg proc" x="780" y="270" width="200" height="50" rx="6"/>
+      <text class="node-text" x="880" y="291" text-anchor="middle">registry · composite skill</text>
+      <text class="node-sub"  x="880" y="307" text-anchor="middle">vs raw EURO holdout</text>
+
+      <!-- Live dashboard surface -->
+      <rect class="node-bg out" x="780" y="350" width="200" height="50" rx="6"/>
+      <text class="node-text" x="880" y="371" text-anchor="middle">/api/csc2/models</text>
+      <text class="node-sub"  x="880" y="387" text-anchor="middle">→ /csc page · live forecast</text>
+
+      <!-- Models → registry → /csc -->
+      <path class="arrow" d="M680,440 C740,440 760,300 780,295"/>
+      <path class="arrow" d="M880,320 L880,350"/>
+    </svg>
+    <div class="flow-legend">
+      <span><span class="swatch" style="border-color: var(--green);"></span>observations</span>
+      <span><span class="swatch" style="border-color: var(--amber);"></span>forecasts</span>
+      <span><span class="swatch" style="border-color: var(--accent);"></span>processing</span>
+      <span><span class="swatch" style="background: var(--bg3);"></span>artifact on disk</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Anatomy of the data ──────────────────────────────────────────── -->
+<section>
+  <h2>1 · Anatomy of the data</h2>
+
+  <h3>Forecast cycle shards</h3>
+  <p>
+    Every 00Z and 12Z run for both EURO and GFS is captured by <code>csc2.logger</code>
+    (launchd <code>com.colesurfs.csc2-log</code>, 3 AM + 3 PM ET) and persisted as
+    one parquet file per cycle, partitioned by model and buoy:
+  </p>
+  <p class="path">.csc2_data/forecasts/model={EURO,GFS}/buoy=&lt;id&gt;/year=Y/month=M/cycle=YYYYMMDDTHHZ.parquet</p>
+  <ul>
+    <li><b>EURO</b> rows come from <code>waves_cmems.fetch_cmems_point</code> (CMEMS ANFC) called by <code>csc2.logger</code>.</li>
+    <li><b>GFS</b> rows come from <code>waves.fetch_wave_forecast(model_key="GFS")</code> against Open-Meteo (and from <code>csc2.aws_gfs_backfill</code> for the historical fill).</li>
+    <li>The on-disk schema is defined in <code>csc2/schema.py</code> as <code>FORECAST_COLUMNS</code> — raw partition fields (<code>sw1_*</code>, <code>sw2_*</code>) plus combined-sea fields (<code>combined_*</code>) so the dashboard's v1.7.1 GFS fallback can be reconstituted at read time.</li>
+    <li>Every cycle preserves the full <code>+0…+240 h</code> lead structure.</li>
+  </ul>
+
+  <h3>Buoy-observation shards</h3>
+  <p>
+    Persisted under <code>.csc_data/observations/buoy=&lt;id&gt;/year=Y/</code>, split by
+    partition (matching the dashboard's spectral decomposition):
+  </p>
+  <table>
+    <thead><tr><th>File</th><th>Partition</th><th>Source</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>stdmet*.parquet</code></td><td>0 (combined sea)</td><td>NDBC text archives</td><td>Not used as a training target — partition=0 doesn't match the dashboard quantity the model predicts.</td></tr>
+      <tr><td><code>spectral*.parquet</code></td><td>1 / 2 (primary / secondary swell)</td><td><code>buoy._spectral_components</code></td><td>The trainable obs targets.</td></tr>
+    </tbody>
+  </table>
+  <p>Spectral data is sourced in fallback order:</p>
+  <ol>
+    <li>NDBC realtime spectral — most recent ~45 days (<code>data_spec</code> + <code>swdir</code>).</li>
+    <li>NDBC historical <code>swden</code> + <code>swdir</code> yearly archives — only available for the subset of NDBC-archived stations.</li>
+    <li>CDIP <code>historic.nc</code> + <code>realtime.nc</code> — fills in stations NDBC doesn't archive.</li>
+  </ol>
+  <p>
+    Unified obs schema: <code>buoy_id, valid_utc, partition, hs_m, tp_s, dp_deg, source, ingest_utc</code>.
+  </p>
+
+  <h3>Live observation logger</h3>
+  <p>
+    <code>csc2.obs_logger</code> (launchd <code>com.colesurfs.csc2-obs</code>, every
+    30 minutes) appends the freshest NDBC reading to
+    <code>.csc_data/live_log/observations/</code>, deduped on
+    <code>(valid_utc, partition)</code>. This is what closes the loop on
+    in-progress cycles whose forecasts are already on disk but whose verifying
+    obs haven't arrived yet.
+  </p>
+</section>
+
+<!-- ─── Processing pathway ────────────────────────────────────────────── -->
+<section>
+  <h2>2 · Processing pathway</h2>
+
+  <h3>Pairing logic</h3>
+  <p>
+    Implemented in <code>csc2/archive_status.py</code>. For each
+    <b>(buoy, cycle)</b>, the cycle is considered <em>paired</em> only if
+    <b>≥ 95 %</b> of the shared EURO ∩ GFS forecast hours have a partition=1
+    OR partition=2 observation snapped to the hour. The 95 % threshold tolerates
+    routine single-hour NDBC dropouts without letting cycles with material
+    buoy outages slip into training.
+  </p>
+  <div class="notice">
+    <div class="notice-kicker">Coverage figure</div>
+    The <b>coverage</b> token baked into model names is computed as
+    <code>len(histograms.combined_east.paired_by_doy) / 365</code> — i.e.
+    the count of unique calendar dates (uncollapsed across years) on which
+    at least one east-pool buoy clears the 95 % bar, divided by 365 (always
+    365, never 366). Once we cross into year 2 this fraction can exceed 1.0.
+  </div>
+
+  <h3>Trainer load</h3>
+  <p>
+    <code>csc2/train.py:build_paired_dataset</code> performs an inner-join of
+    EURO + GFS on the tuple <code>(buoy_id, cycle_utc, valid_utc, lead_hours)</code>,
+    then left-joins the obs partition=1 and partition=2 shards wide so each row
+    carries observed sw1 and sw2 alongside the two model forecasts.
+  </p>
+  <p>
+    <code>_apply_dashboard_fallback_gfs</code> (at <code>csc2/train.py:106</code>)
+    synthesizes GFS sw1 from <code>combined_*</code> fields when partitions are
+    absent — byte-identical to the dashboard's v1.7.1 fallback in
+    <code>waves.py:_parse_response</code>. Rows where <em>both</em> obs sw1 and
+    sw2 are missing are dropped.
+  </p>
+
+  <h3>Time-aware holdout split</h3>
+  <p>
+    The last <b>15 %</b> of unique cycles, sorted by <code>cycle_utc</code>,
+    form the test set. Per-cycle (rather than per-row) splitting prevents lead-hour
+    leakage where a same-cycle row could appear on both sides of the split.
+  </p>
+
+  <h3>Feature engineering</h3>
+  <p><code>csc2/train.py:add_features</code> derives:</p>
+  <ul>
+    <li><b>sin/cos</b> of EURO and GFS sw1 + sw2 directions (avoids the 0°/360° wraparound).</li>
+    <li><b>EURO − GFS deltas</b> for sw1/sw2 height, period, and circular-direction difference.</li>
+    <li><b>sin/cos day-of-year</b> — captures seasonal swell-regime structure.</li>
+    <li><b>Buoy one-hot</b> (5 east-coast buoys) — lets the shared model learn per-buoy splits.</li>
+    <li><b>lead_hours</b> as a first-class feature — every cycle preserves the full +0…+240 h lead window.</li>
+  </ul>
+</section>
+
+<!-- ─── Model architectures ───────────────────────────────────────────── -->
+<section>
+  <h2>3 · Model architectures</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>CSC2+baseline</h4>
+      <p>
+        Per-<b>(buoy × lead_hour × variable)</b> additive bias on top of the
+        EURO/GFS arithmetic mean. Deliberately simple — no learned interactions,
+        no time-of-year, no EURO–GFS delta. This is the floor the ML model must
+        beat. Fully customised per buoy.
+      </p>
+      <div class="eq">For Hs / Tp:
+  pred = mean(EURO, GFS) + bias[buoy, lead, var]
+
+For Dp:
+  base = circular_mean(EURO, GFS)
+  pred = base + bias_deg[buoy, lead]   (mod 360)</div>
+      <p class="muted">Direction uses circular mean via sin/cos averaging plus a per-cell rotation bias.</p>
+    </div>
+
+    <div class="card">
+      <h4>CSC2+ML</h4>
+      <p>
+        LightGBM gradient-boosted trees, <b>8 boosters</b> — one per scalar
+        target. Buoy is supplied as a one-hot feature so the same shared model
+        learns per-buoy splits. Direction is recombined via
+        <code>atan2(sin, cos)</code> at inference time.
+      </p>
+      <ol style="margin: 4px 0; padding-left: 18px;">
+        <li>sw1_height_ft</li>
+        <li>sw1_period_s</li>
+        <li>sw1_dp_sin</li>
+        <li>sw1_dp_cos</li>
+        <li>sw2_height_ft</li>
+        <li>sw2_period_s</li>
+        <li>sw2_dp_sin</li>
+        <li>sw2_dp_cos</li>
+      </ol>
+      <h4 style="margin-top: 10px;">Hyperparameters</h4>
+      <div class="eq">learning_rate     = 0.05
+num_leaves        = 63
+num_boost_round   = 400
+feature_fraction  = 0.9
+bagging_fraction  = 0.9
+bagging_freq      = 5
+seed              = 42
+deterministic     = True</div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── Evaluation ───────────────────────────────────────────────────── -->
+<section>
+  <h2>4 · Evaluation metrics</h2>
+
+  <h3>Traditional</h3>
+  <p>
+    Per-variable <b>MAE / RMSE / bias</b> across the six dashboard variables
+    (sw1/sw2 × Hs/Tp/Dp), reported on each model's own time-aware holdout.
+    Surfaced in Table 1 on <a href="/csc">/csc</a>.
+  </p>
+
+  <h3>Surfer</h3>
+  <p>
+    Sensitivity / specificity / PPV / NPV per swell category — <b>FUN</b>,
+    <b>SOLID</b>, <b>FIRING</b>, <b>HECTIC</b>, <b>MONSTRO</b>, plus the
+    combined <b>FUN-OR-BETTER</b> positive class — using
+    <code>swell_rules.categorize</code> applied to (predicted sw1 Hs, sw1 Tp).
+    This is the same categoriser the dashboard uses for cell coloring, so the
+    metric reflects the surfability call the user actually sees.
+  </p>
+
+  <h3>Composite skill (registry)</h3>
+  <p>
+    A single weighted-sum score per model, used to pick the <b>TOP</b> slot
+    in the active-models table. Each per-variable MAE skill is
+    <code>1 − model_MAE / euro_MAE</code>; the surfer F1 skill is
+    <code>(model_F1 − euro_F1) / (1 − euro_F1)</code> on FUN-OR-BETTER.
+    Positive values beat raw EURO on average.
+  </p>
+  <table>
+    <thead><tr><th>Component</th><th>Weight</th></tr></thead>
+    <tbody>
+      <tr><td>sw1 height</td><td>0.25</td></tr>
+      <tr><td>sw1 period</td><td>0.25</td></tr>
+      <tr><td>sw1 direction</td><td>0.05</td></tr>
+      <tr><td>sw2 height</td><td>0.05</td></tr>
+      <tr><td>sw2 period</td><td>0.05</td></tr>
+      <tr><td>sw2 direction</td><td>0.05</td></tr>
+      <tr><td>surfer F1 (FUN-OR-BETTER)</td><td>0.30</td></tr>
+    </tbody>
+  </table>
+  <p class="muted">
+    Only models whose holdout has ≥ 1000 rows are eligible for the TOP
+    slot — small-holdout skill numbers are too noisy to rank against
+    year-scale evaluations.
+  </p>
+</section>
+
+<!-- ─── Naming convention ────────────────────────────────────────────── -->
+<section>
+  <h2>5 · Naming convention</h2>
+  <p>Every trained model is tagged:</p>
+  <div class="eq">CSC2+{baseline|ML}_{YYMMDD}_{coverage}_v{N}</div>
+  <ul>
+    <li><b>YYMMDD</b> — train date in UTC, sorts lexicographically (e.g. <code>260424</code>).</li>
+    <li><b>coverage</b> — east-pool fraction of 365 paired calendar dates, rounded to 0.01.</li>
+    <li><b>vN</b> — same-day variant; bump for any structural change (different feature set, different LightGBM params, different baseline binning).</li>
+  </ul>
+  <p>
+    Weights land in <code>.csc2_models/east/&lt;full-name&gt;/</code>. The
+    west track uses the identical convention under
+    <code>.csc2_models/west/&lt;full-name&gt;/</code> and never surfaces on
+    the dashboard until explicitly promoted.
+  </p>
+  <p class="muted">Examples: <code>CSC2+baseline_260424_0.77_v2</code>, <code>CSC2+ML_260424_0.77_v2</code>.</p>
+</section>
+
+<!-- ─── Identity invariant ─────────────────────────────────────────── -->
+<section>
+  <h2>Dashboard / CSC2 identity invariant</h2>
+  <div class="notice">
+    Every CSC2 forecast row must match the dashboard byte-for-byte for the
+    same <code>(buoy, valid_utc, model)</code> tuple. Anything that feeds
+    training passes through <code>waves_cmems</code> / <code>waves</code>
+    exactly the way the live dashboard does — no shortcut pulls of raw
+    CMEMS or raw GRIB values. If CSC2 output disagrees with a dashboard
+    cell for the same hour/buoy, something is wrong — not a model
+    difference.
+  </div>
+</section>
+
+</div>
+
+<footer class="app-footer">
+  <span class="footer-credit">made by <a href="https://coleheine.com" target="_blank" rel="noopener">cole</a> &amp; <a href="https://claude.com/claude-code" target="_blank" rel="noopener">claude</a></span>
+</footer>
+
+<script>
+// Theme toggle — same contract as csc.html: localStorage 'wave-theme', data-theme attr.
+(function _initTheme() {
+  const saved = localStorage.getItem('wave-theme');
+  const sysLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  const theme = saved || (sysLight ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+})();
+document.getElementById('theme-btn')?.addEventListener('click', () => {
+  const curr = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = curr === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('wave-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '◑ DARK' : '◑ LIGHT';
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+  if (localStorage.getItem('wave-theme')) return;
+  const theme = e.matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+});
+</script>
+</body>
+</html>

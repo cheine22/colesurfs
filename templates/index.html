@@ -749,10 +749,15 @@
         transform: translateX(var(--table-tx, 0px));
       }
       .table-scroll::-webkit-scrollbar { display: none !important; } /* Chrome/Safari: hide scrollbar */
-      /* Only spot-name links are tappable; data cells are inert */
+      /* Only spot-name links + buoy-now cells with click handlers are
+         tappable; the rest of the data cells are inert so taps fall
+         through to scroll. The `[onclick]` selector restricts the
+         buoy-now exception to cells that actually carry a click handler
+         (skips OFFLINE / NO DATA / NO WAVES variants, which don't). */
       .swell-table td.cell { pointer-events: none; }
       .swell-table td.spot-cell,
-      .swell-table td.wind-spot-cell { pointer-events: auto; }
+      .swell-table td.wind-spot-cell,
+      .swell-table td.cell.buoy-now[onclick] { pointer-events: auto; }
 
       /* Table cells for mobile */
       .swell-table th { padding: 3px 4px; font-size: 8px; letter-spacing: .1em; }
@@ -986,6 +991,38 @@
       /* Hide old sig inside mob-meta */
       .mob-meta-sig { display: none !important; }
 
+      /* Mobile: swap PREFERENCES (header) ↔ model-run-tag (bottom bar).
+         Header gets the stacked run + next-run readout (mirroring the
+         original bottom-bar styling — same fonts, same muted next color);
+         bottom-bar mob-meta becomes the PREFERENCES button slot. */
+      .header-about-btn { display: none !important; }
+      .header-mob-meta {
+        display: flex !important;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+      }
+      .header-mob-run {
+        font-size: 9.5px; font-weight: 600;
+        color: var(--text1); letter-spacing: .03em;
+        font-family: var(--font); line-height: 1.2;
+      }
+      .header-mob-next {
+        font-size: 8px; color: var(--text2);
+        letter-spacing: .03em;
+        font-family: var(--font); line-height: 1.2;
+      }
+      #mob-run-tag, #mob-next-tag { display: none !important; }
+      .mob-pref-btn {
+        display: inline-block !important;
+        background: var(--bg1); color: var(--text1);
+        border: 1px solid var(--border1); border-radius: 4px;
+        padding: 4px 8px; font: inherit; font-size: 10px;
+        font-weight: 700; letter-spacing: .04em;
+        cursor: pointer;
+      }
+      .mob-pref-btn:active { background: var(--bg2); border-color: var(--accent); color: var(--accent); }
+
       /* Leaflet controls: smaller on mobile */
       .leaflet-control-zoom a {
         width: 26px !important; height: 26px !important;
@@ -1076,6 +1113,11 @@
       max-width: 720px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,.45);
       display: flex; flex-direction: column; gap: 10px;
       font-family: var(--font);
+      /* Modal grows to accommodate the now-doubled spectrum chart while
+         capping at the viewport so the page itself doesn't need to scroll.
+         Internal scroll is the last-resort fallback for very short
+         windows; on typical phone + laptop sizes the content fits. */
+      max-height: 96vh; overflow-y: auto;
     }
     .buoy-popup-close {
       position: absolute; top: 10px; right: 12px; background: none;
@@ -1101,6 +1143,12 @@
     .buoy-popup-chart-wrap canvas {
       width: 100%; height: 220px; display: block;
     }
+    /* Spectrum canvas (#buoy-popup-canvas-bot) is taller — doubled from
+       the energy chart so users can read the multiple frequency peaks
+       and the Hs-contribution Y axis comfortably. */
+    .buoy-popup-chart-wrap canvas#buoy-popup-canvas-bot {
+      height: 440px;
+    }
     .buoy-time-label {
       font-family: var(--font); font-size: 11px; color: var(--text1);
       text-align: center; letter-spacing: .04em; margin: 2px 0 0;
@@ -1117,6 +1165,8 @@
       .buoy-popup-overlay { padding: 8px; align-items: center; }
       .buoy-popup { max-width: 100%; padding: 14px 12px; }
       .buoy-popup-chart-wrap canvas { height: 140px; }
+      /* Mobile spectrum: also doubled (140 → 280) per the desktop ratio. */
+      .buoy-popup-chart-wrap canvas#buoy-popup-canvas-bot { height: 280px; }
       .buoy-popup-title { font-size: 11px; }
       .buoy-popup-tooltip { display: none !important; }
       .buoy-info-strip { display: block; font-size: 10px; }
@@ -1170,6 +1220,10 @@
       cursor: pointer; transition: color .15s, border-color .15s;
     }
     .header-about-btn:hover { color: var(--accent); border-color: var(--accent); }
+    /* Mobile-swap defaults — both elements live in the DOM but stay hidden
+       on desktop; the @media (max-width:600px) block enables them. */
+    .header-mob-meta { display: none; }
+    .mob-pref-btn    { display: none; }
 
     /* ── About Me modal ────────────────────────────────────── */
     .about-modal-overlay {
@@ -1299,6 +1353,13 @@
   <span class="header-logo" onclick="openInfoModal()"><span class="wave-glyph">∿</span>colesurfs</span>
   <div class="header-right">
     <button class="header-about-btn" onclick="openAboutModal()">PREFERENCES</button>
+    <!-- Mobile-only: stacked model-run-time + next-run-eta, mirrored from
+         the bottom-bar #mob-run-tag / #mob-next-tag. Swap-in for
+         PREFERENCES on ≤600px viewports. -->
+    <span class="header-mob-meta" aria-hidden="true">
+      <span class="header-mob-run"  id="header-mob-run-tag">—</span>
+      <span class="header-mob-next" id="header-mob-next-tag"></span>
+    </span>
   </div>
 </div>
 
@@ -1323,6 +1384,9 @@
     <button class="sw-btn active" data-hist="off" onclick="setShowHistory(false)">OFF</button>
     <button class="sw-btn"        data-hist="on"  onclick="setShowHistory(true)">ON</button>
   </div>
+  <div class="sep"></div>
+  <a class="sw-btn" href="/csc" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1); text-decoration:none; display:inline-flex; align-items:center; gap:5px;"
+     title="CSC2 forecast-correction model (beta)">CSC2 <span style="font-size:9.5px; opacity:.7; font-weight:500;">BETA</span></a>
   <div class="status-bar">
     <span class="status-tag" id="model-run-tag">Run: <b>—</b></span>
     <button class="btn-refresh" onclick="refreshAll()">↺ Refresh Model Now</button>
@@ -1401,6 +1465,9 @@
   <div class="mob-meta">
     <span class="mob-meta-run" id="mob-run-tag">—</span>
     <span class="mob-meta-next" id="mob-next-tag"></span>
+    <!-- Mobile-only PREFERENCES button — swap-in for the run tag on
+         ≤600px viewports (run tag moves up to the header). -->
+    <button class="mob-pref-btn" onclick="openAboutModal()" aria-hidden="true">PREFERENCES</button>
   </div>
 </div>
 
@@ -1435,7 +1502,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.7.1</span>
+    <span class="info-modal-version">v1.8</span>
   </div>
 </div>
 
@@ -1452,7 +1519,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.7.1</span>
+    <span class="about-version">v1.8</span>
   </div>
 </div>
 
@@ -1488,7 +1555,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.7.1</span>
+    <span class="footer-version">v1.8</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2075,8 +2142,18 @@ async function _refreshStatus() {
       runEl.innerHTML = `<b>${datePart}${run}</b>${next}`;
       const mobRun  = document.getElementById('mob-run-tag');
       const mobNext = document.getElementById('mob-next-tag');
+      const nextLabel = (data.model_run.hours_to_next != null)
+        ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h`
+        : '';
       if (mobRun)  mobRun.textContent = `${datePart}${run}`;
-      if (mobNext) mobNext.textContent = next ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h` : '';
+      if (mobNext) mobNext.textContent = nextLabel;
+      // Mirror to the mobile-swapped header readout (only visible ≤600px).
+      // Stacked: run-tag on top, next-run-eta below in muted color —
+      // mirrors the original bottom-bar layout, just relocated.
+      const headerMobRun  = document.getElementById('header-mob-run-tag');
+      const headerMobNext = document.getElementById('header-mob-next-tag');
+      if (headerMobRun)  headerMobRun.textContent  = `${datePart}${run}`;
+      if (headerMobNext) headerMobNext.textContent = nextLabel;
     }
   } catch(e) { /* silent */ }
 }
@@ -2427,6 +2504,33 @@ function computeModelOverview(spotName) {
     }
   }
 
+  // Region-wind filter: a fun+ window is only counted if at least one
+  // surf spot in the same region has Textured-or-better wind at the
+  // exact same time, per the active wind model. This is the "is the
+  // wind even surfable somewhere in the region" gate.
+  const _spotMeta = (CFG.spots || []).find(s => s.name === spotName);
+  // For a buoy row (no buoy_region), the spot's own name is the region.
+  const _region = (_spotMeta && _spotMeta.buoy_region) || spotName;
+  const _regionWindSpots = ((CFG.wind_spots) || [])
+    .filter(ws => ws.buoy_region === _region && ws.shore_normal != null);
+  const _windyTimes = new Set();  // times where ≥1 region spot is Textured+
+  if (_regionWindSpots.length && typeof regionWindData === 'object' && regionWindData) {
+    const surfable = new Set(['Glassy', 'Groomed', 'Clean', 'Textured']);
+    for (const ws of _regionWindSpots) {
+      const recs = regionWindData[ws.name] || [];
+      for (const rec of recs) {
+        if (!rec || _windyTimes.has(rec.time)) continue;
+        const cond = windCondition(rec.speed_mph, rec.direction_deg,
+                                    ws.shore_normal, rec.gust_mph);
+        if (cond && surfable.has(cond)) _windyTimes.add(rec.time);
+      }
+    }
+  }
+  // Honest-empty: if region wind data isn't loaded yet, skip the filter
+  // (legacy behavior — count fun+ windows by swell alone) so the column
+  // doesn't go blank during a partial load.
+  const _applyWindFilter = _regionWindSpots.length > 0 && _windyTimes.size > 0;
+
   const funIdx = _swellCatIdx('FUN');
   // Per-day count of fun-or-better windows.
   const perDay = {};
@@ -2448,19 +2552,31 @@ function computeModelOverview(spotName) {
       bestHP = (ei <= gi) ? eHP : gHP;
     }
     if (m >= funIdx) {
+      // Wind gate: only count if ≥1 region spot has Textured-or-better
+      // wind at this same time. Skipped when wind data isn't loaded.
+      if (_applyWindFilter && !_windyTimes.has(t)) continue;
       const k = _dayKey(t);
       perDay[k] = (perDay[k] || 0) + 1;
     }
   }
   let count = 0;
   for (const k in perDay) if (perDay[k] >= 2) count++;
+  // Forecast window in days: span of the sampled times rounded to days.
+  // Using `sampled` (already future-or-now and stride-3) so the denominator
+  // tracks what the table actually shows. Falls back to 0 if no future data.
+  let windowDays = 0;
+  if (sampled.length >= 2) {
+    const t0 = new Date(sampled[0].replace('T', ' ')).getTime();
+    const t1 = new Date(sampled[sampled.length - 1].replace('T', ' ')).getTime();
+    windowDays = Math.round((t1 - t0) / 86400000);
+  }
   let bg, fg, catName;
   if (bestHP) {
     [bg, fg, catName] = swellColor(bestHP.h, bestHP.p);
   } else {
     [bg, fg, catName] = [ _isDark() ? 'var(--bg1)' : 'var(--bg2)', 'var(--text3)', null ];
   }
-  return { count, bg, fg, catName };
+  return { count, windowDays, bg, fg, catName };
 }
 
 // Render a historical cell from an observation record. Mirrors buildBuoyCell
@@ -2772,9 +2888,9 @@ function buildTable() {
       <td class="spot-cell${activeAttr}"${clickAttr}>${spot.name}</td>
       ${_buildHistoricalCellsHtml(spot.buoy_id, resolution)}
       <td class="cell model-overview${moDividerCls}" style="background:${mo.bg};color:${mo.fg}">
-        <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}</span></div></div>
+        <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}<span style="opacity:.55; font-weight:600;">/${mo.windowDays || '?'}</span></span></div></div>
       </td>
-      ${buildBuoyCell(b, spot.buoy_id)}`;
+      ${buildBuoyCell(b, spot.buoy_id, spot.name)}`;
     times.forEach(t => {
       const nightClass = ovNightCols.has(t) && !emptyTimes.has(t) ? 'night-col' : '';
       const extraClass = [emptyTimes.has(t) ? 'col-empty' : '', nightClass].filter(Boolean).join(' ');
@@ -2853,9 +2969,9 @@ function buildRegionTable() {
         onclick="exitRegionMode()">${buoySpot.name}</td>
     ${_buildHistoricalCellsHtml(buoySpot.buoy_id, resolution)}
     <td class="cell model-overview${moDividerCls}" style="background:${mo.bg};color:${mo.fg}">
-      <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}</span></div></div>
+      <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}<span style="opacity:.55; font-weight:600;">/${mo.windowDays || '?'}</span></span></div></div>
     </td>
-    ${buildBuoyCell(b, buoySpot.buoy_id)}`;
+    ${buildBuoyCell(b, buoySpot.buoy_id, buoySpot.name)}`;
   times.forEach(t => {
     html += buildWaveCell(buoyByTime[t], t, nightCols.has(t) ? 'night-col' : '', buoySpot.name);
   });
@@ -2890,7 +3006,23 @@ function buildRegionTable() {
 
 // ═══ 10. CELL BUILDERS ══════════════════════════════════════
 
-function buildBuoyCell(b, stationId) {
+function buildBuoyCell(b, stationId, spotName) {
+  // Click handler for the data-bearing BUOY NOW cell — opens the buoy
+  // modal preloaded to this row's buoy. Skipped on the no-data / OFFLINE
+  // / NO WAVES variants since those paths show alternative affordances
+  // (the OFFLINE cell already links to the NDBC station page).
+  const _esc = s => String(s == null ? '' : s).replace(/'/g, "\\'");
+  const _clickable = !!(spotName && stationId);
+  const _clickAttrs = _clickable
+    ? ` onclick="openBuoyPopup('${_esc(spotName)}', '${_esc(stationId)}')" title="Open buoy history"`
+    : '';
+  // Cursor + touch-action live in the single style attribute (HTML
+  // ignores duplicate style attributes). `touch-action:manipulation`
+  // suppresses the legacy iOS 300ms tap-to-zoom delay so the modal
+  // opens instantly on phone tap.
+  const _cursor = _clickable
+    ? ';cursor:pointer;touch-action:manipulation'
+    : '';
   if (!b) {
     return `<td class="cell buoy-col buoy-now" style="background:var(--bg2)">
               <div class="null-cell">NO DATA</div></td>`;
@@ -2945,7 +3077,7 @@ function buildBuoyCell(b, stationId) {
     </div>`;
   }
   inner += '</div>';
-  return `<td class="cell buoy-col buoy-now" style="background:${bg}">${inner}</td>`;
+  return `<td class="cell buoy-col buoy-now" style="background:${bg}${_cursor}"${_clickAttrs}>${inner}</td>`;
 }
 
 function buildWaveCell(r, t, extraClass = '', spotName = null) {
@@ -4758,6 +4890,11 @@ function closeAboutModalOutside(e) {
 
 let _buoyPopupData = null;   // current chart records
 let _buoyPopupMeta = null;   // { minT, maxT, minE, maxE, padLeft, padBottom, padTop, padRight }
+// Constant Y-axis ceiling for the spectrum chart, computed once across
+// every record loaded for this buoy so the Y scale doesn't rescale as
+// the user scrubs through time. Recomputed inside fetchAndDraw on every
+// new buoy load. Resets to null when the modal closes.
+let _buoyPopupSpectrumMaxFlux = null;
 
 function openBuoyPicker() {
   if (!CFG) return;
@@ -4815,6 +4952,11 @@ function openBuoyPopup(spotName, stationId) {
         _drawChartError(botCtx, botC, 'No data');
         return;
       }
+      // Pre-compute a constant Y-axis ceiling for the spectrum so the
+      // axis scale stays fixed across the 3-day window — peaks at quiet
+      // times read smaller, peaks at active times read taller, both
+      // against the same reference.
+      _buoyPopupSpectrumMaxFlux = _computeSpectrumMaxFlux(_buoyPopupData);
       _drawBuoyChartTop(topCtx, topC);
       _attachChartHover(topC);
       _attachChartHover(botC);
@@ -4833,6 +4975,7 @@ function closeBuoyPopup() {
   document.getElementById('buoy-popup-overlay').classList.remove('open');
   _buoyPopupData = null;
   _buoyPopupMeta = null;
+  _buoyPopupSpectrumMaxFlux = null;
   _buoyActiveIdx = null;
   const tooltip = document.getElementById('buoy-popup-tooltip');
   if (tooltip) tooltip.classList.remove('visible');
@@ -4991,6 +5134,36 @@ function _drawBuoyChartTop(ctx, canvas) {
 }
 
 // ── Bottom chart: static frequency spectrum at scrubbed time ─────────────
+// Pre-scan every record's spectrum once on data load and find the
+// global per-bin wave-energy-flux maximum (kW/m). Used as a constant
+// Y-axis ceiling for the spectrum chart so the axis doesn't rescale as
+// the user scrubs through time. Mirrors the per-bin formula in
+// _drawBuoySpectrum exactly: flux = (ρg²/4π) · E · Δf · T.
+function _computeSpectrumMaxFlux(records) {
+  const FLUX_K = 7.849;
+  let maxFlux = 0;
+  for (const r of (records || [])) {
+    const spec = r && r.spectrum;
+    if (!Array.isArray(spec) || spec.length === 0) continue;
+    const bins = spec
+      .filter(b => b[0] > 0)
+      .map(b => ({ freq: b[0], period: 1 / b[0], energy: b[1] || 0 }))
+      .filter(b => b.period > 0)
+      .sort((a, b) => a.period - b.period);
+    if (bins.length === 0) continue;
+    for (let i = 0; i < bins.length; i++) {
+      let df;
+      if (bins.length === 1)            df = bins[0].freq;
+      else if (i === 0)                 df = Math.abs(bins[1].freq - bins[0].freq);
+      else if (i === bins.length - 1)   df = Math.abs(bins[i].freq - bins[i - 1].freq);
+      else                              df = Math.abs(bins[i + 1].freq - bins[i - 1].freq) / 2;
+      const flux = FLUX_K * Math.max(0, bins[i].energy) * df * bins[i].period;
+      if (flux > maxFlux) maxFlux = flux;
+    }
+  }
+  return maxFlux > 0 ? maxFlux * 1.1 : null;
+}
+
 function _drawBuoySpectrum(ctx, canvas, record) {
   const dpr = window.devicePixelRatio || 1;
   canvas.width  = canvas.clientWidth  * dpr;
@@ -5023,7 +5196,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
   // beyond the default 22s surf-band, the chart extends to include it.
   const bins = spec
     .filter(b => b[0] > 0)
-    .map(b => ({ period: 1 / b[0], energy: b[1] || 0 }))
+    .map(b => ({ freq: b[0], period: 1 / b[0], energy: b[1] || 0 }))
     .filter(b => b.period > 0)
     .sort((a, b) => a.period - b.period); // ascending period L→R so long period is on right
   if (bins.length === 0) {
@@ -5032,6 +5205,29 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     ctx.textAlign = 'center';
     ctx.fillText('no spectrum data', W / 2, H / 2);
     return;
+  }
+
+  // Per-bin frequency width Δf (Hz) via centred-difference, then map
+  // the Y axis to *wave energy flux* per bin in kW/m. For deep-water
+  // waves, energy flux per unit length of crest from a frequency band is
+  //   dP = (ρg² / 4π) · E(f) · Δf · T(f)        [W/m]
+  // with ρ = 1025 kg/m³ and g = 9.81 m/s² → ρg²/(4π) ≈ 7.849 (kW/m
+  // per (m²/Hz · Hz · s)). Plotting Y = 7.849·E·Δf·T means peak heights
+  // capture the surfer-relevant "punch" of the swell — for a given E,
+  // a longer-period bin shows a taller peak than a shorter-period one,
+  // matching the intuition that a 10s ground swell carries more power
+  // than a 7s wind sea even at similar Hs. (Compare to spectral
+  // variance, where Hs scales as √m₀ regardless of T.) Per-bin fluxes
+  // sum LINEARLY to the total partition flux — no quadrature.
+  const FLUX_K = 7.849;  // ρg²/(4π) in kW/m per (m²/Hz · Hz · s)
+  for (let i = 0; i < bins.length; i++) {
+    let df;
+    if (bins.length === 1)            df = bins[0].freq;
+    else if (i === 0)                 df = Math.abs(bins[1].freq - bins[0].freq);
+    else if (i === bins.length - 1)   df = Math.abs(bins[i].freq - bins[i - 1].freq);
+    else                              df = Math.abs(bins[i + 1].freq - bins[i - 1].freq) / 2;
+    bins[i].df = df;
+    bins[i].flux_kwm = FLUX_K * Math.max(0, bins[i].energy) * df * bins[i].period;
   }
 
   // Default x-axis: 0s → 22s. Extend only when a bin (or a decomposed
@@ -5048,11 +5244,16 @@ function _drawBuoySpectrum(ctx, canvas, record) {
       if (c.period_s != null && c.period_s > maxP) maxP = Math.ceil(c.period_s);
     });
   }
-  const maxE = Math.max(...bins.map(b => b.energy)) * 1.1 || 1;
+  // Y axis stays constant across the whole 3-day window: prefer the
+  // pre-computed global (set by _computeSpectrumMaxFlux on data load).
+  // Fall back to per-frame max only if it wasn't computed (e.g. direct
+  // call from a test path with no _buoyPopupData).
+  const maxFlux = _buoyPopupSpectrumMaxFlux
+                 || (Math.max(...bins.map(b => b.flux_kwm)) * 1.1 || 1);
 
   // x-axis: period ascending left→right (long period on right, surfer convention)
   function xOf(period) { return padLeft + ((period - minP) / (maxP - minP)) * cw; }
-  function yOf(e)      { return padTop + ch - (e / maxE) * ch; }
+  function yOf(flux)   { return padTop + ch - (flux / maxFlux) * ch; }
 
   // Horizontal gridlines
   ctx.strokeStyle = gridColor;
@@ -5078,13 +5279,13 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     ctx.fillText(`${p}s`, x, H - padBottom + 12);
   });
 
-  // Line + fill
+  // Line + fill — Y plotted as per-bin wave energy flux (kW/m).
   const dark = _isDark();
   const lineColor = dark ? style.getPropertyValue('--text0') : '#333';
   ctx.beginPath();
   ctx.moveTo(xOf(bins[0].period), padTop + ch);
   for (let i = 0; i < bins.length; i++) {
-    ctx.lineTo(xOf(bins[i].period), yOf(bins[i].energy));
+    ctx.lineTo(xOf(bins[i].period), yOf(bins[i].flux_kwm));
   }
   ctx.lineTo(xOf(bins[bins.length - 1].period), padTop + ch);
   ctx.closePath();
@@ -5095,7 +5296,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
 
   ctx.beginPath();
   for (let i = 0; i < bins.length; i++) {
-    const x = xOf(bins[i].period), y = yOf(bins[i].energy);
+    const x = xOf(bins[i].period), y = yOf(bins[i].flux_kwm);
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.strokeStyle = lineColor;
@@ -5115,18 +5316,18 @@ function _drawBuoySpectrum(ctx, canvas, record) {
       if (c.period_s == null) return;
       const p = c.period_s;
       if (p < minP || p > maxP) return;
-      // Interpolate spectrum energy at this period
-      let eAt = 0;
+      // Interpolate per-bin wave energy flux at this period.
+      let fluxAt = 0;
       for (let i = 0; i < bins.length - 1; i++) {
         const a = bins[i], b = bins[i + 1];
         const lo = Math.min(a.period, b.period), hi = Math.max(a.period, b.period);
         if (p >= lo && p <= hi) {
           const t = (p - a.period) / (b.period - a.period);
-          eAt = a.energy + t * (b.energy - a.energy);
+          fluxAt = a.flux_kwm + t * (b.flux_kwm - a.flux_kwm);
           break;
         }
       }
-      const x = xOf(p), y = yOf(eAt);
+      const x = xOf(p), y = yOf(fluxAt);
       ctx.fillStyle = style.getPropertyValue('--accent');
       ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
       const dir = c.direction_deg != null ? toCard(c.direction_deg) : '';
@@ -5183,15 +5384,26 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     });
   }
 
-  // y-axis label
+  // y-axis label — wave energy flux per frequency bin (kW/m).
   ctx.save();
   ctx.translate(10, padTop + ch / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = 'center';
   ctx.fillStyle = textColor;
   ctx.font = '8px JetBrains Mono';
-  ctx.fillText('energy density (m²/Hz)', 0, 0);
+  ctx.fillText('wave energy flux (kW/m)', 0, 0);
   ctx.restore();
+
+  // y-axis tick labels at 1/4, 1/2, 3/4, full max so the user can read
+  // the kW/m value of a peak directly off the chart.
+  ctx.fillStyle = textColor;
+  ctx.font = '8px JetBrains Mono';
+  ctx.textAlign = 'left';
+  for (const frac of [0.25, 0.5, 0.75, 1.0]) {
+    const yt = yOf(maxFlux * frac);
+    const v = maxFlux * frac;
+    ctx.fillText(v.toFixed(v < 1 ? 2 : 1), padLeft + 2, yt + 3);
+  }
 }
 
 function _attachChartHover(canvas) {

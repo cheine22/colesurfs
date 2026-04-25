@@ -43,6 +43,16 @@ TARGET_CYCLES     = 730   # ~24 months at 1 cycle/day
 # strict); 0.95 tolerates a handful of obs dropouts per cycle while still
 # guaranteeing training data is substantially complete.
 BUOY_COVERAGE_THRESHOLD = 0.95
+
+# Which buoy obs partitions count as "training-ready" data. The dashboard
+# (and CSC2's prediction targets) operate on the spectral swell partitions
+# — partition=1 is primary swell, partition=2 is secondary. partition=0
+# (combined sea, basic NDBC stdmet WVHT/DPD/MWD) is preserved on disk for
+# diagnostics but is NOT a dashboard-comparable training target, so paired
+# coverage gates on {1, 2}: a hour counts as obs-paired iff at least one
+# spectral partition has Hs/Tp/Dp at that hour.
+BUOY_OBS_PARTITIONS = (1, 2)
+
 CACHE_PATH = CSC2_DATA_DIR / "archive_status_cache.json"
 CACHE_TTL_SEC = 1800
 
@@ -101,12 +111,15 @@ def _per_cycle_valid_utcs(model: str, buoy_id: str) -> dict[str, set[str]]:
 def _obs_valid_utcs(buoy_id: str) -> set[str]:
     """Training-ready buoy observation valid_utcs, hour-snapped.
 
-    A row counts iff it carries complete combined-sea data (Hs, Tp,
-    direction all non-null) on partition 0 — i.e. iff it can actually be
-    consumed as a training target by the correction model. Raw NDBC
-    stdmet timestamps land at :10/:26/:40/:56 past the hour depending on
-    the buoy's sample schedule, so we snap to the nearest hour UTC before
-    intersecting with forecast valid_utcs (which are on the hour).
+    A row counts iff it carries complete spectral-swell data (Hs, Tp,
+    direction all non-null) on at least one of `BUOY_OBS_PARTITIONS`
+    (partition=1 primary swell, partition=2 secondary) — i.e. iff it can
+    actually be consumed as a training target by the correction model.
+    The model predicts sw1/sw2 to match the dashboard's display, so
+    partition=0 (combined sea) doesn't qualify. Raw NDBC stdmet
+    timestamps land at :10/:26/:40/:56 past the hour, so we snap to the
+    nearest hour UTC before intersecting with forecast valid_utcs (which
+    are on the hour).
     """
     acc: set[str] = set()
 
@@ -123,8 +136,13 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
             t = t.replace(tzinfo=timezone.utc)
         t_utc = t.astimezone(timezone.utc)
         # Round to nearest hour (>= :30 rounds up)
-        if t_utc.minute >= 30 or (t_utc.minute == 30 and t_utc.second > 0):
-            from datetime import timedelta
+        # Round half-up: minute >= 30 always rounds up so the rule matches
+        # `csc2.train._snap_to_hour_iso`. The previous "minute > 30 OR
+        # (minute == 30 AND second > 0)" form rounded :30:00 DOWN here while
+        # the trainer rounded it UP, causing a silent off-by-hour mismatch
+        # at exactly the half-hour mark.
+        from datetime import timedelta
+        if t_utc.minute >= 30:
             t_utc = t_utc.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
         else:
             t_utc = t_utc.replace(minute=0, second=0, microsecond=0)
@@ -155,7 +173,7 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
                 df = pd.read_parquet(shard, columns=cols)
             except Exception:
                 continue
-            df = df[df["partition"] == 0]
+            df = df[df["partition"].isin(BUOY_OBS_PARTITIONS)]
             df = df.dropna(subset=["hs_m", "tp_s", "dp_deg", "valid_utc"])
             for v in df["valid_utc"].astype(str).tolist():
                 snapped = _snap_to_hour(v)
@@ -284,6 +302,7 @@ def _compute() -> dict:
         "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "target_cycles": TARGET_CYCLES,
         "buoy_coverage_threshold": BUOY_COVERAGE_THRESHOLD,
+        "buoy_obs_partitions": list(BUOY_OBS_PARTITIONS),
         "mean_paired_cycles": round(total_paired, 1),
         "per_buoy": by_buoy,
         "histograms": histograms,

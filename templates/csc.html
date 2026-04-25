@@ -12,29 +12,64 @@
     --fg0:#e8e8f0; --fg1:#a0a0b8; --fg2:#606075; --fg3:#404055;
     --accent:#7c6af7; --accent-glow:#7c6af733;
     --green:#3fb950; --amber:#d29922; --red:#f85149;
+    /* Per-line colors for the energy chart — match the active-models slot
+       order: TOP, recent 1, recent 2. EURO/GFS reuse their dashboard hues. */
+    --chart-euro:   #7c6af7;  /* purple — matches archive histogram EURO accent */
+    --chart-gfs:    #d29922;  /* amber — matches archive histogram GFS accent */
+    --chart-top:    #3fb950;  /* green — best-performing CSC2 model */
+    --chart-rec1:   #6a6a78;  /* dark grey — second selected model */
+    --chart-rec2:   #b0b0bc;  /* light grey — third selected model */
+  }
+  /* Light mode — system preference (only when user hasn't forced a theme). */
+  @media (prefers-color-scheme: light) {
+    html:not([data-theme="dark"]) {
+      --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+      --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
+      --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+      --accent-glow:#7c6af718;
+    }
+  }
+  /* Light mode — forced via theme toggle (mirrors index.html data-theme). */
+  html[data-theme="light"] {
+    --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+    --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
+    --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+    --accent-glow:#7c6af718;
   }
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; background:var(--bg0); color:var(--fg0);
     font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
   a { color:var(--accent); text-decoration:none; }
   a:hover { text-decoration:underline; }
-  .page { max-width: 1100px; margin: 0 auto; padding: 22px 24px 80px; }
-  .top { display:flex; align-items:center; gap:14px; padding-bottom:12px;
-    border-bottom:1px solid var(--bd1); }
-  .logo { font-size:18px; letter-spacing:0.02em; }
-  .logo .wave { color:var(--accent); margin-right:2px; font-weight:700; }
-  .crumb { color:var(--fg2); font-size:12px; }
-  .crumb a { color:var(--fg1); }
-  .spacer { flex:1; }
-  .btn-home { padding:5px 11px; border:1px solid var(--bd2); border-radius:5px;
-    color:var(--fg1); background:var(--bg1); font:inherit; cursor:pointer; }
-  .btn-home:hover { border-color:var(--accent); color:var(--fg0); }
 
-  .header { padding:16px 0 10px; }
+  /* ─── Sticky header — mirrors index.html .app-header (44px, sticky, padding 0 24px) ─── */
+  .app-header {
+    position: sticky; top: 0; z-index: 200;
+    background: var(--bg1); border-bottom: 1px solid var(--bd0);
+    padding: 0 24px; height: 44px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
+                  color: var(--accent); display:inline-flex; align-items:center; gap:3px; }
+  .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+  .header-right { display:flex; align-items:center; gap: 14px; }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 22px 24px 100px; }
+  .header { padding:0 0 10px; }
   .title { font-size:18px; color:var(--accent); }
   .subtitle { color:var(--fg1); font-size:12px; margin-top:4px; }
 
-  .controls { display:flex; gap:10px; align-items:center; padding:12px 0 18px; }
+  /* ─── Sticky footer — buoy picker + made-by line ─── */
+  .app-footer {
+    position: sticky; bottom: 0; z-index: 199;
+    background: var(--bg1); border-top: 1px solid var(--bd0);
+    padding: 8px 24px; display: flex; align-items: center;
+    gap: 14px; min-height: 44px; flex-wrap: wrap;
+  }
+  .footer-credit { color: var(--fg2); font-size: 10.5px;
+                    letter-spacing: .04em; margin-left: auto; }
+  .footer-credit a { color: var(--fg1); }
+  .footer-credit a:hover { color: var(--accent); text-decoration: underline; }
   select { background:var(--bg2); color:var(--fg0); border:1px solid var(--bd2);
     padding:5px 10px; font:inherit; border-radius:4px; min-width: 260px; }
   select:hover { border-color:var(--accent); }
@@ -52,10 +87,11 @@
     text-transform: uppercase; margin-bottom: 6px; }
 
   table { width:100%; border-collapse:collapse; margin: 4px 0; }
-  th, td { border-bottom:1px solid var(--bd0); padding:7px 10px; text-align:left;
+  /* Uniform cell borders on every side — both tables share the same style. */
+  th, td { border: 1px solid var(--bd0); padding:7px 10px; text-align:left;
     vertical-align: top; }
   th { color:var(--fg1); font-weight:500; text-transform:uppercase;
-    letter-spacing: .05em; font-size: 10.5px; }
+    letter-spacing: .05em; font-size: 10.5px; background: var(--bg2); }
   td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .dash { color:var(--fg3); }
 
@@ -64,14 +100,23 @@
   .progress-inner { background: var(--accent); height: 100%; width: 0%; }
   .progress-label { color: var(--fg2); font-size: 10.5px; letter-spacing: .04em; }
 
-  /* Color-coded metric cells. Best result green, worst red, with
-     three intermediate stops for warmth. Applied per-row once metrics
-     land — currently placeholders. */
-  td.best     { background: rgba(63,185,80,0.18);  color: var(--green);  }
-  td.good     { background: rgba(63,185,80,0.08);  color: var(--fg0);    }
-  td.mid      { background: rgba(210,153,34,0.10); color: var(--fg0);    }
-  td.weak     { background: rgba(248,81,73,0.08);  color: var(--fg0);    }
-  td.worst    { background: rgba(248,81,73,0.22);  color: var(--red);    }
+  /* Color-coded metric cells. Per-row rank-based for traditional MAE/RMSE.
+     Backgrounds carry the gradient; text always stays at the page foreground
+     color so the values read uniformly regardless of cell color. */
+  td.best     { background: rgba(63,185,80,0.32);  color: var(--fg0); font-weight: 700; }
+  td.good     { background: rgba(63,185,80,0.16);  color: var(--fg0); }
+  td.mid      { background: rgba(210,153,34,0.18); color: var(--fg0); }
+  td.weak     { background: rgba(248,81,73,0.16);  color: var(--fg0); }
+  td.worst    { background: rgba(248,81,73,0.34);  color: var(--fg0); }
+  /* Absolute 0–1 gradient for surfer metrics. */
+  td.abs-bin5 { background: rgba(63,185,80,0.40);  color: var(--fg0); }
+  td.abs-bin4 { background: rgba(63,185,80,0.22);  color: var(--fg0); }
+  td.abs-bin3 { background: rgba(210,153,34,0.20); color: var(--fg0); }
+  td.abs-bin2 { background: rgba(248,81,73,0.22);  color: var(--fg0); }
+  td.abs-bin1 { background: rgba(248,81,73,0.40);  color: var(--fg0); }
+  /* Best-of-row marker: bold text only — the colored background already
+     conveys ranking, so the cell border stays uniform with all others. */
+  td.row-best { font-weight: 700; }
   td.num { font-variant-numeric: tabular-nums; }
 
   h3 { font-size: 12px; color: var(--fg0); margin: 18px 0 6px 0;
@@ -79,31 +124,274 @@
   .cat-chip { display:inline-block; padding:1px 7px; border-radius:3px;
               border:1px solid var(--bd1); font-size:10.5px; color:var(--fg1);
               margin-right: 6px; letter-spacing:.04em; }
+
+  /* Theme toggle in top bar — mirrors index.html's button styling. */
+  .btn-theme { padding:5px 11px; border:1px solid var(--bd2); border-radius:5px;
+    color:var(--fg1); background:var(--bg1); font:inherit; cursor:pointer;
+    letter-spacing:.04em; }
+  .btn-theme:hover { border-color:var(--accent); color:var(--fg0); }
+
+  /* Energy chart panel. */
+  .chart-panel { border:1px solid var(--bd1); border-radius:6px;
+                 background:var(--bg1); padding: 12px 14px; margin: 8px 0 14px; }
+  .chart-legend { display:flex; flex-wrap:wrap; gap: 12px;
+                  font-size:11px; color: var(--fg1);
+                  margin-bottom: 6px; }
+  .chart-legend .dot { display:inline-block; width:10px; height:10px;
+                       border-radius:50%; margin-right:5px; vertical-align:-1px; }
+  /* Mobile slider — scrubber for the energy chart. Hidden on desktop
+     (mouse hover handles the same role); shown ≤600px wide. Mirrors the
+     buoy-modal scrubber pattern from index.html. */
+  .energy-scrubber { display: none; }
+  @media (max-width: 600px) {
+    .energy-scrubber {
+      display: flex; align-items: center; gap: 6px; height: 28px;
+      touch-action: none; user-select: none; -webkit-user-select: none;
+      padding: 4px 12px 0;
+    }
+    .energy-scrub-track-wrap {
+      flex: 1; height: 100%; position: relative;
+      display: flex; align-items: center;
+    }
+    .energy-scrub-track {
+      width: 100%; height: 2px; background: var(--bd1);
+      border-radius: 1px; position: relative;
+    }
+    .energy-scrub-fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      background: var(--accent); border-radius: 1px;
+      width: 0%; pointer-events: none; opacity: 0.5;
+    }
+    .energy-scrub-handle {
+      position: absolute; top: 50%; width: 16px; height: 16px;
+      border-radius: 50%; background: var(--accent);
+      border: 2px solid var(--bg1);
+      transform: translate(-50%, -50%); cursor: grab;
+      box-shadow: 0 1px 4px rgba(0,0,0,.3); z-index: 2;
+    }
+    .energy-scrub-handle:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.15); }
+  }
+
+  /* ─── Mobile cleanup (≤600px) ────────────────────────────────────────────
+     The CSC2 page has multiple wide comparison tables (active models w/ 7
+     cols; Table 1 + Table 2 with up to 6 cols of float values + a target
+     label that itself can be ~30 chars). At 375 px width all of those
+     overflow the viewport, so we make each table its own horizontal-
+     scroll container, tighten paddings, and make sure the header doesn't
+     wrap into two lines. */
+  @media (max-width: 600px) {
+    .page { padding: 14px 14px 100px; }
+    .header { padding: 0 0 6px; }
+    .title { font-size: 15px; }
+    .subtitle { font-size: 11px; }
+    h2 { font-size: 12px; }
+    .notice { padding: 10px 12px; font-size: 11.5px; }
+
+    /* Header — keep the logo + buttons on one row even on narrow widths. */
+    .app-header { padding: 0 12px; gap: 6px; }
+    .header-logo { font-size: 12px; letter-spacing: .08em; }
+    .header-right { gap: 6px; }
+    .btn-theme { padding: 4px 8px; font-size: 11px; letter-spacing: .03em; }
+
+    /* Footer — buoy picker shrinks, made-by stays right. */
+    .app-footer { padding: 6px 12px; gap: 8px; min-height: 38px; }
+    .app-footer select { min-width: 0; flex: 1; padding: 4px 8px; font-size: 11.5px; }
+    .footer-credit { font-size: 10px; }
+
+    /* Tables — every comparison table becomes its own horizontal-scroll
+       container. The TR widths stay at their natural content width
+       (white-space:nowrap on every cell), and only the table itself
+       scrolls — sections + headings stay tight to the viewport. */
+    .page table {
+      display: block;
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .page table > thead,
+    .page table > tbody { display: table; width: 100%; min-width: max-content; }
+    .page th, .page td {
+      padding: 5px 7px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .page th { font-size: 9.5px; }
+
+    /* Forecast hour-by-hour table inside the <details> already lives in
+       its own overflow-x wrapper (set inline). Keep it readable. */
+    details.live-table > div table { font-size: 10.5px; }
+
+    /* Energy chart legend — let it wrap into stacked rows cleanly without
+       the readout slot overflowing. */
+    .chart-legend { gap: 4px; }
+    .chart-legend .legend-row { min-width: 100% !important; }
+    .chart-legend .legend-readout { min-width: 0 !important; }
+
+    /* Surfer metrics: each per-category table also gets the scroll-x
+       treatment via the .page table rule above; just trim the heading
+       margins so the 6 categories stack tighter. */
+    h3 { font-size: 11px; margin: 10px 0 4px; }
+    .cat-chip { font-size: 10px; padding: 1px 6px; }
+
+    /* Live-forecast meta line — stay readable but not overflow. */
+    #live-forecast-meta { font-size: 10.5px; line-height: 1.5; }
+
+    /* Archive histograms scale fine; just trim the side-by-side EURO/GFS
+       grid into a single column so neither bar chart shrinks below ~150px. */
+    section > div[style*="grid-template-columns: 1fr 1fr"] {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  /* Disclosure toggle for live table. */
+  details.live-table { border:1px dashed var(--bd1); border-radius:6px;
+                       padding: 8px 12px; background:var(--bg1); }
+  details.live-table > summary { cursor:pointer; color:var(--fg1);
+                                 font-size:12px; letter-spacing:.04em;
+                                 padding: 4px 0; user-select:none;
+                                 list-style: none; }
+  details.live-table > summary::-webkit-details-marker { display: none; }
+  details.live-table > summary::marker { content: ''; }
+  details.live-table > summary:hover { color: var(--accent); }
+  details.live-table[open] > summary { color: var(--fg0); }
 </style>
 </head>
 <body>
 
+<header class="app-header">
+  <div class="header-logo"><span class="wave-glyph">∿</span>colesurfs · CSC2</div>
+  <div class="header-right">
+    <button id="theme-btn" class="btn-theme" type="button">◑ LIGHT</button>
+    <a class="btn-theme" href="/">← BACK TO DASHBOARD</a>
+  </div>
+</header>
+
 <div class="page">
 
-<div class="top">
-  <div class="logo"><span class="wave">∿</span>colesurfs · CSC2</div>
-  <span class="crumb">/ <a href="/">← dashboard</a></span>
-  <div class="spacer"></div>
-  <a class="btn-home" href="/">Home</a>
-</div>
-
 <div class="header">
-  <div class="title">CSC2 · forecast-correction model <span class="muted" style="font-size:12px">(data collection in progress)</span></div>
+  <div class="title">CSC2 · forecast-correction model <span class="muted" style="font-size:12px">(continued data collection in progress)</span></div>
   <div class="subtitle">
-    Corrects EURO (CMEMS) and GFS (Open-Meteo) swell-partition forecasts against NDBC buoy observations.
-    Model training begins once we have accumulated enough paired forecast + observation history.
+    Correction model that ingests EURO and GFS swell forecasts against buoy observations.
+    Model retraining ongoing as more data is collected. Full information on the model
+    <a href="/csc-model">linked here</a>.
   </div>
 </div>
 
-<div class="controls">
-  <label for="buoy-picker" class="muted" style="font-size:11px; letter-spacing:.06em; text-transform: uppercase;">Buoy</label>
-  <select id="buoy-picker"></select>
-</div>
+
+<section>
+  <h2>CSC2 live forecast · <span class="muted" style="font-size:12px; font-weight:normal">vs. EURO &amp; GFS</span></h2>
+  <div class="muted" style="font-size:11px; margin: 6px 0 10px;">
+    10-day primary-swell forecast from the latest CMEMS 00Z/12Z cycle.
+    Y axis = <b>energy</b> = h<sup>2</sup>·p (ft<sup>2</sup>·s, surfable
+    potential proxy) — <em>not</em> wave height in feet. Hover any line
+    to see the underlying height &amp; period values. Buoy picker drives
+    the display; "Combined" defaults to NY Harbor Entrance (44065).
+  </div>
+  <div id="live-forecast-meta" class="muted" style="font-size:11px; margin-bottom: 6px;"></div>
+  <div id="energy-chart-panel" class="chart-panel" style="display:none;">
+    <div id="energy-chart-legend" class="chart-legend"></div>
+    <svg id="energy-chart-svg" width="100%" height="280" preserveAspectRatio="none"></svg>
+    <div id="energy-chart-axis" class="muted"
+         style="font-size:10.5px; display:flex; justify-content:space-between;
+                padding-top:4px;"></div>
+    <div class="energy-scrubber">
+      <div class="energy-scrub-track-wrap" id="energy-chart-scrub-track-wrap">
+        <div class="energy-scrub-track">
+          <div class="energy-scrub-fill" id="energy-chart-scrub-fill"></div>
+        </div>
+        <div class="energy-scrub-handle" id="energy-chart-scrub-handle"
+             style="left:0%;"></div>
+      </div>
+    </div>
+  </div>
+  <div id="energy-chart-empty" class="muted"
+       style="padding:16px; border:1px dashed var(--bd1); border-radius:6px;
+              text-align:center;">
+    Loading…
+  </div>
+  <details class="live-table" id="live-table-details" style="margin-top: 10px;">
+    <summary>▸ Show hour-by-hour table (240 rows)</summary>
+    <div id="live-forecast-shell" class="muted" style="padding-top: 8px;">
+      Loading…
+    </div>
+  </details>
+</section>
+
+<section>
+  <h2>Active models <span class="muted" style="font-size:11px; text-transform:none; letter-spacing:0;">(top performer + 2 most recent additional)</span></h2>
+  <div class="muted" style="font-size:11px; margin-bottom: 8px;">
+    Composite skill = weighted sum of per-variable skills vs. raw EURO,
+    where each MAE-based skill is <code>1 − model_MAE / raw_EURO_MAE</code>
+    and surfer-F1 skill is <code>(model_F1 − raw_EURO_F1) / (1 − raw_EURO_F1)</code>
+    on FUN-OR-BETTER. Weights: <b>sw1 height 0.25</b> · <b>sw1 period 0.25</b> ·
+    sw1 dir 0.05 · sw2 (h/p/d) 0.05 each · <b>surfer F1 0.30</b>. Positive
+    values beat raw EURO on average. The top-performer slot only considers
+    models trained on a holdout of ≥1000 rows — small-holdout skill
+    scores are too noisy to rank against year-scale evaluations.
+  </div>
+  <table id="active-models-table">
+    <thead><tr>
+      <th>Slot</th>
+      <th>Model name</th>
+      <th>Architecture</th>
+      <th>Trained (UTC)</th>
+      <th class="num">Coverage</th>
+      <th class="num">Composite skill</th>
+      <th class="num">Holdout rows</th>
+    </tr></thead>
+    <tbody><tr><td colspan="7" class="muted" style="text-align:center; padding:18px;">Loading…</td></tr></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Model definitions</h2>
+  <div class="notice" style="border-left: 3px solid var(--accent); padding-left: 14px;">
+    <b>CSC2+baseline</b> — deliberately simple, non-ML correction. Per-[buoy × lead-hour × variable]
+    additive bias on top of the EURO/GFS arithmetic mean (circular mean for direction). No learned
+    interactions, no time-of-year, no EURO–GFS delta. This is the floor the ML model must beat.<br><br>
+    <b>CSC2+ML</b> — gradient-boosted trees (LightGBM, one model per output). Inputs per training
+    sample: raw EURO and GFS sw1/sw2 partitions (height, period, sin/cos direction), EURO–GFS
+    delta features per lead (height, period, circular-direction difference), sin/cos day-of-year,
+    buoy identity (one-hot), and <b>lead hour</b> — treated as a first-class feature since every
+    cycle in the archive preserves the full 0..+240 h lead structure. Eight boosters total
+    (sw1/sw2 × {height, period, dp_sin, dp_cos}); direction is recombined via atan2 at inference.
+    GFS rows where partitions are absent reconstitute sw1 from combined-sea fields per the
+    dashboard's v1.7.1 fallback (<code>csc2.train._apply_dashboard_fallback_gfs</code>).
+  </div>
+</section>
+
+<section>
+  <h2>Table 1 · Traditional metrics
+    <span class="muted" id="t1-test-meta" style="font-size:11px; text-transform:none; letter-spacing:0;"></span></h2>
+  <div class="muted" style="font-size:11px; margin-bottom: 6px;">
+    Each model's holdout MAE/RMSE/bias on its own training-time holdout. Best across all columns
+    is highlighted green per row, worst red. Models with non-comparable holdouts (different
+    time-aware splits) display as-is — the composite skill in the active-models table is the
+    apples-to-apples comparison.
+  </div>
+  <table id="table-traditional">
+    <thead id="table-traditional-head">
+      <tr><th colspan="6" class="muted" style="text-align:center;">Loading…</th></tr>
+    </thead>
+    <tbody id="table-traditional-body"></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Table 2 · Surfer metrics <span class="muted" id="t2-test-meta" style="font-size:11px; text-transform:none; letter-spacing:0;"></span></h2>
+  <div class="muted" style="font-size:11px; margin-bottom: 8px;">
+    Sensitivity / specificity / PPV / NPV for the dashboard's swell categorizer
+    applied to <b style="color:var(--fg0);">primary swell</b> predictions vs. observations.
+    Categorization uses the same <code>swell_rules.categorize</code> function the
+    dashboard uses for cell coloring. <span class="cat-chip">FUN-OR-BETTER</span>
+    is the combined positive class; the others stratify by individual category.
+    Coloring uses an absolute 0–1 gradient (≥0.80 green, ≥0.60 light-green,
+    ≥0.40 amber, ≥0.20 light-red, &lt;0.20 red), so a cell's color reflects
+    its standalone value rather than its row rank. The best cell in each
+    row is bolded with a green outline.
+  </div>
+  <div id="surfer-metrics-blocks"></div>
+</section>
 
 <section>
   <h2>Archive accumulation</h2>
@@ -200,142 +488,13 @@
   </div>
 </section>
 
-<section>
-  <h2>CSC2 live forecast · <span class="muted" style="font-size:12px; font-weight:normal">vs. EURO &amp; GFS</span>
-    <span class="muted" style="font-size:11px; text-transform:none; letter-spacing:0;">(activates once the model is trained)</span></h2>
-  <div class="notice" style="border-left: 3px solid var(--accent); padding-left: 14px;">
-    Once CSC2 is trained, this section shows the live correction for the selected buoy alongside the raw
-    EURO and GFS primary-swell streams, hour-by-hour from now out to +240 h. Buoy picker at top of page
-    drives the display; "combined" shows all five east-coast buoys as a small multiples grid.
-  </div>
-  <div id="live-forecast-shell" class="muted" style="padding:16px; border:1px dashed var(--bd1); border-radius:6px; text-align:center;">
-    Pending model training. Live forecast will render here.
-  </div>
-</section>
-
-<section>
-  <h2>Model definitions</h2>
-  <div class="notice" style="border-left: 3px solid var(--accent); padding-left: 14px;">
-    <b>CSC2 (baseline)</b> — a deliberately simple, non-ML correction. Per-[buoy × lead-hour × variable]
-    linear bias correction: subtract the mean training-set error from each raw upstream value. No learned
-    interactions, no time-of-year, no EURO–GFS delta. This is the floor the ML model must beat.<br><br>
-    <b>CSC2 (model)</b> — the production gradient-boosted model. Inputs per training sample:
-    raw EURO primary+secondary partitions (Hs/Tp/Dir), raw GFS primary+secondary partitions,
-    EURO–GFS delta features per lead (height, period, circular-direction difference),
-    sin/cos day-of-year, buoy identity (categorical), and <b>lead hour</b> — treated as a
-    first-class feature since every cycle in the archive preserves the full 0..+240 h lead structure.
-    Training loss is computed per (buoy × lead-hour × output), so the model naturally learns
-    how the optimal correction varies as skill degrades with lead time. One model per output
-    variable (6 total), or a joint multi-output head. This is what the dashboard button will
-    serve once trained.
-  </div>
-</section>
-
-<section>
-  <h2>Table 1 · Traditional metrics <span class="muted" style="font-size:11px; text-transform:none; letter-spacing:0;">(empty — populated after training)</span></h2>
-  <div class="muted" style="font-size:11px; margin-bottom: 6px;">
-    Cells coloured per-row once data lands: green = best, red = worst, relative to the other three columns in that row.
-  </div>
-  <table id="table-traditional">
-    <thead><tr>
-      <th>Target</th>
-      <th class="num">Raw EURO</th>
-      <th class="num">Raw GFS</th>
-      <th class="num">CSC2 (baseline)</th>
-      <th class="num">CSC2 (model)</th>
-    </tr></thead>
-    <tbody>
-      <tr><td>Primary swell Hs — MAE (ft)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Primary swell Hs — RMSE (ft)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Primary swell Hs — Bias (ft)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Primary swell Tp — MAE (s)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Primary swell Tp — RMSE (s)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Primary swell direction — circular MAE (°)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Secondary swell Hs — MAE (ft)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Secondary swell Tp — MAE (s)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      <tr><td>Secondary swell direction — circular MAE (°)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-    </tbody>
-  </table>
-</section>
-
-<section>
-  <h2>Table 2 · Surfer metrics <span class="muted" style="font-size:11px; text-transform:none; letter-spacing:0;">(empty — populated after training)</span></h2>
-  <div class="muted" style="font-size:11px; margin-bottom: 8px;">
-    Sensitivity / specificity / PPV / NPV for detecting each swell category.
-    <span class="cat-chip">FUN-OR-BETTER</span> is the combined positive class; the remaining chips stratify
-    by category. Positive = category label matches; negative = all other labels.
-    Colour key (per row): best green, worst red.
-  </div>
-
-  <!-- Category grid. Each block becomes its own 4×4 table.
-       Currently placeholders — populated once models and categorization land. -->
-  <div id="surfer-metrics-blocks">
-    <!-- injected by loadEval() once data exists; placeholder inline below -->
-
-    <h3><span class="cat-chip" style="border-color: var(--accent); color: var(--accent)">FUN-OR-BETTER (combined)</span></h3>
-    <table class="surfer-table">
-      <thead><tr><th>Metric</th><th class="num">Raw EURO</th><th class="num">Raw GFS</th><th class="num">CSC2 (baseline)</th><th class="num">CSC2 (model)</th></tr></thead>
-      <tbody>
-        <tr><td>Sensitivity (recall)</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Specificity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Positive predictive value</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Negative predictive value</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      </tbody>
-    </table>
-
-    <h3><span class="cat-chip">FUN</span></h3>
-    <table class="surfer-table"><thead><tr><th>Metric</th><th class="num">Raw EURO</th><th class="num">Raw GFS</th><th class="num">CSC2 (baseline)</th><th class="num">CSC2 (model)</th></tr></thead>
-      <tbody>
-        <tr><td>Sensitivity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Specificity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>PPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>NPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      </tbody>
-    </table>
-
-    <h3><span class="cat-chip">SOLID</span></h3>
-    <table class="surfer-table"><thead><tr><th>Metric</th><th class="num">Raw EURO</th><th class="num">Raw GFS</th><th class="num">CSC2 (baseline)</th><th class="num">CSC2 (model)</th></tr></thead>
-      <tbody>
-        <tr><td>Sensitivity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Specificity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>PPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>NPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      </tbody>
-    </table>
-
-    <h3><span class="cat-chip">FIRING</span></h3>
-    <table class="surfer-table"><thead><tr><th>Metric</th><th class="num">Raw EURO</th><th class="num">Raw GFS</th><th class="num">CSC2 (baseline)</th><th class="num">CSC2 (model)</th></tr></thead>
-      <tbody>
-        <tr><td>Sensitivity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Specificity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>PPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>NPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      </tbody>
-    </table>
-
-    <h3><span class="cat-chip">HECTIC</span></h3>
-    <table class="surfer-table"><thead><tr><th>Metric</th><th class="num">Raw EURO</th><th class="num">Raw GFS</th><th class="num">CSC2 (baseline)</th><th class="num">CSC2 (model)</th></tr></thead>
-      <tbody>
-        <tr><td>Sensitivity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Specificity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>PPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>NPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      </tbody>
-    </table>
-
-    <h3><span class="cat-chip">MONSTRO</span></h3>
-    <table class="surfer-table"><thead><tr><th>Metric</th><th class="num">Raw EURO</th><th class="num">Raw GFS</th><th class="num">CSC2 (baseline)</th><th class="num">CSC2 (model)</th></tr></thead>
-      <tbody>
-        <tr><td>Sensitivity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>Specificity</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>PPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-        <tr><td>NPV</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td><td class="num dash">—</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
 </div>
+
+<footer class="app-footer">
+  <label for="buoy-picker" class="muted" style="font-size:11px; letter-spacing:.06em; text-transform: uppercase;">Buoy</label>
+  <select id="buoy-picker"></select>
+  <span class="footer-credit">made by <a href="https://coleheine.com" target="_blank" rel="noopener">cole</a> &amp; <a href="https://claude.com/claude-code" target="_blank" rel="noopener">claude</a></span>
+</footer>
 
 <script>
 const CFG = {{ inline_config | safe }};
@@ -529,7 +688,721 @@ function renderDoyHistogram(opts) {
   axis.innerHTML = monthNames.map(m => `<span>${m}</span>`).join('');
 }
 
+// ─── Active models, Table 1, and Live forecast ─────────────────────────────
+
+let _modelSelection = null;
+
+function _fmtNum(v, dp=3) {
+  if (v === null || v === undefined || Number.isNaN(v)) return null;
+  return Number(v).toFixed(dp);
+}
+
+function _classFromRank(rank, n) {
+  // rank = 0 best, n-1 worst; pick a 5-step palette aligned with .best/.good/.mid/.weak/.worst
+  if (n <= 1) return '';
+  if (rank === 0) return 'best';
+  if (rank === n - 1) return 'worst';
+  const mid = (n - 1) / 2;
+  if (rank < mid) return 'good';
+  if (rank > mid) return 'weak';
+  return 'mid';
+}
+
+async function loadActiveModels() {
+  let p;
+  try {
+    p = await fetch('/api/csc2/models').then(x => x.json());
+  } catch (e) {
+    document.querySelector('#active-models-table tbody').innerHTML =
+      '<tr><td colspan="7" class="muted" style="text-align:center;">Models API unavailable</td></tr>';
+    return;
+  }
+  _modelSelection = p;
+  const sel = p.selected || [];
+  const tb = document.querySelector('#active-models-table tbody');
+  if (!sel.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center;">No trained models found.</td></tr>';
+    return;
+  }
+  tb.innerHTML = '';
+  sel.forEach((m, i) => {
+    const slot = m.is_top_performer
+      ? '<span style="color:var(--green); font-weight:600;">TOP</span>'
+      : `<span class="muted">recent ${i}</span>`;
+    const skill = (m.composite_skill === null || m.composite_skill === undefined)
+      ? '<span class="dash">—</span>'
+      : (m.composite_skill >= 0
+          ? `<span style="color:var(--green);">${m.composite_skill >= 0 ? '+' : ''}${m.composite_skill.toFixed(4)}</span>`
+          : `<span style="color:var(--red);">${m.composite_skill.toFixed(4)}</span>`);
+    const cov = m.coverage_frac == null ? '—' : Number(m.coverage_frac).toFixed(2);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${slot}</td>
+      <td><code style="color:var(--fg0);">${m.name}</code></td>
+      <td>${m.arch}</td>
+      <td class="muted">${m.trained_utc || '—'}</td>
+      <td class="num">${cov}</td>
+      <td class="num">${skill}</td>
+      <td class="num">${(m.n_test_rows || 0).toLocaleString()}</td>
+    `;
+    tb.appendChild(tr);
+  });
+  _renderTraditionalTable();
+}
+
+function _renderTraditionalTable() {
+  if (!_modelSelection) return;
+  const sel = _modelSelection.selected || [];
+  if (!sel.length) return;
+
+  const head = document.getElementById('table-traditional-head');
+  const body = document.getElementById('table-traditional-body');
+  const meta = document.getElementById('t1-test-meta');
+
+  // Column order: Raw EURO, Raw GFS, then each selected model.
+  const cols = [
+    { label: 'Raw EURO', metricKey: 'raw_EURO' },
+    { label: 'Raw GFS',  metricKey: 'raw_GFS'  },
+  ];
+  for (const m of sel) {
+    // metric block keyed by 'ml' or 'baseline' inside m.metrics
+    const blockKey = (m.arch === 'ML') ? 'ml'
+                    : (m.arch === 'baseline') ? 'baseline' : null;
+    cols.push({
+      label: m.is_top_performer ? `${m.name} ★` : m.name,
+      metricKey: blockKey,
+      modelMetrics: m.metrics || {},
+      isModel: true,
+    });
+  }
+
+  head.innerHTML = '<tr>' +
+    '<th>Target</th>' +
+    cols.map(c => `<th class="num" title="${c.label}">${c.label.length > 32 ? c.label.slice(0, 30) + '…' : c.label}</th>`).join('') +
+    '</tr>';
+
+  // Test-set sizes meta line — inform users the holdouts may differ.
+  meta.textContent = ' · ' + sel.map(m => `${m.name.split('_').pop()}: n=${m.n_test_rows}`).join(' · ');
+
+  const rows = [
+    ['Primary swell Hs · MAE (ft)',         'sw1_height_ft',     'mae'],
+    ['Primary swell Hs · RMSE (ft)',        'sw1_height_ft',     'rmse'],
+    ['Primary swell Hs · Bias (ft)',        'sw1_height_ft',     'bias'],
+    ['Primary swell Tp · MAE (s)',          'sw1_period_s',      'mae'],
+    ['Primary swell Tp · RMSE (s)',         'sw1_period_s',      'rmse'],
+    ['Primary swell direction · MAE (°)',   'sw1_direction_deg', 'mae'],
+    ['Secondary swell Hs · MAE (ft)',       'sw2_height_ft',     'mae'],
+    ['Secondary swell Tp · MAE (s)',        'sw2_period_s',      'mae'],
+    ['Secondary swell direction · MAE (°)', 'sw2_direction_deg', 'mae'],
+  ];
+
+  body.innerHTML = '';
+  _renderSurferTables(sel);
+  // Use the first model's metric block for raw_EURO / raw_GFS (all models
+  // record the same upstream values — they only differ in their own block).
+  const refMetrics = sel[0].metrics || {};
+  for (const [label, varKey, statKey] of rows) {
+    // Collect cell values across the columns.
+    const vals = cols.map(c => {
+      let block;
+      if (c.metricKey === 'raw_EURO' || c.metricKey === 'raw_GFS') {
+        block = (refMetrics[c.metricKey] || {});
+      } else if (c.isModel && c.metricKey) {
+        block = (c.modelMetrics[c.metricKey] || {});
+      } else {
+        block = {};
+      }
+      const v = (block[varKey] || {})[statKey];
+      return (v === undefined || v === null) ? null : Number(v);
+    });
+
+    // Rank for coloring (lower = better, except 'bias' where |val| matters).
+    const finite = vals.map((v, i) => ({ v, i })).filter(x => x.v !== null);
+    let ranks = new Array(vals.length).fill(null);
+    if (finite.length > 1) {
+      const ord = [...finite].sort((a, b) => {
+        if (statKey === 'bias') return Math.abs(a.v) - Math.abs(b.v);
+        return a.v - b.v;
+      });
+      ord.forEach((x, r) => { ranks[x.i] = r; });
+    }
+    const cells = vals.map((v, i) => {
+      if (v === null) return '<td class="num dash">—</td>';
+      const cls = ranks[i] !== null ? _classFromRank(ranks[i], finite.length) : '';
+      const isBest = ranks[i] === 0;
+      const txt = (statKey === 'bias' ? (v >= 0 ? '+' : '') : '') + v.toFixed(3);
+      return `<td class="num ${cls}${isBest ? ' row-best' : ''}">${txt}</td>`;
+    }).join('');
+    body.insertAdjacentHTML('beforeend', `<tr><td>${label}</td>${cells}</tr>`);
+  }
+}
+
+// Map a value v ∈ [0, 1] to one of 5 absolute-gradient bins. Anchored at
+// 0/0.25/0.50/0.75/1.0 so cells with the same numeric value share the
+// same color regardless of what other models in the row scored.
+function _absBin(v) {
+  if (v == null || Number.isNaN(v)) return '';
+  if (v >= 0.80) return 'abs-bin5';
+  if (v >= 0.60) return 'abs-bin4';
+  if (v >= 0.40) return 'abs-bin3';
+  if (v >= 0.20) return 'abs-bin2';
+  return 'abs-bin1';
+}
+
+function _renderSurferTables(sel) {
+  const root = document.getElementById('surfer-metrics-blocks');
+  const meta = document.getElementById('t2-test-meta');
+  if (!root) return;
+  if (!sel.length) { root.innerHTML = ''; return; }
+
+  const cats = ['FUN_OR_BETTER', 'FUN', 'SOLID', 'FIRING', 'HECTIC', 'MONSTRO'];
+  const stats = [
+    ['Sensitivity (recall)', 'sens'],
+    ['Specificity',          'spec'],
+    ['PPV (precision)',      'ppv'],
+    ['NPV',                  'npv'],
+  ];
+  // Reference metric block (raw_EURO/raw_GFS are identical across models).
+  const refMetrics = sel[0].metrics || {};
+
+  // Whether ANY of (raw_EURO, raw_GFS, selected models) carries surfer data.
+  const hasAny = (() => {
+    if ((refMetrics.raw_EURO?.surfer || refMetrics.raw_GFS?.surfer)) return true;
+    return sel.some(m => {
+      const block = (m.arch === 'ML') ? 'ml' : (m.arch === 'baseline') ? 'baseline' : null;
+      return block && m.metrics?.[block]?.surfer && Object.keys(m.metrics[block].surfer).length;
+    });
+  })();
+  if (!hasAny) {
+    root.innerHTML = '<div class="muted" style="padding:14px; border:1px dashed var(--bd1); border-radius:6px;">Surfer metrics not yet computed for any selected model. Re-train with the latest <code>csc2.train</code> to populate.</div>';
+    if (meta) meta.textContent = '';
+    return;
+  }
+
+  // Column descriptors: Raw EURO, Raw GFS, then each selected model.
+  const cols = [
+    { label: 'Raw EURO', metricKey: 'raw_EURO' },
+    { label: 'Raw GFS',  metricKey: 'raw_GFS'  },
+  ];
+  for (const m of sel) {
+    const blockKey = (m.arch === 'ML') ? 'ml' : (m.arch === 'baseline') ? 'baseline' : null;
+    cols.push({
+      label: m.name + (m.is_top_performer ? ' ★' : ''),
+      shortLabel: m.name.replace(/^CSC2\+/, '') + (m.is_top_performer ? ' ★' : ''),
+      metricKey: blockKey, modelMetrics: m.metrics || {}, isModel: true,
+    });
+  }
+
+  // n-rows label
+  if (meta) {
+    meta.textContent = ' · ' + sel.map(m => `${m.name.split('_').pop()}: n=${m.n_test_rows}`).join(' · ');
+  }
+
+  let html = '';
+  for (const cat of cats) {
+    const chipColor = (cat === 'FUN_OR_BETTER') ? 'border-color:var(--accent); color:var(--accent);' : '';
+    const chipLabel = (cat === 'FUN_OR_BETTER') ? 'FUN-OR-BETTER (combined)' : cat;
+    html += `<h3><span class="cat-chip" style="${chipColor}">${chipLabel}</span></h3>`;
+    html += '<table style="font-size:11.5px;"><thead><tr><th>Metric</th>';
+    for (const c of cols) {
+      html += `<th class="num" title="${c.label}">${c.shortLabel || c.label}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    for (const [statLabel, statKey] of stats) {
+      // Pull raw values per column.
+      const vals = cols.map(c => {
+        let block;
+        if (c.metricKey === 'raw_EURO' || c.metricKey === 'raw_GFS') {
+          block = (refMetrics[c.metricKey] || {}).surfer || {};
+        } else if (c.isModel && c.metricKey) {
+          block = (c.modelMetrics[c.metricKey] || {}).surfer || {};
+        } else { block = {}; }
+        const v = (block[cat] || {})[statKey];
+        return (v === undefined || v === null || Number.isNaN(v)) ? null : Number(v);
+      });
+      // Coloring: ABSOLUTE 0–1 gradient (same scale across all cells regardless
+      // of the row's spread). Best-of-row gets bolded + outlined.
+      const finite = vals.map((v, i) => ({ v, i })).filter(x => x.v !== null);
+      const bestI = finite.length ? finite.reduce((a, b) => a.v >= b.v ? a : b).i : null;
+      const cells = vals.map((v, i) => {
+        if (v === null) return '<td class="num dash">—</td>';
+        const cls = _absBin(v);
+        const isBest = (i === bestI);
+        return `<td class="num ${cls}${isBest ? ' row-best' : ''}">${v.toFixed(3)}</td>`;
+      }).join('');
+      html += `<tr><td>${statLabel}</td>${cells}</tr>`;
+    }
+    html += '</tbody></table>';
+  }
+  root.innerHTML = html;
+}
+
+let _liveForecastReq = 0;
+
+async function loadLiveForecast() {
+  const sel = document.getElementById('buoy-picker');
+  if (!sel) return;
+  const v = sel.value;
+  const buoyId = (v === 'combined_east' || !v) ? '44065' : v;
+  const shell = document.getElementById('live-forecast-shell');
+  const meta  = document.getElementById('live-forecast-meta');
+  const chartPanel = document.getElementById('energy-chart-panel');
+  const chartEmpty = document.getElementById('energy-chart-empty');
+  if (!shell || !chartPanel || !chartEmpty) return;
+  if (meta) meta.textContent = `Loading live forecast for ${buoyId}…`;
+  shell.classList.add('muted');
+  shell.innerHTML = `Loading…`;
+  chartEmpty.style.display = 'block';
+  chartEmpty.textContent = 'Loading…';
+  chartPanel.style.display = 'none';
+
+  const myReq = ++_liveForecastReq;
+  let r;
+  try {
+    r = await fetch(`/api/csc2/forecast?buoy_id=${encodeURIComponent(buoyId)}`).then(x => x.json());
+  } catch (e) {
+    chartEmpty.textContent = 'Live forecast unavailable.';
+    shell.innerHTML = '';
+    return;
+  }
+  if (myReq !== _liveForecastReq) return;
+  if (r.error) {
+    chartEmpty.textContent = `Error: ${r.error}`;
+    shell.innerHTML = '';
+    return;
+  }
+
+  const models = (r.models || []).filter(m => (m.rows || []).length > 0);
+  if (!models.length) {
+    chartEmpty.textContent = 'No model predictions available for the latest cycle.';
+    shell.innerHTML = '';
+    return;
+  }
+
+  // Build joined per-time records.
+  const anchor = models[0].rows;
+  const byTime = new Map();
+  for (const row of anchor) byTime.set(row.valid_utc, {
+    time: row.valid_utc, lead: row.lead_hours,
+    euro_h: row.euro_sw1_height_ft, euro_p: row.euro_sw1_period_s, euro_d: row.euro_sw1_direction_deg,
+    gfs_h:  row.gfs_sw1_height_ft,  gfs_p:  row.gfs_sw1_period_s,  gfs_d:  row.gfs_sw1_direction_deg,
+    gfs_src: row.gfs_sw1_source,
+    models: {}
+  });
+  for (const m of models) {
+    for (const row of m.rows) {
+      const k = byTime.get(row.valid_utc);
+      if (!k) continue;
+      k.models[m.name] = {
+        h: row.csc2_sw1_height_ft, p: row.csc2_sw1_period_s, d: row.csc2_sw1_direction_deg,
+      };
+    }
+  }
+  const rowsArr = Array.from(byTime.values()).sort((a, b) => a.time.localeCompare(b.time));
+
+  // Update meta line above the chart.
+  if (meta) {
+    meta.innerHTML = `Buoy: <b style="color:var(--fg0);">${r.buoy_label} (${r.buoy_id})</b> ·
+      Cycle: <code>${r.cycle_utc}</code> ·
+      ${r.n_euro_rows} EURO + ${r.n_gfs_rows} GFS rows ·
+      Generated ${r.generated_utc}`;
+  }
+
+  // Energy chart (h^2 * p), one line per model.
+  drawEnergyChart(rowsArr, models, r.cycle_utc);
+  chartEmpty.style.display = 'none';
+  chartPanel.style.display = 'block';
+
+  // Hour-by-hour table inside the (default-collapsed) <details>.
+  // Times displayed in America/New_York to match the dashboard. The
+  // valid_utc on the wire stays UTC ISO so internal joins are unaffected.
+  const fmtTime = iso => {
+    const t = new Date(iso);
+    return t.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    });
+  };
+  const cell = (v, dp=1) => v == null ? '<span class="dash">—</span>' : Number(v).toFixed(dp);
+  const headerCols = [
+    '<th>Forecast hour (ET)</th>',
+    '<th class="num">Lead (h)</th>',
+    '<th class="num">EURO sw1<br><span class="muted" style="font-size:10px;">ft / s / °</span></th>',
+    '<th class="num">GFS sw1<br><span class="muted" style="font-size:10px;">ft / s / °</span></th>',
+  ];
+  for (const m of models) {
+    const tag = m.is_top_performer ? ' ★' : '';
+    headerCols.push(`<th class="num" title="${m.name}"><code style="color:var(--accent); font-size:10.5px;">${m.name.replace(/^CSC2\+/,'')}${tag}</code><br><span class="muted" style="font-size:10px;">ft / s / °</span></th>`);
+  }
+  const trs = rowsArr.map(row => {
+    const modelCells = models.map(m => {
+      const x = row.models[m.name] || {};
+      const fb = (row.gfs_src === 'combined_fallback') ? ' title="GFS partitions absent — combined-sea fallback applied"' : '';
+      return `<td class="num"${fb}>${cell(x.h)} <span class="muted">/</span> ${cell(x.p)} <span class="muted">/</span> ${cell(x.d, 0)}</td>`;
+    }).join('');
+    return `<tr>
+      <td><code style="font-size:11px;">${fmtTime(row.time)}</code></td>
+      <td class="num">${row.lead == null ? '—' : row.lead}</td>
+      <td class="num">${cell(row.euro_h)} <span class="muted">/</span> ${cell(row.euro_p)} <span class="muted">/</span> ${cell(row.euro_d, 0)}</td>
+      <td class="num">${cell(row.gfs_h)} <span class="muted">/</span> ${cell(row.gfs_p)} <span class="muted">/</span> ${cell(row.gfs_d, 0)}</td>
+      ${modelCells}
+    </tr>`;
+  }).join('');
+  shell.classList.remove('muted');
+  shell.innerHTML = `
+    <div style="overflow-x:auto;">
+      <table style="font-size:11.5px;">
+        <thead><tr>${headerCols.join('')}</tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>
+  `;
+  // Reflect actual row count in the summary label.
+  const det = document.getElementById('live-table-details');
+  const sm  = det ? det.querySelector('summary') : null;
+  if (sm) sm.textContent = (det.open ? '▾ Hide' : '▸ Show') + ` hour-by-hour table (${rowsArr.length} rows)`;
+}
+
+// 16-point compass cardinal from a degrees-from direction.
+function _cardinal(deg) {
+  if (deg == null || Number.isNaN(deg)) return '—';
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
+                'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const idx = Math.floor(((deg % 360) + 360) % 360 / 22.5 + 0.5) % 16;
+  return dirs[idx];
+}
+
+// Drawn-chart state for hover rendering.
+let _energyChartState = null;
+
+// Energy = height_ft² × period_s. Same proxy used by the dashboard's
+// buoy modal chart so the visual reads identically.
+// "20260425T00Z" → "Apr 25 00Z" — cycle anchor stamp for the legend.
+function _fmtCycleUtc(s) {
+  if (!s) return '';
+  const m = String(s).match(/^(\d{4})(\d{2})(\d{2})T(\d{2})Z$/);
+  if (!m) return s;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(m[2], 10) - 1]} ${parseInt(m[3], 10)} ${m[4]}Z`;
+}
+
+function drawEnergyChart(rows, models, cycleUtc) {
+  const svg  = document.getElementById('energy-chart-svg');
+  const axis = document.getElementById('energy-chart-axis');
+  const legend = document.getElementById('energy-chart-legend');
+  if (!svg || !axis || !legend) return;
+  svg.innerHTML = '';
+  axis.innerHTML = '';
+  legend.innerHTML = '';
+
+  // Series definitions in display order: EURO, GFS, then each selected model.
+  const colorVarFor = (idx) => idx === 0 ? '--chart-top'
+                            : idx === 1 ? '--chart-rec1'
+                            : '--chart-rec2';
+  const series = [];
+  const _cycleStamp = cycleUtc ? ` (${_fmtCycleUtc(cycleUtc)})` : '';
+  series.push({
+    key: 'euro',
+    label: `Raw EURO${_cycleStamp}`, colorVar: '--chart-euro',
+    points: rows.map(r => ({ t: r.time, h: r.euro_h, p: r.euro_p, d: r.euro_d })),
+  });
+  series.push({
+    key: 'gfs',
+    label: `Raw GFS${_cycleStamp}`,  colorVar: '--chart-gfs',
+    points: rows.map(r => ({ t: r.time, h: r.gfs_h, p: r.gfs_p, d: r.gfs_d })),
+  });
+  models.forEach((m, i) => {
+    series.push({
+      key: 'm' + i,
+      label: m.name.replace(/^CSC2\+/, '') + (m.is_top_performer ? ' ★' : ''),
+      colorVar: colorVarFor(i),
+      isModel: true,
+      points: rows.map(r => {
+        const x = r.models[m.name] || {};
+        return { t: r.time, h: x.h, p: x.p, d: x.d };
+      }),
+    });
+  });
+
+  // Compute energy.
+  for (const s of series) {
+    for (const p of s.points) {
+      p.e = (p.h != null && p.p != null) ? (p.h * p.h * p.p) : null;
+    }
+  }
+
+  // Time + energy domains.
+  const ts = rows.map(r => new Date(r.time).getTime());
+  const minT = Math.min(...ts), maxT = Math.max(...ts);
+  let maxE = 0;
+  for (const s of series) for (const p of s.points)
+    if (p.e != null && p.e > maxE) maxE = p.e;
+  if (maxE === 0) maxE = 1;
+  maxE = maxE * 1.08;
+
+  const VB_W = 1000, VB_H = 280, PAD_L = 36, PAD_R = 12, PAD_T = 8, PAD_B = 22;
+  svg.setAttribute('viewBox', `0 0 ${VB_W} ${VB_H}`);
+  const cw = VB_W - PAD_L - PAD_R;
+  const ch = VB_H - PAD_T - PAD_B;
+  const xOf = (t) => PAD_L + ((t - minT) / (maxT - minT)) * cw;
+  const yOf = (e) => PAD_T + ch - (e / maxE) * ch;
+
+  // Y-grid + labels.
+  for (let i = 0; i <= 5; i++) {
+    const e = (maxE / 5) * i;
+    const y = yOf(e);
+    svg.insertAdjacentHTML('beforeend',
+      `<line x1="${PAD_L}" x2="${VB_W - PAD_R}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"
+         stroke="var(--bd0)" stroke-width="0.6"/>
+       <text x="${PAD_L - 4}" y="${(y + 3).toFixed(1)}" fill="var(--fg2)"
+         font-size="10" text-anchor="end" font-family="ui-monospace, monospace">${e.toFixed(0)}</text>`);
+  }
+  svg.insertAdjacentHTML('beforeend',
+    `<text x="14" y="${(PAD_T + ch / 2).toFixed(1)}" transform="rotate(-90 14 ${(PAD_T + ch / 2).toFixed(1)})"
+       fill="var(--fg2)" font-size="10" text-anchor="middle"
+       font-family="ui-monospace, monospace">energy (ft²·s)</text>`);
+
+  // Day boundaries — anchored to America/New_York midnights so the chart's
+  // x-axis labels line up with the main dashboard (which displays NY local
+  // time). We detect boundaries by walking the row times and watching for
+  // a change in the NY-local date string.
+  const _nyDate = ms => new Date(ms).toLocaleDateString('en-US', {
+    timeZone: 'America/New_York', month: 'short', day: 'numeric',
+  });
+  let _prevNyDate = '';
+  for (let i = 0; i < rows.length; i++) {
+    const ms = new Date(rows[i].time).getTime();
+    const dStr = _nyDate(ms);
+    if (i === 0) { _prevNyDate = dStr; continue; }
+    if (dStr !== _prevNyDate) {
+      const x = xOf(ms);
+      svg.insertAdjacentHTML('beforeend',
+        `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${PAD_T}" y2="${PAD_T + ch}"
+           stroke="var(--bd0)" stroke-width="0.4" opacity="0.7"/>`);
+      svg.insertAdjacentHTML('beforeend',
+        `<text x="${x.toFixed(1)}" y="${(VB_H - 6).toFixed(1)}" fill="var(--fg2)"
+           font-size="9.5" text-anchor="middle"
+           font-family="ui-monospace, monospace">${dStr}</text>`);
+      _prevNyDate = dStr;
+    }
+  }
+
+  // Lines.
+  const cssVal = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#888';
+  for (const s of series) {
+    const color = cssVal(s.colorVar);
+    let d = '';
+    let started = false;
+    for (const p of s.points) {
+      if (p.e == null) { started = false; continue; }
+      const x = xOf(new Date(p.t).getTime());
+      const y = yOf(p.e);
+      d += (started ? ' L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1);
+      started = true;
+    }
+    if (d) {
+      svg.insertAdjacentHTML('beforeend',
+        `<path d="${d}" fill="none" stroke="${color}"
+           stroke-width="${s.isModel ? 1.6 : 1.2}" stroke-linejoin="round"
+           opacity="${s.isModel ? 1.0 : 0.85}"/>`);
+    }
+  }
+
+  // Hover indicator: dashed vertical line, hidden until mouse enters.
+  svg.insertAdjacentHTML('beforeend',
+    `<line id="energy-chart-cursor" x1="0" x2="0" y1="${PAD_T}" y2="${PAD_T + ch}"
+       stroke="var(--fg1)" stroke-width="0.8" stroke-dasharray="3,3"
+       visibility="hidden" pointer-events="none"/>`);
+
+  // Legend rows — stacked, one per series. Each row reserves a slot
+  // for the live readout (filled on mousemove, default = nothing).
+  legend.innerHTML = series.map(s =>
+    `<div class="legend-row" data-series="${s.key}"
+          style="display:flex; align-items:center; gap:6px; min-width: 180px;">
+       <span class="dot" style="background:${cssVal(s.colorVar)};"></span>
+       <span style="color:var(--fg0);">${s.label}</span>
+       <span class="legend-readout muted"
+             style="font-variant-numeric: tabular-nums; margin-left:auto;
+                    text-align:right; min-width: 130px;"></span>
+     </div>`
+  ).join('');
+  legend.style.flexDirection = 'column';
+  legend.style.gap = '4px';
+
+  _energyChartState = { svg, series, rows, xOf, yOf, minT, maxT,
+                        VB_W, VB_H, PAD_L, PAD_R, PAD_T, PAD_B, cw, ch };
+  _attachEnergyChartHover();
+}
+
+// Apply a hover/scrub at row index `idx` — sets the dashed cursor and
+// fills the per-model legend readouts. Shared between desktop hover and
+// the mobile slider.
+function _applyEnergyHover(idx) {
+  const st = _energyChartState;
+  if (!st || idx == null || idx < 0 || idx >= st.rows.length) return;
+  const cursor = document.getElementById('energy-chart-cursor');
+  const legend = document.getElementById('energy-chart-legend');
+  if (!cursor || !legend) return;
+  const xSnap = st.xOf(new Date(st.rows[idx].time).getTime());
+  cursor.setAttribute('x1', xSnap.toFixed(1));
+  cursor.setAttribute('x2', xSnap.toFixed(1));
+  cursor.setAttribute('visibility', 'visible');
+  for (const s of st.series) {
+    const row = legend.querySelector(`.legend-row[data-series="${s.key}"] .legend-readout`);
+    if (!row) continue;
+    const p = s.points[idx];
+    if (!p || p.h == null || p.p == null) row.textContent = '—';
+    else row.textContent = `${p.h.toFixed(1)}ft @ ${p.p.toFixed(1)}s ${_cardinal(p.d)}`;
+  }
+  // Update mobile slider position to match (so desktop hover ↔ mobile slider stay in sync).
+  const handle = document.getElementById('energy-chart-scrub-handle');
+  const fill = document.getElementById('energy-chart-scrub-fill');
+  if (handle && fill && st.rows.length > 1) {
+    const pct = (idx / (st.rows.length - 1)) * 100;
+    handle.style.left = pct + '%';
+    fill.style.width = pct + '%';
+  }
+}
+
+function _attachEnergyChartHover() {
+  const st = _energyChartState;
+  if (!st) return;
+  const svg = st.svg;
+  const cursor = document.getElementById('energy-chart-cursor');
+  if (!cursor) return;
+
+  function onMove(ev) {
+    const rect = svg.getBoundingClientRect();
+    const xPx = ev.clientX - rect.left;
+    const xVb = (xPx / rect.width) * st.VB_W;
+    if (xVb < st.PAD_L || xVb > st.VB_W - st.PAD_R) {
+      cursor.setAttribute('visibility', 'hidden');
+      _clearLegendReadouts();
+      return;
+    }
+    const tHovered = st.minT + ((xVb - st.PAD_L) / st.cw) * (st.maxT - st.minT);
+    let bestI = 0, bestDt = Infinity;
+    for (let i = 0; i < st.rows.length; i++) {
+      const dt = Math.abs(new Date(st.rows[i].time).getTime() - tHovered);
+      if (dt < bestDt) { bestDt = dt; bestI = i; }
+    }
+    _applyEnergyHover(bestI);
+  }
+  function onLeave() {
+    cursor.setAttribute('visibility', 'hidden');
+    _clearLegendReadouts();
+  }
+
+  svg.removeEventListener('mousemove', svg._csc_onMove || (() => {}));
+  svg.removeEventListener('mouseleave', svg._csc_onLeave || (() => {}));
+  svg._csc_onMove = onMove;
+  svg._csc_onLeave = onLeave;
+  svg.addEventListener('mousemove', onMove);
+  svg.addEventListener('mouseleave', onLeave);
+}
+
+// Mobile slider — touch/drag the handle to scrub through the chart's time
+// axis. Mirrors the buoy-modal scrubber pattern from the main dashboard
+// (track + fill + handle, touchmove updates pct → row index → _applyEnergyHover).
+let _energyScrubDragging = false;
+function _energyScrubPctFromX(clientX) {
+  const wrap = document.getElementById('energy-chart-scrub-track-wrap');
+  if (!wrap) return 0;
+  const rect = wrap.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+function _energyScrubApply(pct) {
+  const st = _energyChartState;
+  if (!st || !st.rows.length) return;
+  const idx = Math.min(st.rows.length - 1, Math.round(pct * (st.rows.length - 1)));
+  _applyEnergyHover(idx);
+}
+(function _initEnergyScrubEvents() {
+  const onTouchStart = e => {
+    const t = e.target;
+    if (t.id === 'energy-chart-scrub-handle' ||
+        (t.closest && t.closest('#energy-chart-scrub-track-wrap'))) {
+      e.preventDefault();
+      _energyScrubDragging = true;
+      _energyScrubApply(_energyScrubPctFromX(e.touches[0].clientX));
+    }
+  };
+  const onTouchMove = e => {
+    if (!_energyScrubDragging) return;
+    e.preventDefault();
+    _energyScrubApply(_energyScrubPctFromX(e.touches[0].clientX));
+  };
+  const onTouchEnd = () => { _energyScrubDragging = false; };
+  document.addEventListener('touchstart', onTouchStart, { passive: false });
+  document.addEventListener('touchmove',  onTouchMove,  { passive: false });
+  document.addEventListener('touchend',   onTouchEnd);
+  // Mouse fallback for narrow-viewport desktop testing.
+  document.addEventListener('mousedown', e => {
+    const t = e.target;
+    if (t.id === 'energy-chart-scrub-handle' ||
+        (t.closest && t.closest('#energy-chart-scrub-track-wrap'))) {
+      _energyScrubDragging = true;
+      _energyScrubApply(_energyScrubPctFromX(e.clientX));
+    }
+  });
+  document.addEventListener('mousemove', e => {
+    if (_energyScrubDragging) _energyScrubApply(_energyScrubPctFromX(e.clientX));
+  });
+  document.addEventListener('mouseup', () => { _energyScrubDragging = false; });
+})();
+
+function _clearLegendReadouts() {
+  document.querySelectorAll('#energy-chart-legend .legend-readout')
+    .forEach(el => { el.textContent = ''; });
+}
+
+// Hook the buoy picker so live forecast also re-renders on change.
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'buoy-picker') {
+    loadLiveForecast();
+  }
+});
+
+// ─── Theme toggle (mirrors index.html: localStorage 'wave-theme', data-theme attr) ───
+(function _initTheme() {
+  const saved = localStorage.getItem('wave-theme');
+  const sysLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  const theme = saved || (sysLight ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+})();
+document.getElementById('theme-btn')?.addEventListener('click', () => {
+  const curr = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = curr === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('wave-theme', next);
+  document.getElementById('theme-btn').textContent = next === 'light' ? '◑ DARK' : '◑ LIGHT';
+  // Re-render anything that resolves colors at draw time.
+  if (typeof loadLiveForecast === 'function') loadLiveForecast();
+  if (_archiveStatus) _renderHistogramsForSelection();
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+  if (localStorage.getItem('wave-theme')) return;
+  const theme = e.matches ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-btn');
+  if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
+});
+
+// Live-table summary toggles its label to reflect open/closed state.
+document.getElementById('live-table-details')?.addEventListener('toggle', e => {
+  const det = e.currentTarget;
+  const sm = det.querySelector('summary');
+  if (!sm) return;
+  const rows = det.querySelectorAll('tbody tr').length;
+  sm.textContent = (det.open ? '▾ Hide' : '▸ Show') + ` hour-by-hour table${rows ? ' (' + rows + ' rows)' : ''}`;
+});
+
 loadArchiveStatus();
+loadActiveModels();
+loadLiveForecast();
 </script>
 </body>
 </html>
