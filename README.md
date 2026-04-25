@@ -1,4 +1,4 @@
-# colesurfs · v1.8
+# colesurfs · v1.8.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -189,6 +189,20 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.8.1
+- **Outage-modal stops firing on transient cache gaps.** New last-known-good fallback in `app.py:api_forecast` — if a fresh fetch returns empty for either EURO or GFS (e.g. mid-cache-rebuild after `POST /api/refresh`, or a brief upstream blip), the endpoint serves the previous successful response from a process-memory `_last_known_forecast` dict instead of `{}`. The dashboard's outage modal only fires when we've **never** had a populated response since the server started — i.e. genuine sustained upstream failure.
+- **Model-run indicator now reflects EURO + GFS independently.** GFS publishes 4 cycles/day (00/06/12/18 Z); EURO publishes 2 cycles/day (00/12 Z); they very often disagree on which run is current. `_refreshStatus` now fetches both `/api/status?model=EURO` and `/api/status?model=GFS` in parallel. When the runs are aligned the indicator collapses to a single readout (`Apr 25 12Z · next run in ~3h`); when they diverge it expands to show both (`EURO Apr 25 00Z · GFS Apr 25 12Z`) so the divergence is impossible to miss. Smart-refresh still keys off the active model's run.
+- **Buoy modal — `BUOY HISTORY` button renamed to `BUOY SPECTRA`** (desktop toolbar). Modal contents unchanged on both desktop and mobile.
+- **Buoy modal — "Max single swell" callout** in the spectrum chart's top-right shows the largest-energy single swell partition observed across the whole 3-day window. Pre-computed once on data load via new `_findMaxEnergyComponent`; doesn't change as the user scrubs.
+- **Buoy modal — spectrum chart Y axis switched to wave-energy index `H × T²` (ft·s²)** from the previous wave-energy-flux `H² × T` (kW/m). Same X axis, same partition labels, but longer-period swells now dominate the visual hierarchy in line with the surfer-energy intuition. Unified across `buoy.py` (`_parse`, `_spectral_components`, `_parse_spec`, `fetch_buoy_history`) and the JS callout / chart so every place wave energy is computed uses the same formula.
+- **Buoy modal — spectrum chart 2× taller** (220 → 440 px desktop, 140 → 280 px mobile); modal `max-height: 96vh` + internal `overflow-y: auto` as a safety net so the page itself doesn't scroll on phones.
+- **Buoy modal — spectrum Y-axis stays constant across the 3-day window.** New `_computeSpectrumMaxFlux` pre-scans every record's spectrum on data load and locks the Y-axis ceiling so peaks at quiet times correctly read smaller than peaks at busy times.
+- **BUOY NOW cell tap opens the modal pre-loaded to that buoy.** The previous mobile blocker — `pointer-events: none` blanket rule on data cells — is now bypassed via `td.cell.buoy-now[onclick]` selector that re-enables only the cells with a click handler.
+- **Audit fix — snap-to-hour mismatch** between `archive_status` and `train.py` (rounded `:30:00` differently). Both now round half-up consistently.
+- **Mobile header swap** — model-run-tag moves into the header right slot (where PREFERENCES used to live), PREFERENCES moves to the bottom bar; stacked layout mirrors the original `mob-meta-run` / `mob-meta-next` styling.
+- **Main-page `Fun+ Days` cells** now show `{count}/{forecast-window-days}` and gate on a wind filter (≥1 spot in the same `buoy_region` has Glassy/Groomed/Clean/Textured wind at the same 3-hour window).
+- **Desktop `CSC2 (BETA)` button** in the toolbar between History toggle and the status bar — direct link to `/csc`.
 
 ### v1.8
 - **CSC2 leaves "data collection only" — models are trained, ranked, and live on `/csc`.** End-to-end pipeline shipped: `csc2/train.py` (paired-data loader + CSC2+baseline (per-(buoy × lead × variable) additive bias) + CSC2+ML (LightGBM, 8 boosters) + holdout eval); `csc2/registry.py` (composite-skill ranking, weighted **sw1 height 0.25 / sw1 period 0.25 / sw1 dir 0.05 / sw2 each 0.05 / surfer FUN-OR-BETTER F1 0.30**, with a min-test-rows gate so noisy small-holdout scores don't take TOP); `csc2/predict.py` (live inference matching the dashboard fallback path byte-for-byte). The `/csc` page now surfaces the **#1 performer + 2 most recent additional models** with a 10-day live forecast chart, surfer metrics (Sens/Spec/PPV/NPV per FUN/SOLID/FIRING/HECTIC/MONSTRO + combined FUN-OR-BETTER), traditional MAE/RMSE/bias, and the running archive accumulation panel.

@@ -133,7 +133,10 @@ def _parse(text: str) -> dict | None:
 
     wvht_ft = m_to_ft(wvht_m)
     period  = dpd  # dominant period only; None when DPD=MM
-    energy  = round(wvht_ft ** 2 * period, 1) if (wvht_ft and period) else None
+    # Wave energy proxy = height × period² — favors long-period swells
+    # over short, choppy seas of similar Hs. Matches the same H × T²
+    # formula used in fetch_buoy_history and _spectral_components below.
+    energy  = round(wvht_ft * period ** 2, 1) if (wvht_ft and period) else None
 
     return {
         "timestamp":          ts.isoformat() if ts else None,
@@ -296,7 +299,11 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
         # Energy-weighted mean period — matches Surfline's displayed period
         Tm      = sum(wi * (1.0 / freqs[i]) for wi, i in zip(w, part)) / total_e
         mean_dir = _circular_mean(w, [dirs[i] for i in part])
-        e_score  = round(hm0_ft ** 2 * Tm, 1)
+        # H × T² — partition energy proxy. Used both for component sort
+        # below and as `energy` consumed by the buoy modal's max-single-
+        # swell callout, the modal's energy-history chart, and the
+        # spectrum chart. Same convention as _parse / fetch_buoy_history.
+        e_score  = round(hm0_ft * Tm ** 2, 1)
 
         if hm0_ft < MIN_HM0_FT or Tm < 6.0:
             continue
@@ -364,7 +371,7 @@ def _parse_spec(text: str) -> list:
         if not p or p < 6.0:          # < 6 s → FLAT noise, skip
             return
         h_ft   = m_to_ft(h_m)
-        energy = round(h_ft ** 2 * p, 1) if (h_ft and p) else None
+        energy = round(h_ft * p ** 2, 1) if (h_ft and p) else None  # H × T² convention
         components.append({
             "height_ft":     h_ft,
             "period_s":      round(p, 1),

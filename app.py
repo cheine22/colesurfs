@@ -134,6 +134,24 @@ def api_buoys():
     return jsonify(result)
 
 
+# Last-known-good fallback per forecast model. Whenever the upstream
+# fetch returns a populated dict, we stash it here. If a subsequent
+# fetch comes back empty (transient cache-wipe gap, brief upstream
+# blip, slow first cold fetch), we serve this stale copy instead of
+# returning {}, so the dashboard's outage modal only fires when we've
+# *never* had usable data — i.e. genuine upstream failure with no
+# history to fall back on. Lives in process memory; rebuilds on every
+# successful fetch including the cache-warmer's pre-fetches.
+_last_known_forecast: dict[str, dict] = {"EURO": {}, "GFS": {}}
+
+
+def _is_populated(d: dict | None) -> bool:
+    """True if d is a dict with at least one non-null spot value."""
+    if not d:
+        return False
+    return any(v is not None for v in d.values())
+
+
 @app.route("/api/forecast/<model_key>")
 def api_forecast(model_key: str):
     """Model keys:
@@ -143,12 +161,22 @@ def api_forecast(model_key: str):
 
     v1.5: Open-Meteo ECMWF-WAM was removed from the site; EURO is now CMEMS
     exclusively. /api/forecast/C-EURO remains as a backward-compat alias.
+    v1.8: Last-known-good fallback added — if a fresh fetch comes back
+    empty, we return the previous successful response instead of {}.
     """
     key = model_key.upper()
     if key in ("EURO", "C-EURO"):
-        return jsonify(fetch_all_cmems_wave_forecasts() or {})
+        fresh = fetch_all_cmems_wave_forecasts()
+        if _is_populated(fresh):
+            _last_known_forecast["EURO"] = fresh
+            return jsonify(fresh)
+        return jsonify(_last_known_forecast.get("EURO") or {})
     if key == "GFS":
-        return jsonify(fetch_all_wave_forecasts("GFS") or {})
+        fresh = fetch_all_wave_forecasts("GFS")
+        if _is_populated(fresh):
+            _last_known_forecast["GFS"] = fresh
+            return jsonify(fresh)
+        return jsonify(_last_known_forecast.get("GFS") or {})
     return jsonify({"error": "unknown model"}), 400
 
 

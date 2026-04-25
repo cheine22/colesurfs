@@ -1371,7 +1371,7 @@
     <button class="sw-btn GFS"         data-model="GFS"  onclick="setModel('GFS',this)">GFS</button>
   </div>
   <div class="sep"></div>
-  <button class="sw-btn" onclick="openBuoyPicker()" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1)">BUOY HISTORY</button>
+  <button class="sw-btn" onclick="openBuoyPicker()" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1)">BUOY SPECTRA</button>
   <div class="sep"></div>
   <span class="ctrl-label">Resolution</span>
   <div class="model-switch">
@@ -1502,7 +1502,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.8</span>
+    <span class="info-modal-version">v1.8.1</span>
   </div>
 </div>
 
@@ -1519,7 +1519,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.8</span>
+    <span class="about-version">v1.8.1</span>
   </div>
 </div>
 
@@ -1555,7 +1555,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.8</span>
+    <span class="footer-version">v1.8.1</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2120,41 +2120,71 @@ function _setWindTimeLabel(label) {
   if (ov) ov.textContent = label;
 }
 
-// Fetch model run info for the controls bar.
+// Fetch model run info for the controls bar — fetch BOTH EURO and GFS
+// in parallel so the indicator faithfully shows what each model has
+// shipped. GFS publishes 4 cycles/day (00/06/12/18 Z) and EURO publishes
+// 2 cycles/day (00/12 Z), so they very often disagree on which run is
+// "current". When they do, the indicator shows both side-by-side; when
+// they happen to align, it collapses to a single clean readout.
 async function _refreshStatus() {
   try {
-    const data = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
-    const runEl = document.getElementById('model-run-tag');
-    if (data.model_run) _lastModelRun = data.model_run.run_time || null;
-    if (data.model_run && runEl) {
+    const [euroRes, gfsRes] = await Promise.allSettled([
+      fetch('/api/status?model=EURO').then(r => r.json()),
+      fetch('/api/status?model=GFS').then(r => r.json()),
+    ]);
+    const euroRun = euroRes.status === 'fulfilled' ? (euroRes.value.model_run || null) : null;
+    const gfsRun  = gfsRes.status  === 'fulfilled' ? (gfsRes.value.model_run  || null) : null;
+    // Smart-refresh (the REFRESH MODEL NOW button) only cares about the
+    // active model's run — preserve that signal.
+    const activeRun = (activeModel === 'GFS') ? gfsRun : euroRun;
+    if (activeRun) _lastModelRun = activeRun.run_time || null;
+
+    // Format helper: "Apr 25 12Z" from run_date + run_utc.
+    const fmt = (run) => {
+      if (!run) return '—';
       let datePart = '';
-      if (data.model_run.run_date) {
-        const d = new Date(data.model_run.run_date + 'T00:00:00');
-        const mon = d.toLocaleString('en-US', { month: 'short' });
-        datePart = `${mon} ${d.getDate()} `;
+      if (run.run_date) {
+        const d = new Date(run.run_date + 'T00:00:00');
+        datePart = `${d.toLocaleString('en-US', { month: 'short' })} ${d.getDate()} `;
       }
-      const run = data.model_run.run_utc;
-      let next = '';
-      if (data.model_run.hours_to_next != null) {
-        const h = data.model_run.hours_to_next;
-        next = ` · next run in ~${h < 1 ? '<1' : Math.round(h)}h`;
-      }
-      runEl.innerHTML = `<b>${datePart}${run}</b>${next}`;
-      const mobRun  = document.getElementById('mob-run-tag');
-      const mobNext = document.getElementById('mob-next-tag');
-      const nextLabel = (data.model_run.hours_to_next != null)
-        ? `next ~${data.model_run.hours_to_next < 1 ? '<1' : Math.round(data.model_run.hours_to_next)}h`
-        : '';
-      if (mobRun)  mobRun.textContent = `${datePart}${run}`;
-      if (mobNext) mobNext.textContent = nextLabel;
-      // Mirror to the mobile-swapped header readout (only visible ≤600px).
-      // Stacked: run-tag on top, next-run-eta below in muted color —
-      // mirrors the original bottom-bar layout, just relocated.
-      const headerMobRun  = document.getElementById('header-mob-run-tag');
-      const headerMobNext = document.getElementById('header-mob-next-tag');
-      if (headerMobRun)  headerMobRun.textContent  = `${datePart}${run}`;
-      if (headerMobNext) headerMobNext.textContent = nextLabel;
+      return `${datePart}${run.run_utc}`;
+    };
+    const euroLabel = fmt(euroRun);
+    const gfsLabel  = fmt(gfsRun);
+    // Aligned iff both fetches succeeded AND their run_time stamps are equal.
+    const aligned = !!(euroRun && gfsRun && euroRun.run_time === gfsRun.run_time);
+    // Soonest next-run across the two — relevant only when aligned (when
+    // they diverge we surface the per-model labels instead, no room for
+    // a separate next-run line).
+    const allHours = [euroRun, gfsRun]
+      .map(r => r && r.hours_to_next).filter(h => h != null);
+    const minHours = allHours.length ? Math.min(...allHours) : null;
+    const nextLabel = minHours == null ? ''
+      : `next ~${minHours < 1 ? '<1' : Math.round(minHours)}h`;
+
+    // Desktop status-tag — single line. When aligned, show shared run +
+    // next; when split, show "EURO X · GFS Y" so divergence is obvious.
+    const runEl = document.getElementById('model-run-tag');
+    if (runEl) {
+      runEl.innerHTML = aligned
+        ? `<b>${euroLabel}</b>${nextLabel ? ' · ' + nextLabel.replace('next', 'next run in') : ''}`
+        : `<b>EURO</b> ${euroLabel} · <b>GFS</b> ${gfsLabel}`;
     }
+
+    // Mobile bottom-bar mob-meta (legacy desktop fallback path) —
+    // hidden ≤600px since we swap that slot to PREFERENCES on mobile.
+    const mobRun  = document.getElementById('mob-run-tag');
+    const mobNext = document.getElementById('mob-next-tag');
+    if (mobRun)  mobRun.textContent  = aligned ? euroLabel : `EURO ${euroLabel}`;
+    if (mobNext) mobNext.textContent = aligned ? nextLabel : `GFS ${gfsLabel}`;
+
+    // Mobile-swapped header readout (visible ≤600px). Stacked:
+    //   aligned   → "Apr 25 12Z" / "next ~3h"
+    //   diverged  → "EURO Apr 24 12Z" / "GFS Apr 25 06Z"
+    const headerMobRun  = document.getElementById('header-mob-run-tag');
+    const headerMobNext = document.getElementById('header-mob-next-tag');
+    if (headerMobRun)  headerMobRun.textContent  = aligned ? euroLabel : `EURO ${euroLabel}`;
+    if (headerMobNext) headerMobNext.textContent = aligned ? nextLabel : `GFS ${gfsLabel}`;
   } catch(e) { /* silent */ }
 }
 
@@ -4896,6 +4926,13 @@ let _buoyPopupMeta = null;   // { minT, maxT, minE, maxE, padLeft, padBottom, pa
 // new buoy load. Resets to null when the modal closes.
 let _buoyPopupSpectrumMaxFlux = null;
 
+// "Maximum recorded single swell" callout for the spectrum chart's
+// top-right corner. Picks the partition (component) with the largest
+// energy (h²·p, the same scoring _spectral_components uses) across the
+// entire 3-day window — so even after scrubbing, the user sees what the
+// peak swell of the period was. Reset on modal close.
+let _buoyPopupMaxComponent = null;
+
 function openBuoyPicker() {
   if (!CFG) return;
   // If in regional mode, jump directly to that region's buoy
@@ -4957,6 +4994,10 @@ function openBuoyPopup(spotName, stationId) {
       // times read smaller, peaks at active times read taller, both
       // against the same reference.
       _buoyPopupSpectrumMaxFlux = _computeSpectrumMaxFlux(_buoyPopupData);
+      // Find the largest single swell across the entire 3-day window
+      // (max of components[*].energy = h²·p) for the "Maximum recorded
+      // single swell" callout in the top-right of the spectrum chart.
+      _buoyPopupMaxComponent = _findMaxEnergyComponent(_buoyPopupData);
       _drawBuoyChartTop(topCtx, topC);
       _attachChartHover(topC);
       _attachChartHover(botC);
@@ -4976,6 +5017,7 @@ function closeBuoyPopup() {
   _buoyPopupData = null;
   _buoyPopupMeta = null;
   _buoyPopupSpectrumMaxFlux = null;
+  _buoyPopupMaxComponent = null;
   _buoyActiveIdx = null;
   const tooltip = document.getElementById('buoy-popup-tooltip');
   if (tooltip) tooltip.classList.remove('visible');
@@ -5135,13 +5177,16 @@ function _drawBuoyChartTop(ctx, canvas) {
 
 // ── Bottom chart: static frequency spectrum at scrubbed time ─────────────
 // Pre-scan every record's spectrum once on data load and find the
-// global per-bin wave-energy-flux maximum (kW/m). Used as a constant
-// Y-axis ceiling for the spectrum chart so the axis doesn't rescale as
-// the user scrubs through time. Mirrors the per-bin formula in
-// _drawBuoySpectrum exactly: flux = (ρg²/4π) · E · Δf · T.
+// global per-bin wave-energy maximum. Used as a constant Y-axis ceiling
+// for the spectrum chart so the axis doesn't rescale as the user
+// scrubs through time. Mirrors the per-bin formula in
+// _drawBuoySpectrum exactly: energy = H_bin × T², where
+// H_bin = 4·√(E·Δf)·3.28084 (ft per frequency bin) and T = 1/freq (s).
+// Units: ft·s² (a relative wave-energy index — surfer-meaningful, not a
+// physical power flux). Matches the H × T² convention used everywhere
+// else (buoy.py:_spectral_components, _parse, fetch_buoy_history).
 function _computeSpectrumMaxFlux(records) {
-  const FLUX_K = 7.849;
-  let maxFlux = 0;
+  let maxE = 0;
   for (const r of (records || [])) {
     const spec = r && r.spectrum;
     if (!Array.isArray(spec) || spec.length === 0) continue;
@@ -5157,11 +5202,34 @@ function _computeSpectrumMaxFlux(records) {
       else if (i === 0)                 df = Math.abs(bins[1].freq - bins[0].freq);
       else if (i === bins.length - 1)   df = Math.abs(bins[i].freq - bins[i - 1].freq);
       else                              df = Math.abs(bins[i + 1].freq - bins[i - 1].freq) / 2;
-      const flux = FLUX_K * Math.max(0, bins[i].energy) * df * bins[i].period;
-      if (flux > maxFlux) maxFlux = flux;
+      const h_ft = 4 * Math.sqrt(Math.max(0, bins[i].energy) * df) * 3.28084;
+      const e_idx = h_ft * bins[i].period * bins[i].period;
+      if (e_idx > maxE) maxE = e_idx;
     }
   }
-  return maxFlux > 0 ? maxFlux * 1.1 : null;
+  return maxE > 0 ? maxE * 1.1 : null;
+}
+
+// Walk all records and pick the component (single swell partition) with
+// the largest energy proxy. Energy is defined as H × T² across the
+// codebase (in buoy.py:_spectral_components and _parse), so a long-
+// period groundswell can outrank a same-Hs short-period windswell. The
+// fallback formula here mirrors that convention for any record whose
+// components were built without an explicit energy field.
+function _findMaxEnergyComponent(records) {
+  let best = null;
+  for (const r of (records || [])) {
+    const comps = (r && r.components) || [];
+    for (const c of comps) {
+      if (c == null) continue;
+      const e = (c.energy != null) ? c.energy
+              : (c.height_ft != null && c.period_s != null
+                  ? c.height_ft * c.period_s * c.period_s : null);
+      if (e == null) continue;
+      if (!best || e > best._sortEnergy) best = { ...c, _sortEnergy: e, _ts: r.timestamp };
+    }
+  }
+  return best;
 }
 
 function _drawBuoySpectrum(ctx, canvas, record) {
@@ -5208,18 +5276,13 @@ function _drawBuoySpectrum(ctx, canvas, record) {
   }
 
   // Per-bin frequency width Δf (Hz) via centred-difference, then map
-  // the Y axis to *wave energy flux* per bin in kW/m. For deep-water
-  // waves, energy flux per unit length of crest from a frequency band is
-  //   dP = (ρg² / 4π) · E(f) · Δf · T(f)        [W/m]
-  // with ρ = 1025 kg/m³ and g = 9.81 m/s² → ρg²/(4π) ≈ 7.849 (kW/m
-  // per (m²/Hz · Hz · s)). Plotting Y = 7.849·E·Δf·T means peak heights
-  // capture the surfer-relevant "punch" of the swell — for a given E,
-  // a longer-period bin shows a taller peak than a shorter-period one,
-  // matching the intuition that a 10s ground swell carries more power
-  // than a 7s wind sea even at similar Hs. (Compare to spectral
-  // variance, where Hs scales as √m₀ regardless of T.) Per-bin fluxes
-  // sum LINEARLY to the total partition flux — no quadrature.
-  const FLUX_K = 7.849;  // ρg²/(4π) in kW/m per (m²/Hz · Hz · s)
+  // the Y axis to a *wave-energy index* per bin = H × T². This matches
+  // the H × T² convention used everywhere else in the codebase
+  // (buoy.py:_spectral_components, _parse, fetch_buoy_history). Per
+  // bin: H_bin = 4·√(E·Δf) (m), then ×3.28084 → ft; energy index = H × T²
+  // in ft·s². Heavier weighting on period than the previous wave-energy-
+  // flux formulation (which used H² × T) — a 10 s groundswell now
+  // dominates a 7 s windswell of similar Hs even more strongly.
   for (let i = 0; i < bins.length; i++) {
     let df;
     if (bins.length === 1)            df = bins[0].freq;
@@ -5227,7 +5290,8 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     else if (i === bins.length - 1)   df = Math.abs(bins[i].freq - bins[i - 1].freq);
     else                              df = Math.abs(bins[i + 1].freq - bins[i - 1].freq) / 2;
     bins[i].df = df;
-    bins[i].flux_kwm = FLUX_K * Math.max(0, bins[i].energy) * df * bins[i].period;
+    const h_ft = 4 * Math.sqrt(Math.max(0, bins[i].energy) * df) * 3.28084;
+    bins[i].energy_idx = h_ft * bins[i].period * bins[i].period;  // H × T² (ft·s²)
   }
 
   // Default x-axis: 0s → 22s. Extend only when a bin (or a decomposed
@@ -5249,7 +5313,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
   // Fall back to per-frame max only if it wasn't computed (e.g. direct
   // call from a test path with no _buoyPopupData).
   const maxFlux = _buoyPopupSpectrumMaxFlux
-                 || (Math.max(...bins.map(b => b.flux_kwm)) * 1.1 || 1);
+                 || (Math.max(...bins.map(b => b.energy_idx)) * 1.1 || 1);
 
   // x-axis: period ascending left→right (long period on right, surfer convention)
   function xOf(period) { return padLeft + ((period - minP) / (maxP - minP)) * cw; }
@@ -5279,13 +5343,13 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     ctx.fillText(`${p}s`, x, H - padBottom + 12);
   });
 
-  // Line + fill — Y plotted as per-bin wave energy flux (kW/m).
+  // Line + fill — Y plotted as per-bin wave-energy index = H × T² (ft·s²).
   const dark = _isDark();
   const lineColor = dark ? style.getPropertyValue('--text0') : '#333';
   ctx.beginPath();
   ctx.moveTo(xOf(bins[0].period), padTop + ch);
   for (let i = 0; i < bins.length; i++) {
-    ctx.lineTo(xOf(bins[i].period), yOf(bins[i].flux_kwm));
+    ctx.lineTo(xOf(bins[i].period), yOf(bins[i].energy_idx));
   }
   ctx.lineTo(xOf(bins[bins.length - 1].period), padTop + ch);
   ctx.closePath();
@@ -5296,7 +5360,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
 
   ctx.beginPath();
   for (let i = 0; i < bins.length; i++) {
-    const x = xOf(bins[i].period), y = yOf(bins[i].flux_kwm);
+    const x = xOf(bins[i].period), y = yOf(bins[i].energy_idx);
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   }
   ctx.strokeStyle = lineColor;
@@ -5316,14 +5380,14 @@ function _drawBuoySpectrum(ctx, canvas, record) {
       if (c.period_s == null) return;
       const p = c.period_s;
       if (p < minP || p > maxP) return;
-      // Interpolate per-bin wave energy flux at this period.
+      // Interpolate per-bin wave-energy index (H × T²) at this period.
       let fluxAt = 0;
       for (let i = 0; i < bins.length - 1; i++) {
         const a = bins[i], b = bins[i + 1];
         const lo = Math.min(a.period, b.period), hi = Math.max(a.period, b.period);
         if (p >= lo && p <= hi) {
           const t = (p - a.period) / (b.period - a.period);
-          fluxAt = a.flux_kwm + t * (b.flux_kwm - a.flux_kwm);
+          fluxAt = a.energy_idx + t * (b.energy_idx - a.energy_idx);
           break;
         }
       }
@@ -5384,25 +5448,71 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     });
   }
 
-  // y-axis label — wave energy flux per frequency bin (kW/m).
+  // y-axis label — wave-energy index per bin = H × T² (ft·s²).
   ctx.save();
   ctx.translate(10, padTop + ch / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = 'center';
   ctx.fillStyle = textColor;
   ctx.font = '8px JetBrains Mono';
-  ctx.fillText('wave energy flux (kW/m)', 0, 0);
+  ctx.fillText('wave energy (ft·s²)', 0, 0);
   ctx.restore();
 
   // y-axis tick labels at 1/4, 1/2, 3/4, full max so the user can read
-  // the kW/m value of a peak directly off the chart.
+  // the H × T² value of a peak directly off the chart.
   ctx.fillStyle = textColor;
   ctx.font = '8px JetBrains Mono';
   ctx.textAlign = 'left';
   for (const frac of [0.25, 0.5, 0.75, 1.0]) {
     const yt = yOf(maxFlux * frac);
     const v = maxFlux * frac;
-    ctx.fillText(v.toFixed(v < 1 ? 2 : 1), padLeft + 2, yt + 3);
+    ctx.fillText(v < 100 ? v.toFixed(1) : v.toFixed(0), padLeft + 2, yt + 3);
+  }
+
+  // "Maximum recorded single swell" callout in the top-right corner —
+  // pulls the largest-energy component across the entire 3-day window
+  // (set once on data load, doesn't change as the user scrubs). Two
+  // lines, right-aligned, with a hairline pill background so the text
+  // reads on top of any spectrum curve / component marker that ends up
+  // beneath it.
+  const maxC = _buoyPopupMaxComponent;
+  if (maxC && maxC.height_ft != null && maxC.period_s != null) {
+    const dir = (maxC.direction_deg != null) ? toCard(maxC.direction_deg) : '';
+    const labelTop = 'Max single swell';
+    const labelBot = `${maxC.height_ft}ft @ ${maxC.period_s}sec ${dir}`.trim();
+    // Font sizes capped at the axis-tick size (9px) so the callout
+    // doesn't dominate the chart. Line 2 keeps prominence via the
+    // brighter --text0 fill, not via larger type.
+    const FONT_TOP = '7.5px JetBrains Mono';
+    const FONT_BOT = '9px JetBrains Mono';
+    const padX = 7, padY = 4, gapY = 2;
+    const rightX = W - padRight - 4;
+    const topY   = padTop + 4;
+    ctx.font = FONT_TOP;
+    const wTop = ctx.measureText(labelTop).width;
+    ctx.font = FONT_BOT;
+    const wBot = ctx.measureText(labelBot).width;
+    const boxW = Math.max(wTop, wBot) + padX * 2;
+    const boxH = 7.5 + 9 + gapY + padY * 2;
+    const boxX = rightX - boxW;
+    const boxY = topY;
+    // Background pill so labels stay legible over spectrum line.
+    ctx.fillStyle = style.getPropertyValue('--bg1');
+    ctx.globalAlpha = 0.92;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = style.getPropertyValue('--border0');
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    // Line 1: muted descriptor.
+    ctx.font = FONT_TOP;
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'right';
+    ctx.fillText(labelTop, rightX - padX, boxY + padY + 7);
+    // Line 2: the swell itself — same size as axis ticks, brighter fill.
+    ctx.font = FONT_BOT;
+    ctx.fillStyle = style.getPropertyValue('--text0');
+    ctx.fillText(labelBot, rightX - padX, boxY + padY + 7 + gapY + 9);
   }
 }
 
