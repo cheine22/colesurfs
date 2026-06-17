@@ -14,13 +14,14 @@ column is informational.
 
 Run manually:
     python -m csc2.eval_live
-Run via launchd: see com.colesurfs.csc2-eval.plist (daily 04:30 ET).
+Run via launchd: see com.colesurfs.csc2-eval.plist (daily 5 AM ET).
 """
 
 from __future__ import annotations
 
 import sys
 import time
+import traceback
 from datetime import datetime, timezone as dtz
 from pathlib import Path
 
@@ -126,7 +127,17 @@ def main() -> int:
 
     print(f"[eval_live] eval_date={eval_date}, building paired east-pool dataset…",
           flush=True)
-    paired = build_paired_dataset("east")
+    try:
+        paired = build_paired_dataset("east")
+    except Exception as e:
+        traceback.print_exc()
+        line = (f"[{datetime.now(dtz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}] "
+                f"eval_live  FAILED building paired dataset: "
+                f"{type(e).__name__}: {e}\n")
+        with (LOGS_DIR / "eval_live.log").open("a") as f:
+            f.write(line)
+        print(line.rstrip(), flush=True)
+        return 1
     if paired.empty:
         print("[eval_live] no paired data on disk; aborting", flush=True)
         return 1
@@ -151,7 +162,12 @@ def main() -> int:
             n_skipped += 1
             continue
         out_path = LIVE_EVAL_DIR / f"{name}.parquet"
-        n_total = append_or_update(out_path, row, eval_date)
+        try:
+            n_total = append_or_update(out_path, row, eval_date)
+        except Exception as e:
+            print(f"  {name}: WRITE ERROR {type(e).__name__}: {e}", flush=True)
+            n_errors += 1
+            continue
         sw1_mae = row.get("sw1_height_ft_mae")
         f1 = row.get("surfer_FOB_F1")
         sw1_str = f"{sw1_mae:.3f}" if sw1_mae is not None else "—"

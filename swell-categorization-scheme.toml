@@ -24,7 +24,7 @@ MONSTRO = "never"
 [[band]]
 period_upper_bound = 9.5
 FLAT    = 2.0
-WEAK    = 4.0
+WEAK    = 3.5
 FUN     = 7.5
 SOLID   = 12.0
 FIRING  = "never"

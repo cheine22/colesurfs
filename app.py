@@ -752,67 +752,57 @@ _WARM_INTERVAL = 1800   # 30 minutes — well within TTL of 3600s
 
 
 def _warm_all_caches():
-    """Pre-fetch all data so user requests always hit warm cache."""
+    """Pre-fetch all data so user requests always hit warm cache.
+
+    Independent sources warm concurrently; the six api.open-meteo.com wind
+    calls stay sequential within their group to keep today's request pattern
+    (no concurrent-429 risk). CSC2 runs after the wave groups because its
+    per-buoy fetches reuse the TTL-cache entries those groups populate."""
     t0 = time.monotonic()
     errors = []
 
-    # Wave forecasts.
-    # GFS: batched through Open-Meteo (1 API call, all spots).
-    # EURO: CMEMS, parallel across region buoys (~11 s for 7 buoys in testing).
-    try:
-        fetch_all_wave_forecasts("GFS")
-    except Exception as e:
-        errors.append(f"wave/GFS: {e}")
-    try:
-        fetch_all_cmems_wave_forecasts()
-    except Exception as e:
-        errors.append(f"cmems: {e}")
-
-    # Wind (already batched internally)
-    for model in ("EURO", "GFS"):
+    def _run(label, fn):
         try:
-            fetch_wind_grid(model)
+            fn()
         except Exception as e:
-            errors.append(f"wind_grid/{model}: {e}")
-        try:
-            fetch_wind_forecast_grid(model)
-        except Exception as e:
-            errors.append(f"wind_forecast/{model}: {e}")
+            errors.append(f"{label}: {e}")
 
-    # Region wind
-    for model in ("EURO", "GFS"):
-        try:
-            fetch_region_wind_forecasts(model)
-        except Exception as e:
-            errors.append(f"region_wind/{model}: {e}")
+    def _warm_open_meteo_wind():
+        for model in ("EURO", "GFS"):
+            _run(f"wind_grid/{model}", lambda m=model: fetch_wind_grid(m))
+            _run(f"wind_forecast/{model}", lambda m=model: fetch_wind_forecast_grid(m))
+        for model in ("EURO", "GFS"):
+            _run(f"region_wind/{model}", lambda m=model: fetch_region_wind_forecasts(m))
 
-    # Buoys (parallel)
-    try:
+    def _warm_buoys():
         futures = {_buoy_pool.submit(fetch_buoy, s["buoy_id"]): s["name"] for s in SPOTS}
         for f in as_completed(futures, timeout=30):
             f.result()
-    except Exception as e:
-        errors.append(f"buoys: {e}")
 
-    # Tides
-    try:
-        fetch_tide_predictions()
-    except Exception as e:
-        errors.append(f"tides: {e}")
+    groups = [
+        # GFS waves: batched through Open-Meteo (1 API call, all spots).
+        ("wave/GFS", lambda: fetch_all_wave_forecasts("GFS")),
+        # EURO: CMEMS, parallel across region buoys (~11 s for 7 buoys in testing).
+        ("cmems",    fetch_all_cmems_wave_forecasts),
+        ("wind",     _warm_open_meteo_wind),
+        ("buoys",    _warm_buoys),
+        ("tides",    fetch_tide_predictions),
+    ]
+    # Not _buoy_pool: _warm_buoys submits nested futures there; sharing one
+    # pool risks starvation.
+    with ThreadPoolExecutor(max_workers=len(groups)) as pool:
+        for f in [pool.submit(_run, label, fn) for label, fn in groups]:
+            f.result()
 
     # CSC2 forecast — pre-compute predictions for every east buoy so the
     # /csc page never pays the cold cost. Skipped if no models are trained.
-    try:
+    def _warm_csc2():
         from csc2.schema import buoys_in as _csc2_buoys_in
         from csc2.registry import list_models as _csc2_list_models
         if _csc2_list_models("east"):
             for _bid in _csc2_buoys_in("east"):
-                try:
-                    _csc2_forecast_payload(_bid, "east")
-                except Exception as e:
-                    errors.append(f"csc2_forecast/{_bid}: {e}")
-    except Exception as e:
-        errors.append(f"csc2_forecast: {e}")
+                _run(f"csc2_forecast/{_bid}", lambda b=_bid: _csc2_forecast_payload(b, "east"))
+    _run("csc2_forecast", _warm_csc2)
 
     elapsed = time.monotonic() - t0
     if errors:

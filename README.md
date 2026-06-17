@@ -1,4 +1,4 @@
-# colesurfs · v1.8.1
+# colesurfs · v1.8.2
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -189,6 +189,14 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.8.2
+- **Buoy spectra now render for UCONN/USACE/UNH-owned buoys (44091/44097/44098).** The buoy-modal spectrum was empty for Block Island (44097) and its siblings because `fetch_buoy_history` merged spectral rows onto stdmet records by exact timestamp-string match. NOAA-owned buoys publish stdmet and spectra on the same minute mark, but these non-NOAA buoys report stdmet at `:26`/`:56` while their `.data_spec`/`.swdir` spectra land on the hour, so the two key sets never intersected and zero records got a spectrum. The merge now bisects the sorted spectral timestamps and attaches the nearest one within a strict <30-minute tolerance. Fixes 44097 (0 → 479/479 records with spectrum) and recovers near-aligned rows on already-working buoys with no regression.
+- **Region list reordered** — `Long Island` now sits directly below `Block Island Sound` (above `Cape Cod`), grouping the NY/Long Island coast together before the New England regions. Spot/buoy assignments also tidied: `Cape Cod` → buoy `44018`; Marconi/Peggotty/Point Allerton under `Massachusetts` (`44013`); Rye Rocks under `NH & North Shore, MA` (`44098`).
+- **Swell categorization tweak** — in the ≤9.5 s period band, the `WEAK` height threshold drops `4.0 → 3.5 ft`, so short-period 3.5–4 ft now reads `WEAK` rather than `FLAT`.
+- **Cache warmer parallelized** — `app.py:_warm_all_caches` now warms independent sources (GFS waves, CMEMS, wind, buoys, tides) concurrently via a thread pool, with a shared error collector; Open-Meteo wind calls stay sequential within their group to avoid concurrent-429s, and CSC2 warms last so it reuses the freshly populated TTL entries.
+- **Tide fetch parallelized** — `tide.py:fetch_tide_predictions` fetches the 10+ NOAA CO-OPS stations concurrently instead of serially.
+- **CSC2 robustness** — `archive_status.py` memoizes closed obs shards by (mtime, size) and snaps timestamps with vectorized pandas (same half-up rule), cutting recompute cost; `logger.py` de-duplicates the EURO/GFS logging into one helper and refetches corrupt shards instead of counting them as logged; `eval_live.py` guards dataset-build and per-model writes with logged exception handling.
 
 ### v1.8.1
 - **Outage-modal stops firing on transient cache gaps.** New last-known-good fallback in `app.py:api_forecast` — if a fresh fetch returns empty for either EURO or GFS (e.g. mid-cache-rebuild after `POST /api/refresh`, or a brief upstream blip), the endpoint serves the previous successful response from a process-memory `_last_known_forecast` dict instead of `{}`. The dashboard's outage modal only fires when we've **never** had a populated response since the server started — i.e. genuine sustained upstream failure.

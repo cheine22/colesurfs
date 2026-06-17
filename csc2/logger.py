@@ -2,8 +2,8 @@
 
 Persists the exact dashboard-comparable swell-partition forecasts at each
 CSC2 buoy to disk, one parquet per (model × buoy × cycle). Runs on a
-launchd schedule (04Z and 16Z — roughly 4 h after CMEMS ANFC's 00Z/12Z
-cycles publish) and captures the full +0..+240 h forecast trajectory.
+launchd schedule (3 AM + 3 PM ET — after CMEMS ANFC's 00Z/12Z cycles
+publish) and captures the full +0..+240 h forecast trajectory.
 
 Why we log live rather than backfill: CMEMS ANFC exposes only the current
 forecast cycle (past cycles are overwritten), and no free third-party
@@ -127,8 +127,9 @@ def write_rows(buoy_id: str, model: str, cycle_utc: str,
     try:
         FORECASTS_DIR.mkdir(parents=True, exist_ok=True)
         FORECASTS_SENTINEL.touch()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[csc2.logger] sentinel touch failed ({FORECASTS_SENTINEL}): "
+              f"{type(e).__name__}: {e}", file=sys.stderr)
     return len(df)
 
 
@@ -152,40 +153,29 @@ def log_cycle(*, force: bool = False) -> dict:
     coverage = {"EURO": {}, "GFS": {}}
     errors: list[str] = []
 
-    for buoy_id, _label, lat, lon, _scope in BUOYS:
-        # EURO (CMEMS)
-        path_e = _shard_path(buoy_id, "EURO", cycle_utc)
-        if path_e.exists() and not force:
+    def _log_one(buoy_id: str, model: str, fetch_fn, lat: float, lon: float) -> int:
+        path = shard_path(buoy_id, model, cycle_utc)
+        if path.exists() and not force:
             try:
-                coverage["EURO"][buoy_id] = len(pd.read_parquet(path_e))
-            except Exception:
-                coverage["EURO"][buoy_id] = 0
-        else:
-            try:
-                recs = fetch_cmems_point(lat, lon)
+                return len(pd.read_parquet(path))
             except Exception as e:
-                errors.append(f"EURO/{buoy_id}: {type(e).__name__}: {e}")
-                recs = None
-            rows = records_to_rows(recs or [], buoy_id=buoy_id, model="EURO",
-                                     cycle_utc=cycle_utc, ingest_utc=ingest_utc)
-            coverage["EURO"][buoy_id] = _write_rows(buoy_id, "EURO", cycle_utc, rows)
+                # Corrupt shard (e.g. interrupted write) — refetch and rewrite
+                # rather than masking it as already-logged.
+                print(f"[csc2.logger] corrupt shard {path}: "
+                      f"{type(e).__name__}: {e} — refetching", file=sys.stderr)
+        try:
+            recs = fetch_fn(lat, lon)
+        except Exception as e:
+            errors.append(f"{model}/{buoy_id}: {type(e).__name__}: {e}")
+            recs = None
+        rows = records_to_rows(recs or [], buoy_id=buoy_id, model=model,
+                                 cycle_utc=cycle_utc, ingest_utc=ingest_utc)
+        return write_rows(buoy_id, model, cycle_utc, rows)
 
-        # GFS (Open-Meteo ncep_gfswave025)
-        path_g = _shard_path(buoy_id, "GFS", cycle_utc)
-        if path_g.exists() and not force:
-            try:
-                coverage["GFS"][buoy_id] = len(pd.read_parquet(path_g))
-            except Exception:
-                coverage["GFS"][buoy_id] = 0
-        else:
-            try:
-                recs = fetch_wave_forecast(lat, lon, "GFS")
-            except Exception as e:
-                errors.append(f"GFS/{buoy_id}: {type(e).__name__}: {e}")
-                recs = None
-            rows = records_to_rows(recs or [], buoy_id=buoy_id, model="GFS",
-                                     cycle_utc=cycle_utc, ingest_utc=ingest_utc)
-            coverage["GFS"][buoy_id] = _write_rows(buoy_id, "GFS", cycle_utc, rows)
+    for buoy_id, _label, lat, lon, _scope in BUOYS:
+        coverage["EURO"][buoy_id] = _log_one(buoy_id, "EURO", fetch_cmems_point, lat, lon)
+        coverage["GFS"][buoy_id] = _log_one(
+            buoy_id, "GFS", lambda la, lo: fetch_wave_forecast(la, lo, "GFS"), lat, lon)
 
     elapsed = time.monotonic() - t0
     summary = {

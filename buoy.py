@@ -541,13 +541,33 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
 
     records.reverse()  # oldest-first for charting
 
-    # Merge spectral components + raw spectrum bins
+    # Merge spectral components + raw spectrum bins.
+    # Match by nearest spectral timestamp within a tolerance rather than exact
+    # string equality: NOAA-owned buoys publish stdmet and spectra on the same
+    # minute mark, but UCONN/USACE/UNH buoys (44091/44097/44098) report stdmet
+    # at :26/:56 while their spectra land on the hour, so exact match never hits.
     try:
         spec_map = _fetch_historical_spectral(station_id, cutoff)
+        spec_dts = sorted(
+            (datetime.fromisoformat(k), k) for k in spec_map.keys()
+        )
+        spec_times = [dt for dt, _ in spec_dts]
+        tol = timedelta(minutes=30)
+        import bisect
         for rec in records:
-            entry = spec_map.get(rec["timestamp"])
-            if not entry:
+            if not spec_times:
+                break
+            rec_dt = datetime.fromisoformat(rec["timestamp"])
+            i = bisect.bisect_left(spec_times, rec_dt)
+            best = None
+            for j in (i - 1, i):
+                if 0 <= j < len(spec_times):
+                    d = abs(spec_times[j] - rec_dt)
+                    if d < tol and (best is None or d < best[0]):
+                        best = (d, spec_dts[j][1])
+            if best is None:
                 continue
+            entry = spec_map[best[1]]
             if entry.get("components"):
                 rec["components"] = entry["components"]
             if entry.get("spectrum"):

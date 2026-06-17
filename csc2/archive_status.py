@@ -108,6 +108,12 @@ def _per_cycle_valid_utcs(model: str, buoy_id: str) -> dict[str, set[str]]:
     return out
 
 
+# Closed yearly/monthly obs shards never change, so cache their snapped
+# valid_utc sets keyed on (mtime_ns, size); only realtime/live-log shards
+# get re-read on each recompute. Keyed by path → self-evicting on change.
+_obs_shard_memo: dict[str, tuple[int, int, frozenset]] = {}
+
+
 def _obs_valid_utcs(buoy_id: str) -> set[str]:
     """Training-ready buoy observation valid_utcs, hour-snapped.
 
@@ -122,31 +128,6 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
     are on the hour).
     """
     acc: set[str] = set()
-
-    def _snap_to_hour(s: str) -> str | None:
-        s = str(s).strip()
-        if not s:
-            return None
-        iso = s.replace("Z", "+00:00") if s.endswith("Z") else s
-        try:
-            t = datetime.fromisoformat(iso)
-        except Exception:
-            return None
-        if t.tzinfo is None:
-            t = t.replace(tzinfo=timezone.utc)
-        t_utc = t.astimezone(timezone.utc)
-        # Round to nearest hour (>= :30 rounds up)
-        # Round half-up: minute >= 30 always rounds up so the rule matches
-        # `csc2.train._snap_to_hour_iso`. The previous "minute > 30 OR
-        # (minute == 30 AND second > 0)" form rounded :30:00 DOWN here while
-        # the trainer rounded it UP, causing a silent off-by-hour mismatch
-        # at exactly the half-hour mark.
-        from datetime import timedelta
-        if t_utc.minute >= 30:
-            t_utc = t_utc.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        else:
-            t_utc = t_utc.replace(minute=0, second=0, microsecond=0)
-        return t_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _cols_for(shard: Path) -> list[str] | None:
         # Both obs trees (stdmet historical + live_log) now share schema:
@@ -166,6 +147,14 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
         if not p.exists():
             continue
         for shard in p.rglob("*.parquet"):
+            try:
+                st = shard.stat()
+            except OSError:
+                continue
+            hit = _obs_shard_memo.get(str(shard))
+            if hit is not None and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+                acc |= hit[2]
+                continue
             cols = _cols_for(shard)
             if cols is None:
                 continue
@@ -175,10 +164,15 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
                 continue
             df = df[df["partition"].isin(BUOY_OBS_PARTITIONS)]
             df = df.dropna(subset=["hs_m", "tp_s", "dp_deg", "valid_utc"])
-            for v in df["valid_utc"].astype(str).tolist():
-                snapped = _snap_to_hour(v)
-                if snapped:
-                    acc.add(snapped)
+            # Snap half-up: +30 min then floor rounds minute >= 30 up,
+            # matching `csc2.train._snap_to_hour_iso`. Naive timestamps are
+            # treated as UTC (utc=True), unparseable ones dropped.
+            t = pd.to_datetime(df["valid_utc"].astype(str), utc=True,
+                               errors="coerce").dropna()
+            snapped = (t + pd.Timedelta(minutes=30)).dt.floor("h")
+            vals = frozenset(snapped.dt.strftime("%Y-%m-%dT%H:%M:%SZ"))
+            _obs_shard_memo[str(shard)] = (st.st_mtime_ns, st.st_size, vals)
+            acc |= vals
     return acc
 
 

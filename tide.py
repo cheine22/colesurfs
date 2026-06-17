@@ -16,6 +16,7 @@ Per-spot time corrections:
 """
 import bisect
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from cache import ttl_cache
 from config import WIND_SPOTS, FORECAST_DAYS
@@ -47,14 +48,16 @@ def fetch_tide_predictions(past_days: int = 0) -> dict:
     begin_dt = (today - timedelta(days=past_days)).strftime("%Y%m%d")
     end_dt   = (today + timedelta(days=FORECAST_DAYS - 1)).strftime("%Y%m%d")
 
-    # Fetch raw data once per unique station
+    # Fetch raw data once per unique station, in parallel — each station is
+    # two independent NOAA requests and there are 10+ stations.
     station_ids = list({ws["tide_station"] for ws in WIND_SPOTS if ws.get("tide_station")})
     hourly_by_station: dict[str, list] = {}
     hilo_by_station:   dict[str, list] = {}
-    for sid in station_ids:
-        h, hl = _fetch_station(sid, begin_dt, end_dt)
-        hourly_by_station[sid] = h
-        hilo_by_station[sid]   = hl
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(station_ids)))) as pool:
+        results = pool.map(lambda s: _fetch_station(s, begin_dt, end_dt), station_ids)
+        for sid, (h, hl) in zip(station_ids, results):
+            hourly_by_station[sid] = h
+            hilo_by_station[sid]   = hl
 
     # Annotate per spot with that spot's own time offsets
     result: dict[str, dict] = {}
