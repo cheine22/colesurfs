@@ -552,7 +552,9 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
             (datetime.fromisoformat(k), k) for k in spec_map.keys()
         )
         spec_times = [dt for dt, _ in spec_dts]
-        tol = timedelta(minutes=30)
+        tol = timedelta(minutes=30)  # inclusive: buoys logging stdmet every 10 min
+                                     # but spectra every 30 min leave the newest
+                                     # obs exactly 30 min past the last spectrum
         import bisect
         for rec in records:
             if not spec_times:
@@ -563,7 +565,7 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
             for j in (i - 1, i):
                 if 0 <= j < len(spec_times):
                     d = abs(spec_times[j] - rec_dt)
-                    if d < tol and (best is None or d < best[0]):
+                    if d <= tol and (best is None or d < best[0]):
                         best = (d, spec_dts[j][1])
             if best is None:
                 continue
