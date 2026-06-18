@@ -1,4 +1,4 @@
-# colesurfs · v1.8.2
+# colesurfs · v1.8.3
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -189,6 +189,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.8.3
+- **Map swell arrows suppress trivial secondary swells.** `buildSwellArrows` in `templates/index.html` now drops a buoy's secondary (component index 1) swell arrow unless it's meaningful: height >1.5 ft, or >1 ft when it's a long-period (>14 s) groundswell. Primary swell and the swell table are unaffected — this only declutters the map graphic, so a marginal 0.8 ft windswell partition no longer paints a second arrow next to every buoy.
 
 ### v1.8.2
 - **Buoy spectra now render for UCONN/USACE/UNH-owned buoys (44091/44097/44098).** The buoy-modal spectrum was empty for Block Island (44097) and its siblings because `fetch_buoy_history` merged spectral rows onto stdmet records by exact timestamp-string match. NOAA-owned buoys publish stdmet and spectra on the same minute mark, but these non-NOAA buoys report stdmet at `:26`/`:56` while their `.data_spec`/`.swdir` spectra land on the hour, so the two key sets never intersected and zero records got a spectrum. The merge now bisects the sorted spectral timestamps and attaches the nearest one within a ≤30-minute tolerance (inclusive, so buoys that log stdmet every 10 min but spectra every 30 min still populate their newest cell). Fixes 44097 (0 → 479/479 records with spectrum) and recovers near-aligned rows on already-working buoys with no regression.

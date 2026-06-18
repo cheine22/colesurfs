@@ -1500,7 +1500,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.8.2</span>
+    <span class="info-modal-version">v1.8.3</span>
   </div>
 </div>
 
@@ -1517,7 +1517,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.8.2</span>
+    <span class="about-version">v1.8.3</span>
   </div>
 </div>
 
@@ -1553,7 +1553,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.8.2</span>
+    <span class="footer-version">v1.8.3</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -3683,6 +3683,13 @@ function buildSwellArrows(timeStr, source) {
     }
     comps.slice(0, 2).forEach((c, ci) => {
       if (c.direction_deg == null) return;
+      // Only show a secondary swell arrow when it's big enough to matter:
+      // >1.5 ft, or >1 ft when it's a long-period (>14 s) groundswell.
+      if (ci === 1) {
+        const h = c.height_ft, p = c.period_s;
+        if (h == null) return;
+        if (!(h > 1.5 || (h > 1 && p != null && p > 14))) return;
+      }
       arrows.push({ lat: spot.lat, lon: spot.lon, dir: c.direction_deg,
                      ht: c.height_ft, per: c.period_s, primary: ci === 0,
                      filtered: !!c._filtered });
