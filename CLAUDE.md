@@ -21,8 +21,9 @@ status; the model button will appear on the main dashboard once trained.
 - `buoy.py` — NDBC fetch + spectral swell decomposition. In v1.7 `fetch_buoy_history` default range bumped 5→10 days; each record now carries a raw `spectrum: [[freq_hz, energy_density_m2/Hz, direction_deg | null], …]` field, sourced from the same `.data_spec` + `.swdir` bytes we already parse for component decomposition (no extra HTTP).
 - `waves.py` — Open-Meteo GFS-Wave partition fetch (EURO migrated to CMEMS in v1.5)
 - `waves_cmems.py` — Copernicus Marine ANFC EURO fetch + shared processing pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2)
-- `wind.py`, `tide.py`, `sun.py` — other data sources
-- `cache.py` — TTL cache + disk write-through + API-call counter
+- `wave_common.py` — v1.9: shared `_safe`/component-builder/record-schema used by both wave modules. Behavior locked by `tests/test_wave_identity.py` (golden fixtures); regenerate goldens only for intentional changes via `tests/regen_golden.py`
+- `wind.py`, `tide.py`, `sun.py` — other data sources. `fetch_all_spot_winds` (v1.9) batches all spot current-winds into one Open-Meteo call; per-spot `fetch_spot_wind` remains as fallback
+- `cache.py` — TTL cache + disk write-through + API-call counter. v1.9: per-key single-flight locks so concurrent misses can't stampede a slow upstream (CMEMS cold fetch ≈ 90 s)
 - `config.py` — loads `regions.yaml`; defines palette, wind bands, grid
 - `regions.yaml` — single source of truth for regions / buoys / spots
 - `swell_rules.py` + `swell-categorization-scheme.toml` — swell → color
@@ -75,6 +76,13 @@ Local-only data directories (gitignored):
   - `v{N}` — architecture/hyperparameter variant trained on the same date's
     snapshot. Bump for any structural change (different feature set,
     different LightGBM params, different baseline binning, etc.).
+    v5 (2026-07): baseline gained count-weighted lead-hour bias smoothing
+    (`--lead-smoothing`, default ±2 h; 0 reproduces v1–v4); trainer asserts
+    the time split (max train cycle < min test cycle) and records per-target
+    row counts + the inclusion rule in meta.json. `registry.select_top3`
+    additionally requires sw1_height skill ≥ 0 for the #1 slot
+    (`SW1_HEIGHT_SKILL_FLOOR`) — a high composite can't mask a model that's
+    worse than raw EURO on primary height.
 - **Examples:** `CSC2+baseline_260424_0.77_v2`, `CSC2+ML_260424_0.77_v2`.
 - **Weights land in:** `.csc2_models/east/<full-name>/`. The west track uses
   the identical convention under `.csc2_models/west/<full-name>/` and never
@@ -215,6 +223,16 @@ in addition to clearing the origin caches.
 
 To force-clear all caches at runtime: `POST /api/refresh` (rate-limited to
 1 call per 30 s per IP).
+
+v1.9 fault-tolerance additions:
+- The last-known-good forecast fallback persists to `.cache/lkg_forecast.json`
+  so it survives restarts; served with `_status: "stale"` when live fetch fails.
+- Partially-populated payloads (`/api/forecast/*`, `/api/wind`) carry
+  `_status: "partial"` so the frontend can badge degraded data (badge UI
+  pending design approval — see `design-demo/index.html`).
+- The frontend stashes the last good payload set in
+  `sessionStorage['cs_snapshot_v1']` (≤6 h) and instant-paints the table from
+  it on reload before fresh fetches land.
 
 ## Conventions
 

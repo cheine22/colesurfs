@@ -141,11 +141,25 @@ _write_rows      = write_rows
 _records_to_rows = records_to_rows
 
 
+def _check_archive_freshness(now_utc: datetime) -> None:
+    """Warn when the sentinel says no writer has touched the forecast
+    archive in > 24 h — a missed cycle would otherwise stay invisible
+    until someone inspected coverage on /csc."""
+    try:
+        age_h = (now_utc.timestamp() - FORECASTS_SENTINEL.stat().st_mtime) / 3600
+    except OSError:
+        return
+    if age_h > 24:
+        print(f"[csc2.logger] WARNING: last archive write was {age_h:.0f}h ago "
+              f"— a prior cycle likely failed silently", file=sys.stderr)
+
+
 def log_cycle(*, force: bool = False) -> dict:
     """Fetch and persist one cycle for all 8 buoys × {EURO, GFS}. Returns a
     short summary dict. `force=True` rewrites even if the cycle shard exists."""
     ensure_dirs()
     now_utc = datetime.now(timezone.utc)
+    _check_archive_freshness(now_utc)
     cycle_utc = _cycle_id(now_utc)
     ingest_utc = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     t0 = time.monotonic()

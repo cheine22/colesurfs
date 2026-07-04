@@ -124,6 +124,20 @@ class _TTLStore:
 
 _store = _TTLStore()
 
+# Single-flight: one lock per cache key so concurrent requests on an
+# expired entry don't stampede the upstream (a cold CMEMS fetch can take
+# 90 s — without this, every waiting request fired its own copy).
+_keylocks_guard = threading.Lock()
+_keylocks: dict[str, threading.Lock] = {}
+
+
+def _key_lock(key: str) -> threading.Lock:
+    with _keylocks_guard:
+        lk = _keylocks.get(key)
+        if lk is None:
+            lk = _keylocks[key] = threading.Lock()
+        return lk
+
 
 # ─── API call counter (resets daily at midnight UTC) ─────────────────────────
 _api_lock = threading.Lock()
@@ -170,10 +184,14 @@ def ttl_cache(ttl_seconds: int = 3600, skip_none: bool = False):
             cached, hit = _store.get(key)
             if hit:
                 return cached
-            result = func(*args, **kwargs)
-            if result is not None or not skip_none:
-                _store.set(key, result, ttl_seconds)
-            return result
+            with _key_lock(key):
+                cached, hit = _store.get(key)
+                if hit:
+                    return cached
+                result = func(*args, **kwargs)
+                if result is not None or not skip_none:
+                    _store.set(key, result, ttl_seconds)
+                return result
         wrapper._cache_key_fn = lambda *a, **kw: f"{prefix}:{a}:{sorted(kw.items())}"
         return wrapper
     return decorator
@@ -204,30 +222,42 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0):
     def decorator(func):
         prefix = f"{func.__module__}.{func.__qualname__}"
         _store.register_prefix_ttl(prefix, hard_ttl)
+        def _cached_if_current(key, args):
+            """Return (serve_cached, value): serve_cached=True when the cache
+            holds data and no new model run has appeared since it was set."""
+            cached, hit = _store.get(key)
+            if not hit:
+                return False, None
+            age = _store.get_age(key)
+            model_key = args[model_arg_index] if len(args) > model_arg_index else "EURO"
+            checker = getattr(wrapper, '_new_run_checker', None)
+            if checker and age is not None and not checker(model_key, age):
+                print(f"[smart-cache] {func.__qualname__}({model_key}): "
+                      f"cached {age:.0f}s ago, no new run → skip fetch")
+                return True, cached
+            if age is not None:
+                print(f"[smart-cache] {func.__qualname__}({model_key}): "
+                      f"cached {age:.0f}s ago, new run available → re-fetching")
+            return False, None
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             key = f"{prefix}:{args}:{sorted(kwargs.items())}"
-            cached, hit = _store.get(key)
-
-            if hit:
-                # We have valid cached data (within hard TTL).
-                # Check if a new model run has appeared since we cached.
-                age = _store.get_age(key)
-                model_key = args[model_arg_index] if len(args) > model_arg_index else "EURO"
-                checker = getattr(wrapper, '_new_run_checker', None)
-                if checker and age is not None and not checker(model_key, age):
-                    # No new model run — serve from cache
-                    print(f"[smart-cache] {func.__qualname__}({model_key}): "
-                          f"cached {age:.0f}s ago, no new run → skip fetch")
+            serve, cached = _cached_if_current(key, args)
+            if serve:
+                return cached
+            with _key_lock(key):
+                serve, cached = _cached_if_current(key, args)
+                if serve:
                     return cached
-                # New model run available — fall through to re-fetch
-                print(f"[smart-cache] {func.__qualname__}({model_key}): "
-                      f"cached {age:.0f}s ago, new run available → re-fetching")
-
-            result = func(*args, **kwargs)
-            if result is not None:
-                _store.set(key, result, hard_ttl)
-            return result
+                result = func(*args, **kwargs)
+                if result is not None:
+                    _store.set(key, result, hard_ttl)
+                    return result
+                # Re-fetch failed — serve the still-valid cached value (if any)
+                # rather than going dark until the negative cache clears.
+                cached, hit = _store.get(key)
+                return cached if hit else result
 
         wrapper._cache_key_fn = lambda *a, **kw: f"{prefix}:{a}:{sorted(kw.items())}"
         wrapper._new_run_checker = None  # set by caller

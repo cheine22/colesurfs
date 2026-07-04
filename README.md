@@ -1,4 +1,4 @@
-# colesurfs · v1.8.3
+# colesurfs · v1.9.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -189,6 +189,16 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.9.0
+- **Instant paint on reload.** The frontend stashes the last successful payload set (buoys, both forecasts, region wind, tides, sun) in `sessionStorage` (≤6 h) and renders the full table immediately on reload, skipping the loading screen while fresh fetches run in the background. A header **freshness chip** shows `UPDATING · DATA FROM Xm AGO` during the window, `PARTIAL DATA` when some upstreams are missing (per new backend `_status` metadata), or `STALE DATA` when serving last-known-good; hidden when everything is fresh.
+- **Skeleton loading cells.** First visits (no snapshot) render the table's real row structure as shimmering placeholders instead of a single "Loading…" line.
+- **Outage modal re-skinned onto palette surfaces** (`--bg1`/`--border2`/`--amber`) — drops the last hardcoded amber/brown hexes and now renders correctly in light mode.
+- **Wave-pipeline consolidation.** New `wave_common.py` holds the shared `_safe`/component-builder/record schema used by `waves.py` and `waves_cmems.py` (~150 duplicated lines removed). Behavior locked byte-for-byte by a new golden regression suite (`tests/test_wave_identity.py`, fixtures + `tests/regen_golden.py`).
+- **Fault tolerance.** Last-known-good forecasts persist to `.cache/lkg_forecast.json` and survive restarts (served with `_status: "stale"`); `/api/forecast/*` and `/api/wind` tag partially-populated payloads `_status: "partial"`; per-key single-flight locks in `cache.py` stop cache-miss stampedes on slow upstreams (cold CMEMS ≈ 90 s); `model_aware_cache` serves the still-valid cached value when a new-run re-fetch fails; typed error logging (timeout vs HTTP vs other) in wind/CMEMS fetchers.
+- **Backend perf.** Spot current-winds batched into one Open-Meteo call (`fetch_all_spot_winds`, was N per-spot requests); warmer startup delay 3 s → 0.5 s; precomputed grid-point constants; `/` and `/api/config` share one `_config_payload()`; Cache-Control rules centralized into a policy table; rate-limiter dict no longer grows unboundedly.
+- **Frontend smoothness.** Buoy-modal hover and mobile-scrubber redraws are rAF-gated; re-clicking the active model or history toggle no longer triggers redundant full rebuilds; `buildBuoyCell`/`buildHistoricalCell` share one `_buildSwellInner()`.
+- **CSC2 v5.** Trainer asserts the time-series split (max train cycle < min test cycle) and records per-target row counts + inclusion rule in `meta.json`; baseline gains count-weighted lead-hour bias smoothing (`--lead-smoothing`, default ±2 h); registry requires sw1-height skill ≥ 0 for the #1 slot so a high composite can't mask a model worse than raw EURO on primary height; booster loading validates feature order; stale-model warnings at inference; failed `/api/csc2/forecast` computations are no longer cached for 30 min (503 + retry instead); archive-status logs schema-drifted shards loudly and bounds its shard memo; `csc2-obs`/`csc2-log` launchd logs moved from `/tmp` to `.csc2_data/logs/`; forecast logger warns when the archive sentinel is >24 h old. Trained `CSC2+{baseline,ML}_260704_0.84_v5` — ML v5 beats raw EURO on sw1 height (MAE 0.527 vs 0.668 ft, +21 %) and takes the #1 slot legitimately.
 
 ### v1.8.3
 - **Map swell arrows suppress trivial secondary swells.** `buildSwellArrows` in `templates/index.html` now drops a buoy's secondary (component index 1) swell arrow unless it's meaningful: height >1.5 ft, or >1 ft when it's a long-period (>14 s) groundswell. Primary swell and the swell table are unaffected — this only declutters the map graphic, so a marginal 0.8 ft windswell partition no longer paints a second arrow next to every buoy.

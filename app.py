@@ -40,7 +40,7 @@ from buoy  import (fetch_buoy, fetch_buoy_history, fetch_buoy_historical_context
 import requests as _req_buoy
 from waves import fetch_wave_forecast, fetch_all_wave_forecasts
 from waves_cmems import fetch_all_cmems_wave_forecasts
-from wind  import (fetch_wind_grid, fetch_spot_wind,
+from wind  import (fetch_wind_grid, fetch_spot_wind, fetch_all_spot_winds,
                     fetch_wind_forecast_grid, fetch_spot_wind_forecasts,
                     fetch_region_wind_forecasts, estimate_model_run)
 from tide  import fetch_tide_predictions
@@ -70,6 +70,10 @@ def _rate_limited(bucket: str, ip: str, max_calls: int, window_sec: int) -> bool
     key = f"{bucket}:{ip}"
     now = time.monotonic()
     with _rate_lock:
+        # Prune dead keys so the dict doesn't grow one entry per unique IP forever.
+        if len(_rate_hits) > 512:
+            for k in [k for k, v in _rate_hits.items() if not v or now - v[-1] > 3600]:
+                del _rate_hits[k]
         hits = _rate_hits.get(key, [])
         hits = [t for t in hits if now - t < window_sec]
         if len(hits) >= max_calls:
@@ -140,9 +144,37 @@ def api_buoys():
 # blip, slow first cold fetch), we serve this stale copy instead of
 # returning {}, so the dashboard's outage modal only fires when we've
 # *never* had usable data — i.e. genuine upstream failure with no
-# history to fall back on. Lives in process memory; rebuilds on every
-# successful fetch including the cache-warmer's pre-fetches.
-_last_known_forecast: dict[str, dict] = {"EURO": {}, "GFS": {}}
+# history to fall back on. v1.9: persisted to disk so the fallback
+# also covers the first requests after a process restart.
+_LKG_PATH = Path(__file__).parent / ".cache" / "lkg_forecast.json"
+
+
+def _load_lkg() -> dict[str, dict]:
+    try:
+        with open(_LKG_PATH) as f:
+            d = _json.load(f)
+        return {"EURO": d.get("EURO") or {}, "GFS": d.get("GFS") or {}}
+    except Exception:
+        return {"EURO": {}, "GFS": {}}
+
+
+_last_known_forecast: dict[str, dict] = _load_lkg()
+
+
+def _stash_lkg(model: str, fresh: dict) -> None:
+    # `fresh` is the TTL-cached object, so identity comparison suffices to
+    # skip redundant disk writes on every request within a cache window.
+    if fresh is _last_known_forecast.get(model):
+        return
+    _last_known_forecast[model] = fresh
+    try:
+        _LKG_PATH.parent.mkdir(exist_ok=True)
+        tmp = str(_LKG_PATH) + ".tmp"
+        with open(tmp, "w") as f:
+            _json.dump(_last_known_forecast, f, separators=(',', ':'))
+        os.replace(tmp, _LKG_PATH)
+    except Exception as e:
+        print(f"[lkg] persist failed: {type(e).__name__}: {e}")
 
 
 def _is_populated(d: dict | None) -> bool:
@@ -150,6 +182,16 @@ def _is_populated(d: dict | None) -> bool:
     if not d:
         return False
     return any(v is not None for v in d.values())
+
+
+def _with_status(payload: dict) -> dict:
+    """Attach `_status: "partial"` when some (but not all) spots are null,
+    so the frontend can badge degraded data instead of silently gapping.
+    Returns a copy — never mutates the TTL-cached object."""
+    vals = [v for k, v in payload.items() if not k.startswith("_")]
+    if vals and any(v is None for v in vals) and any(v is not None for v in vals):
+        return {**payload, "_status": "partial"}
+    return payload
 
 
 @app.route("/api/forecast/<model_key>")
@@ -166,18 +208,20 @@ def api_forecast(model_key: str):
     """
     key = model_key.upper()
     if key in ("EURO", "C-EURO"):
+        key = "EURO"
         fresh = fetch_all_cmems_wave_forecasts()
-        if _is_populated(fresh):
-            _last_known_forecast["EURO"] = fresh
-            return jsonify(fresh)
-        return jsonify(_last_known_forecast.get("EURO") or {})
-    if key == "GFS":
+    elif key == "GFS":
         fresh = fetch_all_wave_forecasts("GFS")
-        if _is_populated(fresh):
-            _last_known_forecast["GFS"] = fresh
-            return jsonify(fresh)
-        return jsonify(_last_known_forecast.get("GFS") or {})
-    return jsonify({"error": "unknown model"}), 400
+    else:
+        return jsonify({"error": "unknown model"}), 400
+
+    if _is_populated(fresh):
+        _stash_lkg(key, fresh)
+        return jsonify(_with_status(fresh))
+    stale = _last_known_forecast.get(key) or {}
+    if stale:
+        return jsonify({**stale, "_status": "stale"})
+    return jsonify({})
 
 
 @app.route("/api/wind")
@@ -185,22 +229,29 @@ def api_wind():
     model_key = request.args.get("model", "EURO").upper()
     if model_key not in ("EURO", "GFS"):
         model_key = "EURO"
-    # Fetch spot winds in parallel to avoid sequential 429 waits
-    spot_futures = {
-        _buoy_pool.submit(fetch_spot_wind, s["lat"], s["lon"]): s["name"]
-        for s in SPOTS
-    }
-    spot_winds = {}
-    for future in as_completed(spot_futures, timeout=15):
-        name = spot_futures[future]
+    # One batched request for all spots; fall back to parallel per-spot
+    # fetches (each independently cached) only if the batch fails.
+    spot_winds = fetch_all_spot_winds()
+    if spot_winds is None:
+        spot_futures = {
+            _buoy_pool.submit(fetch_spot_wind, s["lat"], s["lon"]): s["name"]
+            for s in SPOTS
+        }
+        spot_winds = {name: None for name in spot_futures.values()}
         try:
-            spot_winds[name] = future.result(timeout=12)
-        except Exception:
-            spot_winds[name] = None
-    return jsonify({
-        "grid":       fetch_wind_grid(model_key),
-        "spot_winds": spot_winds,
-    })
+            for future in as_completed(spot_futures, timeout=8):
+                name = spot_futures[future]
+                try:
+                    spot_winds[name] = future.result(timeout=5)
+                except Exception:
+                    spot_winds[name] = None
+        except TimeoutError:
+            pass   # serve whatever completed; missing spots stay None
+    grid = fetch_wind_grid(model_key)
+    payload = {"grid": grid, "spot_winds": spot_winds}
+    if grid is None or any(v is None for v in spot_winds.values()):
+        payload["_status"] = "partial"
+    return jsonify(payload)
 
 
 @app.route("/api/wind_forecast")
@@ -273,11 +324,12 @@ def api_sun():
     return jsonify(compute_sun_data(spot["lat"], spot["lon"]))
 
 
-@app.route("/api/config")
-def api_config():
+def _config_payload() -> dict:
+    """Single source for the config object served by /api/config and inlined
+    into index.html. Rebuilt per call so /tuner saves are picked up live."""
     import wind_rules  # lazy: keeps import cost off cold startup
     bands = swell_rules.load_bands()
-    return jsonify({
+    return {
         "spots": SPOTS,
         "swell_categories": [
             {
@@ -301,7 +353,12 @@ def api_config():
         "model_colors": MODEL_COLORS,
         "wind_spots":   WIND_SPOTS,
         "region_views": REGION_VIEWS,
-    })
+    }
+
+
+@app.route("/api/config")
+def api_config():
+    return jsonify(_config_payload())
 
 
 @app.route("/api/debug/spectral/<station_id>")
@@ -393,35 +450,8 @@ def api_buoy_historical_context():
 @app.route("/")
 def index():
     # Inline /api/config data into the HTML to save one round-trip on initial load.
-    import wind_rules
-    bands = swell_rules.load_bands()
-    config_data = {
-        "spots": SPOTS,
-        "swell_categories": [
-            {
-                "name":       cat,
-                "dark_bg":    swell_rules.COLORS[cat]["dark_bg"],
-                "dark_text":  swell_rules.COLORS[cat]["dark_text"],
-                "light_bg":   swell_rules.COLORS[cat]["light_bg"],
-                "light_text": swell_rules.COLORS[cat]["light_text"],
-            }
-            for cat in swell_rules.CATEGORIES
-        ],
-        "swell_bands": [
-            {"period_ub": b["period_ub"], "rules": b["rules"]}
-            for b in bands
-        ],
-        "wind_bands": [
-            {"min": b[0], "max": b[1], "bg": b[2], "text": b[3]}
-            for b in WIND_BANDS
-        ],
-        "wind_rating": wind_rules.load_config(),
-        "model_colors": MODEL_COLORS,
-        "wind_spots":   WIND_SPOTS,
-        "region_views": REGION_VIEWS,
-    }
     return render_template("index.html",
-                           inline_config=_json.dumps(config_data, separators=(',', ':')))
+                           inline_config=_json.dumps(_config_payload(), separators=(',', ':')))
 
 @app.route("/csc")
 def csc_page():
@@ -498,6 +528,14 @@ def _csc2_forecast_payload(buoy_id: str, scope: str) -> dict | None:
     except Exception as e:
         gfs_recs, gfs_err = [], f"{type(e).__name__}: {e}"
 
+    # predict_for_cycle inner-joins EURO ∩ GFS, so if either feed is empty the
+    # payload is guaranteed useless. Return None (skip_none → NOT cached) so
+    # the next request retries instead of pinning the failure for 30 min.
+    if not euro_recs or not gfs_recs:
+        print(f"[csc2] forecast {buoy_id}: euro={len(euro_recs)} gfs={len(gfs_recs)} "
+              f"rows (euro_err={euro_err}, gfs_err={gfs_err}) — not caching")
+        return None
+
     sel = selection_payload(scope).get("selected", [])
     by_model = []
     for s in sel:
@@ -545,7 +583,7 @@ def api_csc2_forecast():
         return jsonify({"error": f"unknown buoy {buoy_id}"}), 400
     payload = _csc2_forecast_payload(buoy_id, scope)
     if payload is None:
-        return jsonify({"error": "compute failed"}), 500
+        return jsonify({"error": "forecast inputs unavailable, retry later"}), 503
     return jsonify(payload)
 
 
@@ -715,35 +753,40 @@ def apple_touch_icon():
 
 
 # ─── Cache-Control headers for Cloudflare edge caching ──────────────────────
+# Policy table: (exact paths, path prefixes) → header. First match wins.
+# stale-while-revalidate: serve stale while refreshing in background.
+# stale-if-error: serve stale if origin errors (e.g. during Open-Meteo outages).
+# /api/buoys intentionally has NO stale-while-revalidate: SWR caused reloads
+# to serve stale buoy readings while a background revalidation ran, so the
+# *next* reload still saw stale data. Short max-age with no SWR → every
+# reload past the max-age window pulls fresh readings synchronously.
+_CACHE_POLICIES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
+    (("/api/config",), (),
+     "public, max-age=300, s-maxage=3600, stale-while-revalidate=7200, stale-if-error=86400"),
+    (("/api/sun",), (),
+     "public, max-age=3600, s-maxage=43200, stale-while-revalidate=43200"),
+    ((), ("/api/forecast/",),
+     "public, max-age=120, s-maxage=1800, stale-while-revalidate=7200, stale-if-error=14400"),
+    (("/api/wind", "/api/wind_forecast", "/api/region_wind"), (),
+     "public, max-age=120, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=7200"),
+    (("/api/buoys",), (),
+     "public, max-age=30, s-maxage=60, stale-if-error=1800"),
+    (("/api/tides",), (),
+     "public, max-age=300, s-maxage=7200, stale-while-revalidate=14400, stale-if-error=86400"),
+    (("/api/buoy_historical_context",), ("/api/buoy_history/",),
+     "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=14400"),
+]
+
+
 @app.after_request
 def _add_cache_headers(response):
-    """Add Cache-Control headers so Cloudflare caches API responses at the edge.
-    stale-while-revalidate: serve stale while refreshing in background.
-    stale-if-error: serve stale if origin errors (e.g. during Open-Meteo outages).
-    """
     if request.method != "GET" or response.status_code != 200:
         return response
     path = request.path
-
-    if path == "/api/config":
-        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=3600, stale-while-revalidate=7200, stale-if-error=86400"
-    elif path == "/api/sun":
-        response.headers["Cache-Control"] = "public, max-age=3600, s-maxage=43200, stale-while-revalidate=43200"
-    elif path.startswith("/api/forecast/"):
-        response.headers["Cache-Control"] = "public, max-age=120, s-maxage=1800, stale-while-revalidate=7200, stale-if-error=14400"
-    elif path in ("/api/wind", "/api/wind_forecast", "/api/region_wind"):
-        response.headers["Cache-Control"] = "public, max-age=120, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=7200"
-    elif path == "/api/buoys":
-        # No stale-while-revalidate: SWR caused reloads to serve stale buoy
-        # readings while a background revalidation ran, so the *next* reload
-        # still saw stale data. Short max-age with no SWR → every reload past
-        # the max-age window pulls fresh readings synchronously from origin.
-        response.headers["Cache-Control"] = "public, max-age=30, s-maxage=60, stale-if-error=1800"
-    elif path == "/api/tides":
-        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=7200, stale-while-revalidate=14400, stale-if-error=86400"
-    elif path.startswith("/api/buoy_history/") or path == "/api/buoy_historical_context":
-        response.headers["Cache-Control"] = "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=14400"
-
+    for exact, prefixes, header in _CACHE_POLICIES:
+        if path in exact or any(path.startswith(p) for p in prefixes):
+            response.headers["Cache-Control"] = header
+            break
     return response
 
 
@@ -814,8 +857,8 @@ def _warm_all_caches():
 
 def _cache_warmer_loop():
     """Background thread: warm caches on startup and then every WARM_INTERVAL seconds."""
-    # Initial warm on startup (wait a few seconds for Flask to be ready)
-    time.sleep(3)
+    # Initial warm on startup (brief yield so Waitress binds first)
+    time.sleep(0.5)
     print("[cache-warm] initial cache warm starting…")
     _warm_all_caches()
 

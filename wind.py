@@ -29,6 +29,11 @@ from config import (
 
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 
+# Grid point order is fixed (flat N→S row-major); precompute once.
+_GRID_POINTS = [(lat, lon) for lat in reversed(GRID_LATS) for lon in GRID_LONS]
+_GRID_LATS_STR = ",".join(str(p[0]) for p in _GRID_POINTS)
+_GRID_LONS_STR = ",".join(str(p[1]) for p in _GRID_POINTS)
+
 # Negative cache: when a request fails, don't retry for this many seconds.
 _NEGATIVE_CACHE_SEC = 1800  # 30 min cooldown after API failure (e.g. 429 rate limit)
 
@@ -184,14 +189,9 @@ def fetch_wind_grid(model_key: str = "EURO") -> dict | None:
         print(f"[wind_grid] skipping — negative cached (rate limit cooldown)")
         return None
 
-    model_id    = WIND_MODELS.get(model_key)
-    grid_points = [(lat, lon)
-                   for lat in reversed(GRID_LATS)
-                   for lon in GRID_LONS]
-    n_pts = len(grid_points)
-
-    lats_str = ",".join(str(p[0]) for p in grid_points)
-    lons_str = ",".join(str(p[1]) for p in grid_points)
+    model_id = WIND_MODELS.get(model_key)
+    n_pts = len(_GRID_POINTS)
+    lats_str, lons_str = _GRID_LATS_STR, _GRID_LONS_STR
 
     # Try 'current' mode first (fastest), fall back to hourly
     data = _single_query({
@@ -273,14 +273,9 @@ def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
         print(f"[wind_forecast] skipping — negative cached (rate limit cooldown)")
         return None
 
-    model_id    = WIND_MODELS.get(model_key)
-    grid_points = [(lat, lon)
-                   for lat in reversed(GRID_LATS)
-                   for lon in GRID_LONS]
-    n_pts = len(grid_points)
-
-    lats_str = ",".join(str(p[0]) for p in grid_points)
-    lons_str = ",".join(str(p[1]) for p in grid_points)
+    model_id = WIND_MODELS.get(model_key)
+    n_pts = len(_GRID_POINTS)
+    lats_str, lons_str = _GRID_LATS_STR, _GRID_LONS_STR
 
     print(f"[wind_forecast] fetching {n_pts} pts in 1 query…")
     data = _single_query({
@@ -333,6 +328,61 @@ def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
 
 
 # ─── Per-spot current wind ────────────────────────────────────────────────────
+
+def _current_to_spot_wind(cur: dict) -> dict:
+    spd  = cur.get("wind_speed_10m")
+    dirn = cur.get("wind_direction_10m")
+    gust = cur.get("wind_gusts_10m")
+    return {
+        "speed_ms":      spd,
+        "direction_deg": dirn,
+        "gust_ms":       gust,
+        "speed_kts":     ms_to_kts(spd),
+        "gust_kts":      ms_to_kts(gust),
+    }
+
+
+@ttl_cache(ttl_seconds=3600, skip_none=True)
+def fetch_all_spot_winds() -> dict | None:
+    """Current wind for ALL SPOTS in one multi-location call (1 request
+    instead of N). Returns {spot_name: spot_wind_dict} or None on failure;
+    callers fall back to per-spot fetch_spot_wind."""
+    params = {
+        "latitude":  ",".join(str(s["lat"]) for s in SPOTS),
+        "longitude": ",".join(str(s["lon"]) for s in SPOTS),
+        "current":   "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+        "wind_speed_unit": "ms",
+        "timezone":  TIMEZONE,
+    }
+    try:
+        record_api_calls("spot_wind_batch", len(SPOTS))
+        r = requests.get(FORECAST_API, params=params, timeout=15,
+                         headers={"User-Agent": "ColeSurfs/1.0"})
+        r.raise_for_status()
+        data = r.json()
+    except requests.exceptions.Timeout:
+        print("[spot_wind_batch] timeout")
+        return None
+    except requests.exceptions.HTTPError as e:
+        code = e.response.status_code if e.response is not None else "?"
+        print(f"[spot_wind_batch] HTTP {code}")
+        return None
+    except Exception as e:
+        print(f"[spot_wind_batch] {type(e).__name__}: {e}")
+        return None
+
+    if isinstance(data, dict):
+        data = [data]
+    if not data or not isinstance(data, list) or data[0].get("error"):
+        return None
+
+    result = {}
+    for i, spot in enumerate(SPOTS):
+        cur = data[i].get("current", {}) if i < len(data) else {}
+        result[spot["name"]] = _current_to_spot_wind(cur) if cur else None
+    return result if any(v is not None for v in result.values()) else None
+
+
 @ttl_cache(ttl_seconds=3600, skip_none=True)
 def fetch_spot_wind(lat: float, lon: float) -> dict | None:
     params = {
@@ -347,19 +397,13 @@ def fetch_spot_wind(lat: float, lon: float) -> dict | None:
                          headers={"User-Agent": "ColeSurfs/1.0"})
         r.raise_for_status()
         d = r.json()
-    except Exception:
+    except requests.exceptions.Timeout:
+        print(f"[spot_wind] ({lat},{lon}) timeout")
         return None
-    cur  = d.get("current", {})
-    spd  = cur.get("wind_speed_10m")
-    dirn = cur.get("wind_direction_10m")
-    gust = cur.get("wind_gusts_10m")
-    return {
-        "speed_ms":      spd,
-        "direction_deg": dirn,
-        "gust_ms":       gust,
-        "speed_kts":     ms_to_kts(spd),
-        "gust_kts":      ms_to_kts(gust),
-    }
+    except Exception as e:
+        print(f"[spot_wind] ({lat},{lon}) {type(e).__name__}: {e}")
+        return None
+    return _current_to_spot_wind(d.get("current", {}))
 
 
 # ─── Per-spot hourly wind forecast (for WIND table row) ───────────────────────

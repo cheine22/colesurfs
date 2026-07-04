@@ -117,6 +117,36 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
     #clock { font-size: 10px; color: var(--text2); letter-spacing: .05em; font-variant-numeric: tabular-nums; }
 
+    /* Data-freshness chip — hidden when everything is fresh */
+    .fresh-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 9px; letter-spacing: .08em; white-space: nowrap;
+      padding: 3px 9px; border-radius: 20px; border: 1px solid;
+      font-family: var(--font);
+    }
+    .fresh-chip[hidden] { display: none; }
+    .fresh-chip::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: none; }
+    .fresh-chip.updating { color: var(--accent); border-color: var(--accent); background: var(--accent-glow); }
+    .fresh-chip.updating::before { animation: pulse 1.2s ease-in-out infinite; }
+    .fresh-chip.partial { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, transparent); background: color-mix(in srgb, var(--amber) 8%, transparent); }
+    .fresh-chip.stale { color: var(--text2); border-color: var(--border2); background: var(--bg2); }
+
+    /* Skeleton loading cells (first visit, before any snapshot exists) */
+    td.sk-name {
+      font-size: 10px; color: var(--text1); padding: 10px 8px;
+      background: var(--bg2); border: 1px solid var(--border0);
+      width: 110px; white-space: nowrap;
+    }
+    td.sk-cell { height: 44px; min-width: 52px; background: var(--bg2); border: 1px solid var(--border0); position: relative; }
+    td.sk-cell div {
+      position: absolute; inset: 6px; border-radius: 4px;
+      background: linear-gradient(100deg, var(--bg3) 30%, var(--border1) 50%, var(--bg3) 70%);
+      background-size: 220% 100%;
+      animation: sk-shimmer 1.4s linear infinite;
+    }
+    td.sk-cell:nth-child(odd) div { animation-delay: .2s; }
+    @keyframes sk-shimmer { from { background-position: 180% 0; } to { background-position: -40% 0; } }
+
     /* ─── Controls ───────────────────────────────────────── */
     .controls-bar {
       position: sticky; top: 44px; z-index: 150;
@@ -518,7 +548,7 @@
     }
     .outage-modal-overlay.open { display: flex; }
     .outage-modal {
-      background: #1e1608; border: 1px solid #5a3e00;
+      background: var(--bg1); border: 1px solid var(--border2);
       border-radius: 12px; padding: 22px 20px 18px;
       min-width: 260px; max-width: 360px; width: 100%;
       display: flex; flex-direction: column; gap: 14px;
@@ -533,32 +563,32 @@
     }
     .outage-modal-close {
       position: absolute; top: 10px; right: 12px;
-      background: none; border: none; color: #8a7a3a;
+      background: none; border: none; color: var(--text2);
       font-size: 15px; cursor: pointer; padding: 2px 5px;
       line-height: 1; font-family: var(--font); transition: color .15s;
     }
-    .outage-modal-close:hover { color: #e8c84a; }
+    .outage-modal-close:hover { color: var(--text0); }
     .outage-modal-title {
       font-size: 13px; font-weight: 700; letter-spacing: .08em;
-      color: #e8c84a; display: flex; align-items: center; gap: 6px;
+      color: var(--amber); display: flex; align-items: center; gap: 6px;
     }
     .outage-modal-title .outage-icon { font-size: 1.3em; line-height: 1; }
     .outage-modal-body {
-      font-size: 11px; color: #c4a83a; line-height: 1.6;
+      font-size: 11px; color: var(--text1); line-height: 1.6;
     }
-    .outage-modal-body strong { color: #e8c84a; }
+    .outage-modal-body strong { color: var(--text0); }
     .outage-modal-link {
-      color: #e8c84a; text-decoration: underline;
+      color: var(--amber); text-decoration: underline;
     }
-    .outage-modal-link:hover { color: #fff; }
+    .outage-modal-link:hover { color: var(--text0); }
     .outage-modal-btn {
       padding: 7px 16px; border-radius: 6px;
-      border: 1px solid #5a3e00; background: #2a1e08;
-      color: #d4b83a; font-family: var(--font); font-size: 11px;
+      border: 1px solid var(--border2); background: var(--bg3);
+      color: var(--text0); font-family: var(--font); font-size: 11px;
       cursor: pointer; transition: border-color .15s, color .15s;
       letter-spacing: .04em; align-self: flex-start;
     }
-    .outage-modal-btn:hover { border-color: #e8c84a; color: #e8c84a; }
+    .outage-modal-btn:hover { border-color: var(--amber); color: var(--amber); }
 
     /* ─── Side-by-side mode ──────────────────────────────────── */
     body.sbs { overflow: hidden; }
@@ -642,6 +672,9 @@
 
       /* ── Hide desktop controls bar and footer ── */
       .controls-bar { display: none !important; }
+      /* Freshness chip: dot + one word only on phones */
+      .fresh-chip .fc-detail { display: none; }
+      .fresh-chip { font-size: 8px; padding: 2px 7px; }
       .app-footer   { display: none !important; }
 
       /* ── Header: ultra-compact ── */
@@ -1352,6 +1385,7 @@
 <div class="app-header">
   <span class="header-logo" onclick="openInfoModal()"><span class="wave-glyph">∿</span>colesurfs</span>
   <div class="header-right">
+    <span class="fresh-chip" id="fresh-chip" hidden><span id="fresh-chip-main"></span><span id="fresh-chip-detail" class="fc-detail"></span></span>
     <button class="header-about-btn" onclick="openAboutModal()">PREFERENCES</button>
     <!-- Mobile-only: stacked model-run-time + next-run-eta, mirrored from
          the bottom-bar #mob-run-tag / #mob-next-tag. Swap-in for
@@ -1500,7 +1534,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.8.3</span>
+    <span class="info-modal-version">v1.9.0</span>
   </div>
 </div>
 
@@ -1517,7 +1551,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.8.3</span>
+    <span class="about-version">v1.9.0</span>
   </div>
 </div>
 
@@ -1553,7 +1587,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.8.3</span>
+    <span class="footer-version">v1.9.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2258,6 +2292,56 @@ function syncByTime(timeStr) {
 
 // ═══ 7. DATA LOADING ════════════════════════════════════════
 
+// Instant paint: the last successful payload set is stashed in
+// sessionStorage so a reload renders the table immediately from the
+// previous data while the fresh fetches run in the background. Wind
+// grids are excluded (too large, and the animation degrades gracefully).
+const _SNAPSHOT_KEY = 'cs_snapshot_v1';
+const _SNAPSHOT_MAX_AGE_MS = 6 * 3600 * 1000;
+let _instantPainted = false;
+
+function _saveSnapshot() {
+  try {
+    sessionStorage[_SNAPSHOT_KEY] = JSON.stringify({
+      ts: Date.now(),
+      buoyData, forecastData, regionWindData, regionTideData, sunData,
+    });
+  } catch (_) { /* quota exceeded — next load just paints the normal way */ }
+}
+
+let _snapshotTs = null;
+
+function _restoreSnapshot() {
+  try {
+    const snap = JSON.parse(sessionStorage[_SNAPSHOT_KEY] || 'null');
+    if (!snap || Date.now() - snap.ts > _SNAPSHOT_MAX_AGE_MS) return false;
+    if (!snap.buoyData || !snap.forecastData ||
+        !Object.keys(snap.forecastData.EURO || {}).length) return false;
+    buoyData       = snap.buoyData;
+    forecastData   = snap.forecastData;
+    regionWindData = snap.regionWindData || {};
+    regionTideData = snap.regionTideData || {};
+    sunData        = snap.sunData || {};
+    _snapshotTs    = snap.ts;
+    return true;
+  } catch (_) { return false; }
+}
+
+// ── Data-freshness chip (header) ─────────────────────────────
+// States: 'updating' (instant-paint window), 'partial' (some upstreams
+// missing per backend _status), 'stale' (serving last-known-good).
+// Hidden entirely when data is fresh and complete.
+function _setFreshnessChip(state, mainText, detailText) {
+  const chip = document.getElementById('fresh-chip');
+  if (!chip) return;
+  if (!state) { chip.hidden = true; return; }
+  chip.className = 'fresh-chip ' + state;
+  document.getElementById('fresh-chip-main').textContent = mainText;
+  document.getElementById('fresh-chip-detail').textContent =
+    detailText ? ' · ' + detailText : '';
+  chip.hidden = false;
+}
+
 async function init() {
   // Use server-inlined config if available (saves one round-trip), else fetch
   CFG = window.__INLINE_CFG || await fetch('/api/config').then(r => r.json());
@@ -2273,6 +2357,17 @@ async function init() {
     // On mobile, the map container dimensions are set by CSS flex.
     // Leaflet needs a nudge to pick up the computed size.
     map.invalidateSize();
+  }
+  // Instant paint: render the previous session's table right away and let
+  // the fresh fetches below swap in new data when they land. Skipped when
+  // no snapshot exists (first visit) or it's older than 6 h.
+  if (_restoreSnapshot()) {
+    _instantPainted = true;
+    buildTable();
+    buildSwellArrows(null, 'buoy');
+    _loader.finish();
+    const ageMin = Math.max(1, Math.round((Date.now() - _snapshotTs) / 60000));
+    _setFreshnessChip('updating', 'UPDATING', `DATA FROM ${ageMin}M AGO`);
   }
   // Start the wind forecast fetch NOW (in parallel with loadAll) so it overlaps
   // with the buoy/wave/tide fetches.  This substantially reduces the window
@@ -2304,8 +2399,17 @@ function _fetchWithTimeout(url, ms) {
 }
 
 async function loadAll() {
-  document.getElementById('table-body').innerHTML =
-    '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2);font-size:11px">Loading…</td></tr>';
+  if (!_instantPainted) {
+    // First visit (no snapshot): render the table's real row structure as
+    // shimmering skeletons so the page shape doesn't jump when data lands.
+    const spots = (CFG && CFG.spots) || [];
+    document.getElementById('table-body').innerHTML = spots.length
+      ? spots.map(s =>
+          `<tr><td class="sk-name">${s.name}</td>` +
+          '<td class="sk-cell"><div></div></td>'.repeat(8) + '</tr>'
+        ).join('')
+      : '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2);font-size:11px">Loading…</td></tr>';
+  }
 
   // Wrap each fetch so we can report progress as each one resolves.
   const track = (promise, label) => promise.then(v => { _loader.step(label); return v; });
@@ -2393,6 +2497,23 @@ async function loadAll() {
 
   buildTable();
   buildSwellArrows(null, 'buoy');
+  _instantPainted = false;   // fresh data is now on screen
+  if (!euroEmpty && !gfsEmpty) _saveSnapshot();
+
+  // Freshness chip: stale beats partial; hidden when all fresh + complete.
+  // Partial covers both backend-tagged payloads (_status) and client-side
+  // fetch failures (the same conditions that fire the outage modal), so an
+  // indicator persists after the modal is dismissed.
+  const anyStale = [forecastData.EURO, forecastData.GFS]
+    .some(d => d && d._status === 'stale');
+  const anyPartial = [forecastData.EURO, forecastData.GFS]
+    .some(d => d && d._status === 'partial')
+    || (wind.status === 'fulfilled' && wind.value && wind.value._status === 'partial')
+    || hadTimeout || euroEmpty || gfsEmpty || windFailed
+    || spotWindsFailed || regionWindFailed || tidesFailed;
+  if (anyStale)        _setFreshnessChip('stale', 'STALE DATA', 'SHOWING LAST GOOD');
+  else if (anyPartial) _setFreshnessChip('partial', 'PARTIAL DATA', '');
+  else                 _setFreshnessChip(null);
 }
 
 async function loadWindForecast(model) {
@@ -2609,40 +2730,44 @@ function computeModelOverview(spotName) {
 
 // Render a historical cell from an observation record. Mirrors buildBuoyCell
 // styling minus the "NOW" treatment; ✓ overlay when model_agreement === true.
-function buildHistoricalCell(obs, cellTime) {
-  const dtAttr = cellTime ? ` data-time="${cellTime}"` : '';
-  const comps = obs.components && obs.components.length > 0 ? obs.components : null;
-  const primaryH = comps ? comps[0].height_ft : obs.wave_height_ft;
-  const primaryP = comps ? comps[0].period_s  : obs.wave_period_s;
-  if (primaryH == null) {
-    return `<td class="cell historical-cell historical-empty"${dtAttr} style="background:var(--bg2)"></td>`;
-  }
+// Shared observation-cell markup: component lines (height @ period +
+// arrow/cardinal), colored by swell category. Used by the buoy NOW cell
+// and the historical strip so the two can never drift apart visually.
+// Returns { inner, bg } or null when the record has no wave height.
+function _buildSwellInner(rec) {
+  const comps = rec.components && rec.components.length > 0 ? rec.components : null;
+  const primaryH = comps ? comps[0].height_ft : rec.wave_height_ft;
+  const primaryP = comps ? comps[0].period_s  : rec.wave_period_s;
+  if (primaryH == null) return null;
   const [bg, fg, catName] = swellColor(primaryH, primaryP);
   const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
   let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
-  if (comps) {
-    comps.forEach((c, ci) => {
-      const cls   = ['p1','p2','p3'][ci] || 'p3';
-      const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
-      const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
-      inner += `<div class="comp-line ${cls}">
-        <span class="c-ht">${c.height_ft}</span>
-        <span>&nbsp;@${c.period_s ?? '?'}</span>
-        <span>&nbsp;${arrow}${dir}</span>
-      </div>`;
-    });
-  } else {
-    const dir   = obs.wave_direction_deg != null ? toCard(obs.wave_direction_deg) : '?';
-    const arrow = obs.wave_direction_deg != null ? toArrow(obs.wave_direction_deg) : '';
-    inner += `<div class="comp-line p1">
-      <span class="c-ht">${primaryH}</span>
-      <span>&nbsp;@${primaryP ?? '?'}</span>
+  const lines = comps || [{
+    height_ft: rec.wave_height_ft, period_s: rec.wave_period_s,
+    direction_deg: rec.wave_direction_deg,
+  }];
+  lines.forEach((c, ci) => {
+    const cls   = ['p1','p2','p3'][ci] || 'p3';
+    const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
+    const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
+    inner += `<div class="comp-line ${cls}">
+      <span class="c-ht">${c.height_ft}</span>
+      <span>&nbsp;@${c.period_s ?? '?'}</span>
       <span>&nbsp;${arrow}${dir}</span>
     </div>`;
-  }
+  });
   inner += '</div>';
+  return { inner, bg };
+}
+
+function buildHistoricalCell(obs, cellTime) {
+  const dtAttr = cellTime ? ` data-time="${cellTime}"` : '';
+  const built = _buildSwellInner(obs);
+  if (!built) {
+    return `<td class="cell historical-cell historical-empty"${dtAttr} style="background:var(--bg2)"></td>`;
+  }
   const check = obs.model_agreement === true ? `<span class="hist-check">✓</span>` : '';
-  return `<td class="cell historical-cell"${dtAttr} style="background:${bg}">${inner}${check}</td>`;
+  return `<td class="cell historical-cell"${dtAttr} style="background:${built.bg}">${built.inner}${check}</td>`;
 }
 
 // Background-preload historical context for every buoy currently visible.
@@ -3078,34 +3203,8 @@ function buildBuoyCell(b, stationId, spotName) {
       </div>
     </td>`;
   }
-  const comps = b.components && b.components.length > 0 ? b.components : null;
-  const primaryHeight = comps ? comps[0].height_ft : b.wave_height_ft;
-  const primaryPeriod = comps ? comps[0].period_s  : b.wave_period_s;
-  const [bg, fg, catName] = swellColor(primaryHeight, primaryPeriod);
-  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
-  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
-  if (comps) {
-    comps.forEach((c, ci) => {
-      const cls   = ['p1','p2','p3'][ci] || 'p3';
-      const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
-      const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
-      inner += `<div class="comp-line ${cls}">
-        <span class="c-ht">${c.height_ft}</span>
-        <span>&nbsp;@${c.period_s ?? '?'}</span>
-        <span>&nbsp;${arrow}${dir}</span>
-      </div>`;
-    });
-  } else {
-    const dir   = b.wave_direction_deg != null ? toCard(b.wave_direction_deg) : '?';
-    const arrow = b.wave_direction_deg != null ? toArrow(b.wave_direction_deg) : '';
-    inner += `<div class="comp-line p1">
-      <span class="c-ht">${b.wave_height_ft}</span>
-      <span>&nbsp;@${b.wave_period_s ?? '?'}</span>
-      <span>&nbsp;${arrow}${dir}</span>
-    </div>`;
-  }
-  inner += '</div>';
-  return `<td class="cell buoy-col buoy-now" style="background:${bg}${_cursor}"${_clickAttrs}>${inner}</td>`;
+  const built = _buildSwellInner(b);
+  return `<td class="cell buoy-col buoy-now" style="background:${built.bg}${_cursor}"${_clickAttrs}>${built.inner}</td>`;
 }
 
 function buildWaveCell(r, t, extraClass = '', spotName = null) {
@@ -4187,6 +4286,9 @@ function _scrollTableToTime(anchor) {
 }
 
 function setModel(model, btn) {
+  // Re-clicking the active model would trigger a full rebuild plus three
+  // fetches for data we already have.
+  if (model === activeModel && btn && btn.classList.contains('active')) return;
   activeModel = model;
   document.querySelectorAll('.sw-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
@@ -4638,8 +4740,20 @@ function _scrubSpeedFromDy(dy) {
 }
 
 /** Apply velocity-scaled scrub: finger's horizontal delta is scaled by speed,
- *  then added to the anchor percentage. */
+ *  then added to the anchor percentage. rAF-gated — each apply does table DOM
+ *  queries plus a wind-renderer sync, and touchmove outruns the display. */
+let _scrubPending = null;
 function _scrubApply(clientX, clientY) {
+  const first = _scrubPending === null;
+  _scrubPending = [clientX, clientY];
+  if (first) requestAnimationFrame(() => {
+    const [x, y] = _scrubPending;
+    _scrubPending = null;
+    _scrubApplyNow(x, y);
+  });
+}
+
+function _scrubApplyNow(clientX, clientY) {
   const wrap = document.getElementById('slider-track-wrap');
   if (!wrap) return;
   const rect = wrap.getBoundingClientRect();
@@ -4806,7 +4920,17 @@ function closeInfoModalOutside(e) {
 
 function setShowHistory(val) {
   const on = !!val;
+  const already = localStorage['cs_show_history'] === (on ? '1' : '0');
   localStorage['cs_show_history'] = on ? '1' : '0';
+  if (already && document.querySelector('#table-body td.cell')) {
+    // State unchanged and table already built — just re-sync the controls.
+    document.querySelectorAll('#desktop-history-switch .sw-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.hist === (on ? 'on' : 'off'));
+    });
+    const cbq = document.getElementById('pref-show-history');
+    if (cbq) cbq.checked = on;
+    return;
+  }
   // Sync desktop toolbar toggle
   document.querySelectorAll('#desktop-history-switch .sw-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.hist === (on ? 'on' : 'off'));
@@ -5551,7 +5675,20 @@ function _attachChartHover(canvas) {
     _updateBuoyInfoStrip(recs[best]);
   }
 
-  canvas.addEventListener('mousemove', e => _handleMove(e.clientX, e.clientY));
+  // rAF-gate the move handler: it redraws two canvases per event, and
+  // mousemove/touchmove can fire far faster than the display refreshes.
+  let _movePending = null;
+  function _queueMove(clientX, clientY) {
+    const first = _movePending === null;
+    _movePending = [clientX, clientY];
+    if (first) requestAnimationFrame(() => {
+      const [x, y] = _movePending;
+      _movePending = null;
+      _handleMove(x, y);
+    });
+  }
+
+  canvas.addEventListener('mousemove', e => _queueMove(e.clientX, e.clientY));
   canvas.addEventListener('mouseleave', () => {
     // Clear indicator line by redrawing top without it — leave labels as-is
     // so the last-hovered reading stays on screen.
@@ -5563,7 +5700,7 @@ function _attachChartHover(canvas) {
   canvas.addEventListener('touchmove', e => {
     e.preventDefault();
     const touch = e.touches[0];
-    _handleMove(touch.clientX, touch.clientY);
+    _queueMove(touch.clientX, touch.clientY);
   }, { passive: false });
 }
 

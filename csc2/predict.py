@@ -163,7 +163,16 @@ def _load_ml(model_dir: Path) -> dict:
     boosters = {}
     for f in sorted(model_dir.glob("booster_*.txt")):
         target = f.name[len("booster_"):-len(".txt")]
-        boosters[target] = lgb.Booster(model_file=str(f))
+        booster = lgb.Booster(model_file=str(f))
+        # Guard against silent feature misalignment: a booster saved with a
+        # different feature order would produce garbage, not an error.
+        bf = booster.feature_name()
+        if bf != feat_cols:
+            raise ValueError(
+                f"{model_dir.name}/{f.name}: booster features do not match "
+                f"feature_cols.json ({len(bf)} vs {len(feat_cols)} cols, "
+                f"first diff at {next((i for i, (a, b) in enumerate(zip(bf, feat_cols)) if a != b), 'length')})")
+        boosters[target] = booster
     return {"feature_cols": feat_cols, "models": boosters}
 
 
@@ -204,6 +213,7 @@ def predict_for_cycle(model_dir: Path, *, buoy_id: str,
     upstream raw values for downstream comparison."""
     if not euro_recs or not gfs_recs:
         return []
+    _warn_if_stale(Path(model_dir), cycle_utc)
     e = _records_to_frame(euro_recs, buoy_id, "EURO", cycle_utc)
     g = _records_to_frame(gfs_recs,  buoy_id, "GFS",  cycle_utc)
     if e.empty or g.empty:
@@ -248,3 +258,26 @@ def _f(x):
     if pd.isna(x):
         return None
     return float(x)
+
+
+_STALE_MODEL_DAYS = 120
+_stale_warned: set[str] = set()
+
+
+def _warn_if_stale(model_dir: Path, cycle_utc: str) -> None:
+    """Log (once per model per process) when a model's training date is far
+    behind the forecast cycle — a nudge that the drift watchdog / retrain
+    trigger should have fired."""
+    if model_dir.name in _stale_warned:
+        return
+    try:
+        meta = json.loads((model_dir / "meta.json").read_text())
+        trained = datetime.strptime(meta["trained_utc"], "%Y-%m-%dT%H:%M:%SZ")
+        cycle = datetime.strptime(cycle_utc, "%Y%m%dT%HZ")
+        age_days = (cycle - trained).days
+    except Exception:
+        return
+    if age_days > _STALE_MODEL_DAYS:
+        _stale_warned.add(model_dir.name)
+        print(f"[csc2.predict] {model_dir.name} trained {age_days}d before "
+              f"cycle {cycle_utc} — consider retraining")

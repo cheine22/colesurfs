@@ -56,6 +56,21 @@ assert abs(sum(SKILL_WEIGHTS.values()) - 1.0) < 1e-9
 # the threshold can still appear via the "most recent" slots.
 MIN_TEST_ROWS_FOR_BEST = 1000
 
+# A model must at least MATCH raw EURO on primary swell height (the single
+# most user-visible variable) to take the #1 slot. A high composite can
+# mask negative sw1-height skill because that component carries only 25%
+# weight — v4 ML did exactly this (composite +0.09, sw1_height −0.017).
+SW1_HEIGHT_SKILL_FLOOR = 0.0
+
+
+def sw1_height_skill(meta: dict) -> float | None:
+    """Per-variable skill for sw1_height_ft: 1 − model_MAE / euro_MAE."""
+    m = (_model_metric_block(meta).get("sw1_height_ft") or {}).get("mae")
+    r = (_ref_metric_block(meta).get("sw1_height_ft") or {}).get("mae")
+    if m is None or r is None or r <= 0:
+        return None
+    return 1.0 - (m / r)
+
 
 def _parse_yymmdd(name: str) -> str:
     """Pull the YYMMDD chunk from a model name (between two underscores)."""
@@ -204,6 +219,7 @@ def select_top3(models: Iterable[dict]) -> list[dict]:
         m for m in models
         if m.get("composite_skill") is not None
         and (m["meta"].get("n_test_rows") or 0) >= MIN_TEST_ROWS_FOR_BEST
+        and (sw1_height_skill(m["meta"]) or -1.0) >= SW1_HEIGHT_SKILL_FLOOR
     ]
     if not pool:
         # No scored models with adequate holdout — fall back to recency
@@ -234,6 +250,8 @@ def selection_payload(scope: str = "east") -> dict:
                 "coverage_frac":   m["coverage_frac"],
                 "composite_skill": (round(m["composite_skill"], 4)
                                     if m["composite_skill"] is not None else None),
+                "sw1_height_skill": (round(s, 4) if (s := sw1_height_skill(m["meta"])) is not None
+                                     else None),
                 "is_top_performer": (i == 0),
                 "metrics":         m["metrics"],
                 "n_train_rows":    m["meta"].get("n_train_rows"),

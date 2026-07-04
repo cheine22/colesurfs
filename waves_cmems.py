@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 from cache import ttl_cache, record_api_calls
 from config import FORECAST_DAYS, TIMEZONE, SPOTS, m_to_ft
+from wave_common import safe_float as _safe, build_swell_components, make_wave_record
 
 # copernicusmarine logs every subset at INFO plus a WARNING about "subset
 # exceeds coords" when we pad the window past the forecast tail. Silence
@@ -55,16 +56,6 @@ _CMEMS_TTL_SECONDS = 21600
 _TM01_TO_TP = 1.20
 
 _NY = ZoneInfo(TIMEZONE)
-
-
-def _safe(v):
-    if v is None:
-        return None
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return None if math.isnan(f) else f
 
 
 def _forecast_window_utc() -> tuple[datetime, datetime]:
@@ -132,33 +123,10 @@ def _build_components(sw_h, sw_p, sw_d,
     The combined-sea fallback that used to populate this list when all
     partitions were filtered was removed in v1.5 — we display swell only.
     """
-    raw = [
+    return build_swell_components([
         {"h_m": sw_h,  "p": sw_p,  "d": sw_d,  "type": "swell"},
         {"h_m": sw_h2, "p": sw_p2, "d": sw_d2, "type": "swell2"},
-    ]
-    comps = []
-    for c in raw:
-        h_m = _safe(c["h_m"])
-        p_tm01 = _safe(c["p"])
-        d = _safe(c["d"])
-        if not h_m or h_m <= 0.0:
-            continue
-        # Filter wind chop at Tm01 < 5.0 s → Tp < ~6.0 s.
-        if not p_tm01 or p_tm01 < 5.0:
-            continue
-        p_tp = p_tm01 * _TM01_TO_TP
-        h_ft = m_to_ft(h_m)
-        energy = round(h_ft ** 2 * p_tp, 1) if h_ft and p_tp else None
-        comps.append({
-            "height_ft": h_ft,
-            "period_s": round(p_tp, 1),
-            "direction_deg": d,
-            "energy": energy,
-            "type": c["type"],
-        })
-
-    comps.sort(key=lambda c: c["energy"] or 0, reverse=True)
-    return comps[:2]
+    ], period_scale=_TM01_TO_TP)
 
 
 def _rows_to_records(rows: list[dict]) -> list[dict]:
@@ -181,18 +149,10 @@ def _rows_to_records(rows: list[dict]) -> list[dict]:
                     raw_dir = v
                     break
 
-        records.append({
-            "time": time_str,
-            "wave_height_ft":     primary["height_ft"] if primary else None,
-            "wave_period_s":      primary["period_s"] if primary else None,
-            "wave_direction_deg": primary["direction_deg"] if primary else None,
-            "energy":             primary["energy"] if primary else None,
-            "components":         comps,
-            "raw_direction_deg":  raw_dir,
-            "combined_wave_height_m":      _safe(r.get("VHM0")),
-            "combined_wave_period_s":      _safe(r.get("VTPK")),
-            "combined_wave_direction_deg": _safe(r.get("VMDR")),
-        })
+        records.append(make_wave_record(
+            time_str, comps, primary, raw_dir,
+            _safe(r.get("VHM0")), _safe(r.get("VTPK")), _safe(r.get("VMDR")),
+        ))
     return records
 
 
@@ -281,13 +241,13 @@ def fetch_cmems_point(lat: float, lon: float) -> list | None:
     try:
         ds = _open_dataset(lat, lon)
     except Exception as e:
-        print(f"[cmems] open_dataset ({lat:.3f},{lon:.3f}): {e}")
+        print(f"[cmems] open_dataset ({lat:.3f},{lon:.3f}) {type(e).__name__}: {e}")
         return None
 
     try:
         raw = _extract_point_rows(ds, lat, lon)
     except Exception as e:
-        print(f"[cmems] extract ({lat:.3f},{lon:.3f}): {e}")
+        print(f"[cmems] extract ({lat:.3f},{lon:.3f}) {type(e).__name__}: {e}")
         return None
 
     if not raw:

@@ -112,6 +112,18 @@ def _per_cycle_valid_utcs(model: str, buoy_id: str) -> dict[str, set[str]]:
 # valid_utc sets keyed on (mtime_ns, size); only realtime/live-log shards
 # get re-read on each recompute. Keyed by path → self-evicting on change.
 _obs_shard_memo: dict[str, tuple[int, int, frozenset]] = {}
+_OBS_SHARD_MEMO_MAX = 2048
+
+
+def _prune_obs_shard_memo() -> None:
+    """Drop memo entries for deleted shards; hard-cap total size so a
+    long-running server process can't grow this without bound."""
+    if len(_obs_shard_memo) <= _OBS_SHARD_MEMO_MAX:
+        return
+    for path in [p for p in _obs_shard_memo if not Path(p).exists()]:
+        del _obs_shard_memo[path]
+    while len(_obs_shard_memo) > _OBS_SHARD_MEMO_MAX:
+        _obs_shard_memo.pop(next(iter(_obs_shard_memo)))
 
 
 def _obs_valid_utcs(buoy_id: str) -> set[str]:
@@ -138,7 +150,12 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
         except Exception:
             return None
         need = ["hs_m", "tp_s", "dp_deg", "partition", "valid_utc"]
-        if not all(c in names for c in need):
+        missing = [c for c in need if c not in names]
+        if missing:
+            # Loud, not silent: a shard failing the schema check means a
+            # backfill wrote drifted columns and its data is being excluded.
+            print(f"[archive_status] SCHEMA DRIFT {shard}: missing {missing} "
+                  f"(has {sorted(names)}) — shard excluded from coverage")
             return None
         return need
 
@@ -173,6 +190,7 @@ def _obs_valid_utcs(buoy_id: str) -> set[str]:
             vals = frozenset(snapped.dt.strftime("%Y-%m-%dT%H:%M:%SZ"))
             _obs_shard_memo[str(shard)] = (st.st_mtime_ns, st.st_size, vals)
             acc |= vals
+    _prune_obs_shard_memo()
     return acc
 
 

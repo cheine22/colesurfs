@@ -13,9 +13,9 @@ v1.5: Open-Meteo EURO is now surfaced as "OM-EURO"; CMEMS-backed "C-EURO"
       lives in waves_cmems.py and the /api/forecast/C-EURO route.
 """
 import requests
-import math
 from cache import ttl_cache, record_api_calls
 from config import FORECAST_DAYS, TIMEZONE, MODELS, SPOTS, m_to_ft
+from wave_common import safe_float as _safe, build_swell_components, make_wave_record
 
 MARINE_API = "https://marine-api.open-meteo.com/v1/marine"
 
@@ -41,16 +41,6 @@ _WAVE_VARS_BASE = [
 ]
 
 
-def _safe(v):
-    if v is None:
-        return None
-    try:
-        f = float(v)
-        return None if math.isnan(f) else f
-    except (TypeError, ValueError):
-        return None
-
-
 def _build_components(sw_h,  sw_p,  sw_d,
                        sw_h2, sw_p2, sw_d2,
                        sw_h3, sw_p3, sw_d3,
@@ -65,34 +55,11 @@ def _build_components(sw_h,  sw_p,  sw_d,
     `wh`, `wp`, `wd` kept in the signature for parse-site compatibility but
     no longer consulted.
     """
-    raw = [
+    return build_swell_components([
         {"h_m": sw_h,  "p": sw_p,  "d": sw_d,  "type": "swell"},
         {"h_m": sw_h2, "p": sw_p2, "d": sw_d2, "type": "swell2"},
         {"h_m": sw_h3, "p": sw_p3, "d": sw_d3, "type": "swell3"},
-    ]
-    comps = []
-    for c in raw:
-        h_m = _safe(c["h_m"])
-        p   = _safe(c["p"])
-        d   = _safe(c["d"])
-        if not h_m or h_m <= 0.0:
-            continue
-        # Filter pure wind chop. 5.0 s targets real swell at Tp ~ 6 s;
-        # anything shorter is effectively sea, not swell.
-        if not p or p < 5.0:
-            continue
-        h_ft   = m_to_ft(h_m)
-        energy = round(h_ft ** 2 * p, 1) if (h_ft and p) else None
-        comps.append({
-            "height_ft":     h_ft,
-            "period_s":      round(p, 1) if p else None,
-            "direction_deg": d,
-            "energy":        energy,
-            "type":          c["type"],
-        })
-
-    comps.sort(key=lambda c: c["energy"] or 0, reverse=True)
-    return comps[:2]
+    ])
 
 
 def _parse_response(data) -> list:
@@ -155,19 +122,10 @@ def _parse_response(data) -> list:
                     raw_dir = _rd
                     break
 
-        records.append({
-            "time":               times[i],
-            "wave_height_ft":     primary["height_ft"]     if primary else None,
-            "wave_period_s":      primary["period_s"]      if primary else None,
-            "wave_direction_deg": primary["direction_deg"] if primary else None,
-            "energy":             primary["energy"]        if primary else None,
-            "components":         comps,
-            "raw_direction_deg":  raw_dir,
-            # Combined (total) wave values — used by csc.predict, not the main UI.
-            "combined_wave_height_m":  wh[i],
-            "combined_wave_period_s":  wp_peak[i] or wp[i],
-            "combined_wave_direction_deg": wd[i],
-        })
+        records.append(make_wave_record(
+            times[i], comps, primary, raw_dir,
+            wh[i], wp_peak[i] or wp[i], wd[i],
+        ))
     return records
 
 

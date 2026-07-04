@@ -291,13 +291,46 @@ def make_target_columns(df: pd.DataFrame) -> pd.DataFrame:
 # Baseline: per-(buoy × lead_hour × variable) additive bias
 # ---------------------------------------------------------------------------
 
-def fit_baseline(train: pd.DataFrame) -> dict:
+def _smooth_lead_bias(gb_mean: pd.Series, gb_count: pd.Series,
+                      half_width: int) -> dict:
+    """Count-weighted triangular smoothing of per-(buoy, lead) biases across
+    adjacent lead hours, within each buoy. A single outlier cycle at one
+    lead can no longer permanently poison that lead's bias — its neighbors
+    pull the estimate back toward the local mean.
+
+    half_width=0 returns the raw per-lead means (legacy v1–v4 behavior).
+    """
+    if half_width <= 0:
+        return gb_mean.to_dict()
+    weights = {k: half_width + 1 - abs(k) for k in range(-half_width, half_width + 1)}
+    out = {}
+    by_buoy: dict[str, dict[int, tuple[float, float]]] = {}
+    for (b, l), m in gb_mean.items():
+        by_buoy.setdefault(b, {})[int(l)] = (m, float(gb_count.get((b, l), 0)))
+    for b, leads in by_buoy.items():
+        for l in leads:
+            num = den = 0.0
+            for k, w in weights.items():
+                mc = leads.get(l + k)
+                if mc is None:
+                    continue
+                m, n = mc
+                num += w * n * m
+                den += w * n
+            out[(b, l)] = num / den if den > 0 else leads[l][0]
+    return out
+
+
+def fit_baseline(train: pd.DataFrame, lead_smoothing: int = 0) -> dict:
     """Bias table indexed by (buoy_id, lead_hours, variable).
 
     Predictions for scalar vars use the EURO/GFS arithmetic mean as the
     pre-correction floor; predictions for dp use the circular mean of EURO
     and GFS dp via sin/cos averaging. The stored bias is mean(obs - pred)
     for scalars, and the (sin_bias, cos_bias) pair for dp.
+
+    lead_smoothing > 0 applies count-weighted triangular smoothing across
+    ±lead_smoothing adjacent lead-hour bins (see _smooth_lead_bias).
     """
     bias: dict = {"scalar": {}, "dp": {}}
     # Scalar vars
@@ -309,12 +342,13 @@ def fit_baseline(train: pd.DataFrame) -> dict:
             continue
         d = (train.loc[mask, target_col] - floor[mask])
         # Group by (buoy, lead) and compute mean residual.
-        gb = pd.DataFrame({
+        grouped = pd.DataFrame({
             "buoy_id": train.loc[mask, "buoy_id"].astype(str),
             "lead_hours": train.loc[mask, "lead_hours"].astype(int),
             "resid": d,
-        }).groupby(["buoy_id", "lead_hours"])["resid"].mean()
-        bias["scalar"][var] = gb.to_dict()
+        }).groupby(["buoy_id", "lead_hours"])["resid"]
+        bias["scalar"][var] = _smooth_lead_bias(
+            grouped.mean(), grouped.count(), lead_smoothing)
 
     # Direction (dp): bias on sin/cos of (obs - mean_pred).
     for sw in ("sw1", "sw2"):
@@ -339,8 +373,12 @@ def fit_baseline(train: pd.DataFrame) -> dict:
             "s_d": s_d,
             "c_d": c_d,
         })
-        gb = gb_df.groupby(["buoy_id", "lead_hours"]).agg({"s_d": "mean", "c_d": "mean"})
-        bias["dp"][sw] = {(b, int(l)): (float(s), float(c)) for (b, l), (s, c) in gb.iterrows()}
+        grouped = gb_df.groupby(["buoy_id", "lead_hours"])
+        counts = grouped["s_d"].count()
+        s_sm = _smooth_lead_bias(grouped["s_d"].mean(), counts, lead_smoothing)
+        c_sm = _smooth_lead_bias(grouped["c_d"].mean(), counts, lead_smoothing)
+        bias["dp"][sw] = {(b, int(l)): (float(s_sm[(b, l)]), float(c_sm[(b, l)]))
+                          for (b, l) in s_sm}
     return bias
 
 
@@ -576,6 +614,9 @@ def main() -> None:
     ap.add_argument("--no-baseline", action="store_true")
     ap.add_argument("--no-ml", action="store_true")
     ap.add_argument("--holdout-frac", default=0.15, type=float)
+    ap.add_argument("--lead-smoothing", default=2, type=int,
+                    help="Baseline: half-width of count-weighted lead-hour bias "
+                         "smoothing window (0 = legacy per-lead bins, v1-v4)")
     args = ap.parse_args()
 
     date_str = args.date or _format_today_yymmdd()
@@ -608,8 +649,22 @@ def main() -> None:
     hold_cycles = set(cycles[-n_hold:])
     test = df[df["cycle_utc"].isin(hold_cycles)].copy()
     train = df[~df["cycle_utc"].isin(hold_cycles)].copy()
-    print(f"[split] train: {len(train):,} rows ({len(cycles)-n_hold} cycles); "
-          f"test: {len(test):,} rows ({n_hold} cycles)")
+
+    # Guard the time-series split: lexicographic cycle order must equal
+    # chronological order (holds for the fixed YYYYMMDDTHHZ format; this
+    # assertion catches any future format drift that would leak test-period
+    # cycles into training).
+    def _cycle_ts(c: str) -> datetime:
+        return datetime.strptime(str(c), "%Y%m%dT%HZ").replace(tzinfo=timezone.utc)
+    train_max = max(_cycle_ts(c) for c in cycles[:-n_hold])
+    test_min = min(_cycle_ts(c) for c in hold_cycles)
+    assert train_max < test_min, (
+        f"time-split violated: latest train cycle {train_max} >= "
+        f"earliest test cycle {test_min}")
+
+    print(f"[split] train: {len(train):,} rows ({len(cycles)-n_hold} cycles, "
+          f"through {train_max:%Y-%m-%d %HZ}); "
+          f"test: {len(test):,} rows ({n_hold} cycles, from {test_min:%Y-%m-%d %HZ})")
 
     metrics = {}
     metrics["raw_EURO"] = metric_set(test, raw_predictions(test, "euro"), "raw_EURO")
@@ -618,9 +673,25 @@ def main() -> None:
     out_root = CSC2_MODELS_DIR / args.scope
     out_root.mkdir(parents=True, exist_ok=True)
 
+    # Per-target training-row counts — documents the inclusion rule (each
+    # target is fit only on rows where its own obs is non-null; rows enter
+    # the paired set when either sw1 or sw2 obs exists).
+    target_n = {
+        var: int(train[f"obs_{var}"].notna().sum())
+        for var in ("sw1_height_ft", "sw1_period_s", "sw1_direction_deg",
+                    "sw2_height_ft", "sw2_period_s", "sw2_direction_deg")
+    }
+    print(f"[load] per-target train rows: {target_n}")
+    _common_meta = {
+        "target_inclusion": ("row kept if sw1 OR sw2 obs present; each target "
+                             "fit only on rows where its own obs is non-null"),
+        "n_train_rows_by_target": target_n,
+    }
+
     if not args.no_baseline:
-        print("[fit] baseline (per-cell additive bias)…")
-        bias = fit_baseline(train)
+        print(f"[fit] baseline (per-cell additive bias, "
+              f"lead_smoothing=±{args.lead_smoothing}h)…")
+        bias = fit_baseline(train, lead_smoothing=args.lead_smoothing)
         pred = predict_baseline(test, bias)
         metrics["baseline"] = metric_set(test, pred, "baseline")
         name = f"CSC2+baseline_{date_str}_{cov_str}_{args.version}"
@@ -653,6 +724,8 @@ def main() -> None:
                 raw["gfs_sw1_source"].value_counts().to_dict()
                 if "gfs_sw1_source" in raw.columns else {}
             ),
+            "lead_smoothing": args.lead_smoothing,
+            **_common_meta,
             "metrics": {k: v for k, v in metrics.items() if k in ("raw_EURO", "raw_GFS", "baseline")},
         }
         (outdir / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -688,6 +761,7 @@ def main() -> None:
                 "learning_rate": 0.05, "num_leaves": 63, "num_boost_round": 400,
                 "feature_fraction": 0.9, "bagging_fraction": 0.9, "bagging_freq": 5,
             },
+            **_common_meta,
             "metrics": {k: v for k, v in metrics.items() if k in ("raw_EURO", "raw_GFS", "ml")},
         }
         (outdir / "meta.json").write_text(json.dumps(meta, indent=2))
