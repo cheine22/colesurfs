@@ -1,4 +1,4 @@
-# colesurfs · v1.9.0
+# colesurfs · v1.9.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -189,6 +189,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.9.1
+- **Tide outages effectively eliminated.** Tide predictions are deterministic harmonics, so `tide.py` now pulls a ~4-month window per station (31 days back, 62–92 days forward, anchored to the calendar month) and caches it for 45 days with disk write-through; display requests slice + annotate from that cache with zero CO-OPS traffic. Fallback chain on a failed month-rollover fetch: previous month's cached window → in-process last-known-good (which also survives `POST /api/refresh`'s cache wipe). CO-OPS would need to be unreachable for weeks before a tide cell could go blank.
 
 ### v1.9.0
 - **Instant paint on reload.** The frontend stashes the last successful payload set (buoys, both forecasts, region wind, tides, sun) in `sessionStorage` (≤6 h) and renders the full table immediately on reload, skipping the loading screen while fresh fetches run in the background. A header **freshness chip** shows `UPDATING · DATA FROM Xm AGO` during the window, `PARTIAL DATA` when some upstreams are missing (per new backend `_status` metadata), or `STALE DATA` when serving last-known-good; hidden when everything is fresh.

@@ -23,17 +23,77 @@ from config import WIND_SPOTS, FORECAST_DAYS
 
 NOAA_TIDES_URL = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 
+# Tide predictions are deterministic harmonics — CO-OPS serves any window
+# and the values never change. So the raw fetch pulls a ~4-month window
+# anchored to the calendar month (31 days back, 62–92 days forward
+# depending on day-of-month) and caches it for 45 days with disk
+# write-through. The month anchor keeps the cache key stable, so within a
+# month every request slices from cache with zero CO-OPS traffic; at
+# rollover one fetch renews the window, and if CO-OPS is down that day
+# the previous month's still-valid cache keeps serving. A tide outage now
+# requires CO-OPS to be unreachable for weeks, not minutes.
+_WINDOW_TTL_SEC = 45 * 86400
+
+
+def _window_bounds(today: datetime) -> tuple[str, str]:
+    anchor = today.replace(day=1)
+    begin = anchor - timedelta(days=31)
+    end = anchor + timedelta(days=93)
+    return begin.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+
+@ttl_cache(ttl_seconds=_WINDOW_TTL_SEC, skip_none=True)
+def _fetch_station_window(station_id: str, begin_date: str,
+                          end_date: str) -> tuple[list, list] | None:
+    """Raw (hourly, hilo) predictions for one station over the wide window.
+    None (not cached) when the hourly series is missing so the next call
+    retries; a hilo miss alone is tolerated."""
+    hourly, hilo = _fetch_station(station_id, begin_date, end_date)
+    if not hourly:
+        return None
+    return (hourly, hilo)
+
+
+# Last-known-good per station, in process memory — survives POST
+# /api/refresh's clear_all() so a manual cache wipe during a CO-OPS
+# outage can't blank the tide strip.
+_window_lkg: dict[str, tuple[list, list]] = {}
+
+
+def _station_window_with_fallback(station_id: str, today: datetime) -> tuple[list, list]:
+    begin, end = _window_bounds(today)
+    data = _fetch_station_window(station_id, begin, end)
+    if data is None:
+        # Current month's fetch failed — the previous month's window is
+        # usually still on disk and covers today+~31d.
+        prev_begin, prev_end = _window_bounds(today.replace(day=1) - timedelta(days=1))
+        data = _fetch_station_window(station_id, prev_begin, prev_end)
+    if data is None:
+        data = _window_lkg.get(station_id)
+    if data is None:
+        return ([], [])
+    _window_lkg[station_id] = data
+    return data
+
+
+def _slice_window(records: list, begin_date: str, end_date: str) -> list:
+    """Keep records whose 'YYYY-MM-DD …' date falls within [begin, end]."""
+    lo = f"{begin_date[:4]}-{begin_date[4:6]}-{begin_date[6:]}"
+    hi = f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:]}"
+    return [p for p in records if lo <= p.get("t", "")[:10] <= hi]
+
 
 @ttl_cache(ttl_seconds=3600)
 def fetch_tide_predictions(past_days: int = 0) -> dict:
     """
-    Fetch hourly + hilo tide predictions for all unique tide_station IDs in WIND_SPOTS.
-    Returns per-spot annotated data with Surfline-matched time corrections applied.
+    Hourly + hilo tide predictions for all unique tide_station IDs in
+    WIND_SPOTS, annotated per spot with Surfline-matched time corrections.
 
-    `past_days` (0..30) extends the begin_date backwards so the dashboard's
-    historical-data toggle can populate tide cells in the -240 h strip. Since
-    tides are harmonic predictions (not observations), NOAA serves them for
-    any date window — past or future — with the same reliability.
+    `past_days` (0..30) extends the display window backwards for the
+    dashboard's historical-data toggle. The underlying station data comes
+    from the wide month-anchored window cache (see _fetch_station_window),
+    so this function does no CO-OPS I/O on a warm cache — it just slices
+    and annotates.
 
     Returns:
       { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, pct, hilo_time?, hilo_type?} } }
@@ -48,16 +108,16 @@ def fetch_tide_predictions(past_days: int = 0) -> dict:
     begin_dt = (today - timedelta(days=past_days)).strftime("%Y%m%d")
     end_dt   = (today + timedelta(days=FORECAST_DAYS - 1)).strftime("%Y%m%d")
 
-    # Fetch raw data once per unique station, in parallel — each station is
-    # two independent NOAA requests and there are 10+ stations.
+    # Wide-window data once per unique station, in parallel (network only
+    # on a cold or rolled-over cache).
     station_ids = list({ws["tide_station"] for ws in WIND_SPOTS if ws.get("tide_station")})
     hourly_by_station: dict[str, list] = {}
     hilo_by_station:   dict[str, list] = {}
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(station_ids)))) as pool:
-        results = pool.map(lambda s: _fetch_station(s, begin_dt, end_dt), station_ids)
+        results = pool.map(lambda s: _station_window_with_fallback(s, today), station_ids)
         for sid, (h, hl) in zip(station_ids, results):
-            hourly_by_station[sid] = h
-            hilo_by_station[sid]   = hl
+            hourly_by_station[sid] = _slice_window(h, begin_dt, end_dt)
+            hilo_by_station[sid]   = _slice_window(hl, begin_dt, end_dt)
 
     # Annotate per spot with that spot's own time offsets
     result: dict[str, dict] = {}
