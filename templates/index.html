@@ -48,7 +48,7 @@
       --font:       'JetBrains Mono', 'Fira Code', monospace;
       /* ── Theme-specific ─── */
       --map-bg:     #090910;
-      --cell-border:#ffffff0a;
+      --cell-border:#ffffff07;
     }
 
     /* ── Light mode — Obsidian-inspired clean palette ── */
@@ -68,7 +68,7 @@
         --green-dim:  #ddf4e2;
         --accent-glow:#7c6af718;
         --map-bg:     #e8eaef;
-        --cell-border:#00000012;
+        --cell-border:#00000009;
       }
     }
     /* ── Light mode — forced via toggle ── */
@@ -87,7 +87,7 @@
       --green-dim:  #ddf4e2;
       --accent-glow:#7c6af718;
       --map-bg:     #e8eaef;
-      --cell-border:#00000012;
+      --cell-border:#00000009;
     }
 
     html, body {
@@ -251,7 +251,7 @@
     /* ─── Table ───────────────────────────────────────────── */
     .table-scroll { width: 100%; overflow-x: auto;
       scrollbar-width: thin; scrollbar-color: var(--border2) var(--bg0);
-      border-radius: 8px; border: 1px solid var(--border1); }
+      border-radius: 4px; border: 1px solid var(--border1); }
     .table-scroll::-webkit-scrollbar,
     body.sbs .table-section::-webkit-scrollbar { width: 5px; height: 5px; }
     .table-scroll::-webkit-scrollbar-track,
@@ -285,7 +285,7 @@
       padding: 4px 6px; background: var(--bg1);
       color: var(--text2); font-size: 8.5px; font-weight: 700;
       letter-spacing: .1em; text-transform: uppercase;
-      border-bottom: 2px solid var(--border1); border-right: 1px solid var(--border0);
+      border-bottom: 1px solid var(--border1);
       position: sticky; top: 0; z-index: 20;
     }
     th.th-spot { position: sticky; left: 0; top: 0; z-index: 40; min-width: 120px; background: var(--bg1); }
@@ -308,16 +308,21 @@
       position: sticky; left: 0; z-index: 5; background: var(--bg1);
       min-width: 120px; padding: 0 8px;
       font-size: 10px; font-weight: 600; color: var(--text0);
-      border-right: 1px solid var(--border0); border-bottom: 1px solid var(--border0);
+      border-right: 1px solid var(--border1); border-bottom: 1px solid var(--border0);
       vertical-align: middle; line-height: 1.25;
     }
     tr:hover td.spot-cell { background: var(--bg2); }
 
+    /* v1.9.3 (B2): no per-hour vertical hairlines — hours fuse into color
+       runs; a single stronger rule at each midnight (.day-start) provides
+       day navigation instead. */
     td.cell {
       padding: 0; min-width: 66px; height: 46px;
-      border-right: 1px solid var(--cell-border);
       border-bottom: 1px solid var(--cell-border);
       vertical-align: top;
+    }
+    th.day-start, td.cell.day-start {
+      border-left: 1.5px solid var(--border2);
     }
     td.cell.buoy-col {
       border-left: 1px solid var(--border1); min-width: 80px;
@@ -1534,7 +1539,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.9.2</span>
+    <span class="info-modal-version">v1.9.3</span>
   </div>
 </div>
 
@@ -1551,7 +1556,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.9.2</span>
+    <span class="about-version">v1.9.3</span>
   </div>
 </div>
 
@@ -1587,7 +1592,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.9.2</span>
+    <span class="footer-version">v1.9.3</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2760,14 +2765,14 @@ function _buildSwellInner(rec) {
   return { inner, bg };
 }
 
-function buildHistoricalCell(obs, cellTime) {
+function buildHistoricalCell(obs, cellTime, extraCls = '') {
   const dtAttr = cellTime ? ` data-time="${cellTime}"` : '';
   const built = _buildSwellInner(obs);
   if (!built) {
-    return `<td class="cell historical-cell historical-empty"${dtAttr} style="background:var(--bg2)"></td>`;
+    return `<td class="cell historical-cell historical-empty${extraCls}"${dtAttr} style="background:var(--bg2)"></td>`;
   }
   const check = obs.model_agreement === true ? `<span class="hist-check">✓</span>` : '';
-  return `<td class="cell historical-cell"${dtAttr} style="background:${built.bg}">${built.inner}${check}</td>`;
+  return `<td class="cell historical-cell${extraCls}"${dtAttr} style="background:${built.bg}">${built.inner}${check}</td>`;
 }
 
 // Background-preload historical context for every buoy currently visible.
@@ -2872,10 +2877,12 @@ function _buildHistoricalCellsHtml(stationId, resolutionHours) {
   if (localStorage['cs_show_history'] !== '1') return '';
   const data = historicalData[stationId];
   const times = _historicalTimes(resolutionHours);
+  const dayStarts = _dayStartSet(times);
+  const dayCls = t => dayStarts.has(t) ? ' day-start' : '';
   if (!data || !data.records || !data.records.length) {
     // Render empty placeholders so column count matches row-to-row.
     return times.map(t =>
-      `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`
+      `<td class="cell historical-cell historical-empty${dayCls(t)}" data-time="${t}" style="background:var(--bg2)"></td>`
     ).join('');
   }
   // Pre-index records by epoch ms. Skip rows that have no usable wave data —
@@ -2903,8 +2910,8 @@ function _buildHistoricalCellsHtml(stationId, resolutionHours) {
       if (diff < bestDiff) { bestDiff = diff; best = recsMs[mid].rec; }
       if (recsMs[mid].ms < tMs) lo = mid + 1; else hi = mid - 1;
     }
-    if (best && bestDiff <= tolMs) html += buildHistoricalCell(best, t);
-    else html += `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`;
+    if (best && bestDiff <= tolMs) html += buildHistoricalCell(best, t, dayCls(t));
+    else html += `<td class="cell historical-cell historical-empty${dayCls(t)}" data-time="${t}" style="background:var(--bg2)"></td>`;
   }
   return html;
 }
@@ -2913,8 +2920,9 @@ function _buildHistoricalCellsHtml(stationId, resolutionHours) {
 function _blankHistoricalCellsHtml(resolutionHours) {
   if (localStorage['cs_show_history'] !== '1') return '';
   const times = _historicalTimes(resolutionHours);
+  const dayStarts = _dayStartSet(times);
   return times.map(t =>
-    `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`
+    `<td class="cell historical-cell historical-empty${dayStarts.has(t) ? ' day-start' : ''}" data-time="${t}" style="background:var(--bg2)"></td>`
   ).join('');
 }
 
@@ -2927,11 +2935,13 @@ function _blankHistoricalCellsHtml(resolutionHours) {
 function _buildHistoricalWindCellsHtml(spotName, resolutionHours, shoreNormal) {
   if (localStorage['cs_show_history'] !== '1') return '';
   const times = _historicalTimes(resolutionHours);
+  const dayStarts = _dayStartSet(times);
+  const dayCls = t => dayStarts.has(t) ? ' day-start' : '';
   const records = regionWindData[spotName] || [];
   const stationTides = regionTideData[spotName] || {};
   if (!records.length) {
     return times.map(t =>
-      `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`
+      `<td class="cell historical-cell historical-empty${dayCls(t)}" data-time="${t}" style="background:var(--bg2)"></td>`
     ).join('');
   }
   const byTime = {};
@@ -2940,11 +2950,11 @@ function _buildHistoricalWindCellsHtml(spotName, resolutionHours, shoreNormal) {
   for (const t of times) {
     const r = byTime[t];
     if (!r) {
-      html += `<td class="cell historical-cell historical-empty" data-time="${t}" style="background:var(--bg2)"></td>`;
+      html += `<td class="cell historical-cell historical-empty${dayCls(t)}" data-time="${t}" style="background:var(--bg2)"></td>`;
       continue;
     }
     const tide = _resolveTide(stationTides, t, resolutionHours);
-    html += buildWindCell(r, t, tide, shoreNormal, 'historical-cell');
+    html += buildWindCell(r, t, tide, shoreNormal, 'historical-cell' + dayCls(t));
   }
   return html;
 }
@@ -2962,6 +2972,25 @@ function _regionWindUrl(model) {
 function _tidesUrl() {
   const past = localStorage['cs_show_history'] === '1' ? 10 : 0;
   return past ? `/api/tides?past_days=${past}` : '/api/tides';
+}
+
+// v1.9.3 (B2): forecast columns are aligned to local midnight, so a
+// column starting a new day is exactly the T00:00 one.
+function _dayStartCls(t) {
+  return t && t.slice(11, 16) === '00:00' ? ' day-start' : '';
+}
+
+// Historical columns anchor to the current hour (not midnight), so day
+// starts there are date-change boundaries, not exact T00:00 stamps.
+function _dayStartSet(times) {
+  const set = new Set();
+  let prev = '';
+  for (const t of times) {
+    const d = t.slice(0, 10);
+    if (prev && d !== prev) set.add(t);
+    prev = d;
+  }
+  return set;
 }
 
 function buildTable() {
@@ -3005,6 +3034,7 @@ function buildTable() {
   const histCount = historyOn ? Math.floor(240 / resolution) : 0;
   const moDividerCls = historyOn ? ' model-overview-with-history-divider' : '';
   const histTimes = historyOn ? _historicalTimes(resolution) : [];
+  const histDayStarts = _dayStartSet(histTimes);
   let hrow = `<tr>
     <th class="th-spot">SPOT</th>`;
   // Historical headers — same date/time format as forecast columns, with
@@ -3012,17 +3042,17 @@ function buildTable() {
   histTimes.forEach(t => {
     const night = isNightCol(t, resolution * 3600 * 1000);
     const moon  = night ? `<span class="night-moon">🌙</span>` : '';
-    hrow += `<th class="th-time th-historical${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+    hrow += `<th class="th-time th-historical${night ? ' night-col' : ''}${histDayStarts.has(t) ? ' day-start' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
   });
   hrow += `<th class="th-time th-model-overview">Fun+<br>Days</th>`;
   hrow += `<th class="th-buoy">BUOY NOW${buoyUpdateHtml(nyhBuoy)}</th>`;
   times.forEach(t => {
     if (emptyTimes.has(t)) {
-      hrow += `<th class="th-time col-empty">—</th>`;
+      hrow += `<th class="th-time col-empty${_dayStartCls(t)}">—</th>`;
     } else {
       const night = ovNightCols.has(t);
       const moon  = night ? `<span class="night-moon">🌙</span>` : '';
-      hrow += `<th class="th-time${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+      hrow += `<th class="th-time${night ? ' night-col' : ''}${_dayStartCls(t)}">${moon}${fmtHeaderHtml(t)}</th>`;
     }
   });
   hrow += '</tr>';
@@ -3096,19 +3126,20 @@ function buildRegionTable() {
   const histCount = historyOn ? Math.floor(240 / resolution) : 0;
   const moDividerCls = historyOn ? ' model-overview-with-history-divider' : '';
   const histTimes = historyOn ? _historicalTimes(resolution) : [];
+  const histDayStarts = _dayStartSet(histTimes);
   let hrow = `<tr>
     <th class="th-spot">SPOT</th>`;
   histTimes.forEach(t => {
     const night = isNightCol(t, resolution * 3600 * 1000);
     const moon  = night ? `<span class="night-moon">🌙</span>` : '';
-    hrow += `<th class="th-time th-historical${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+    hrow += `<th class="th-time th-historical${night ? ' night-col' : ''}${histDayStarts.has(t) ? ' day-start' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
   });
   hrow += `<th class="th-time th-model-overview">Fun+<br>Days</th>`;
   hrow += `<th class="th-buoy">BUOY NOW${buoyUpdateHtml(regionBuoy)}</th>`;
   times.forEach(t => {
     const night = nightCols.has(t);
     const moon  = night ? `<span class="night-moon">🌙</span>` : '';
-    hrow += `<th class="th-time${night ? ' night-col' : ''}">${moon}${fmtHeaderHtml(t)}</th>`;
+    hrow += `<th class="th-time${night ? ' night-col' : ''}${_dayStartCls(t)}">${moon}${fmtHeaderHtml(t)}</th>`;
   });
   hrow += '</tr>';
   document.getElementById('table-head').innerHTML = hrow;
@@ -3208,7 +3239,7 @@ function buildBuoyCell(b, stationId, spotName) {
 }
 
 function buildWaveCell(r, t, extraClass = '', spotName = null) {
-  const tdCls = 'cell' + (extraClass ? ' ' + extraClass : '');
+  const tdCls = 'cell' + (extraClass ? ' ' + extraClass : '') + _dayStartCls(t);
   if (!r || r.wave_height_ft == null) {
     const [flatBg, flatFg] = swellColor(0, 10);
     return `<td class="${tdCls}" data-time="${t}" style="background:${flatBg}">
@@ -3343,7 +3374,7 @@ function buildWindCell(r, t, tideRec, shoreNormal, extraClass = '') {
     ? windCondition(r.speed_mph, r.direction_deg, shoreNormal, r.gust_mph)
     : null;
   const cleanCls = (cond === 'Clean' || cond === 'Glassy' || cond === 'Groomed') ? ' wind-clean' : '';
-  const tdCls    = `cell wind-cell${cleanCls}${extraClass ? ' ' + extraClass : ''}`;
+  const tdCls    = `cell wind-cell${cleanCls}${extraClass ? ' ' + extraClass : ''}${_dayStartCls(t)}`;
   let tideHtml;
   if (tideRec == null) {
     tideHtml = `<div class="wind-line wind-tide tide-null">—</div>`;

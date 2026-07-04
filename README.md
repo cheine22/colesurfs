@@ -1,4 +1,4 @@
-# colesurfs · v1.9.2
+# colesurfs · v1.9.3
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -39,6 +39,10 @@ All data is fetched from free or free-tier public services:
 - **Open-Meteo Marine API** — live GFS-Wave partition forecasts for the dashboard and live logger (GFS stream only; EURO migrated off Open-Meteo in v1.5)
 - **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts
 - **NOAA CO-OPS** — harmonic tide predictions per spot with Surfline-calibrated time corrections
+
+How the live data flows from these sources to the dashboard (sun times are computed locally in `sun.py`; everything on this path is transient cache except the `.cache/` write-through and the last-known-good fallback — durable storage happens in the CSC2 pipeline):
+
+![Live data flow — sources → fetch modules → TTL cache → Flask → Cloudflare → browser](docs/data-flow.svg)
 
 ---
 
@@ -189,6 +193,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.9.3
+- **Table outline redesign ("day-banded, squared" — approved as variant B2).** Per-hour vertical hairlines removed so consecutive hours fuse into continuous color runs; a single 1.5&nbsp;px `--border2` rule at each local-midnight column (`.day-start`, applied wherever the time grid renders: forecast headers/cells, historical strip, region-mode wind rows) provides day navigation instead. Horizontal hairlines fainter (`--cell-border` `#ffffff0a→#ffffff07` dark, `#00000012→#00000009` light); header rule 2&nbsp;px→1&nbsp;px; outer frame radius 8&nbsp;px→4&nbsp;px; sticky spot column separated with `--border1`. Colors, font, cell sizes, night markers, and region separator bands unchanged. Mockups for all variants remain in `design-demo/table.html`.
 
 ### v1.9.2
 - **EURO waves ingest each CMEMS run ~30 min after publication.** `fetch_cmems_point` moved from a flat 6 h TTL to `@model_aware_cache` with run-aware invalidation on the CMEMS publication schedule (~07/19 UTC): the warmer picks up each new 00Z/12Z cycle on its next 30-min pass instead of lagging up to 6 h, and off-boundary requests stop re-fetching CMEMS entirely. Hard TTL raised to 24 h as an outage backstop (failed re-fetches serve the previous run). Note: 2 cycles/day is an upstream hard cap — CMEMS ANFC does not distribute ECMWF's 06/18Z wave runs, and ECMWF open data lacks swell partitions.
