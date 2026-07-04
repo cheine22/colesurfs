@@ -24,6 +24,7 @@ from config import (
     GRID_LATS, GRID_LONS, GRID_NY, GRID_NX,
     GRID_LA1, GRID_LO1, GRID_DX, GRID_DY,
     TIMEZONE, FORECAST_DAYS, WIND_MODELS, MODEL_UPDATE_HOURS_UTC,
+    WIND_UPDATE_HOURS_UTC,
     wind_to_uv, ms_to_kts, ms_to_mph, degrees_to_cardinal, SPOTS, WIND_SPOTS,
 )
 
@@ -111,17 +112,19 @@ def estimate_model_run(model_key: str = "EURO") -> dict:
             "available_since": None, "hours_to_next": None, "model": model_key}
 
 
-def _new_run_available_since(model_key: str, cache_age_sec: float) -> bool:
+def _new_run_available_since(model_key: str, cache_age_sec: float,
+                             hours_map: dict | None = None) -> bool:
     """
     Check if a new model run has likely become available since the cache was populated.
     Returns True if we should re-fetch, False if cached data is still the latest.
+    `hours_map` selects the publication schedule (default: wave-model hours).
     """
     if cache_age_sec is None:
         return True  # no cache → must fetch
 
     now = datetime.now(timezone.utc)
     cached_at = now - timedelta(seconds=cache_age_sec)
-    update_hours = MODEL_UPDATE_HOURS_UTC.get(model_key, [7, 19])
+    update_hours = (hours_map or MODEL_UPDATE_HOURS_UTC).get(model_key, [7, 19])
 
     # Check if any update hour falls between cached_at and now
     for days_back in range(2):
@@ -599,5 +602,13 @@ def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> 
 # ─── Wire model-run-aware caching ────────────────────────────────────────────
 # Set the checker on model_aware_cache-decorated functions so they can
 # decide whether to re-fetch based on model run availability.
-fetch_wind_grid._new_run_checker = _new_run_available_since
-fetch_wind_forecast_grid._new_run_checker = _new_run_available_since
+
+def make_new_run_checker(hours_map: dict):
+    """Checker bound to a specific publication schedule (wind vs wave hours)."""
+    return lambda model_key, age: _new_run_available_since(model_key, age, hours_map)
+
+
+# Wind caches follow the 4x/day wind schedule (EURO wind updates every 6 h
+# on Open-Meteo even though the CMEMS wave product is 2x/day).
+fetch_wind_grid._new_run_checker = make_new_run_checker(WIND_UPDATE_HOURS_UTC)
+fetch_wind_forecast_grid._new_run_checker = make_new_run_checker(WIND_UPDATE_HOURS_UTC)

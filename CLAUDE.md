@@ -200,9 +200,16 @@ them:
    write-through to `.cache/*.json` on disk. Current per-fetcher TTLs:
    - `fetch_buoy`: 600 s
    - `fetch_buoy_history`: 1800 s
-   - Wave / wind / tide fetchers: 3600 s
-   - Wind grids: 6 h hard TTL via `@model_aware_cache`, with model-run-based
-     early invalidation
+   - GFS waves / wind spot fetchers: 3600 s
+   - Wind grids: `@model_aware_cache`, 6 h hard TTL with run-based early
+     invalidation on `WIND_UPDATE_HOURS_UTC` (EURO wind 4x/day per
+     Open-Meteo's ecmwf_ifs025 cadence)
+   - `fetch_cmems_point` (EURO waves): `@model_aware_cache`, 24 h hard TTL,
+     invalidated on `MODEL_UPDATE_HOURS_UTC` (~07/19 UTC when CMEMS ANFC
+     publishes) — new runs land within one 30-min warmer cycle; upstream
+     is hard-capped at 2 cycles/day
+   - Tides: month-anchored ~4-month window per station, 45-day TTL
+     (`tide._fetch_station_window`), sliced locally per request
 2. **CDN edge cache** — controlled by `Cache-Control` headers set in
    `app.py` → `_add_cache_headers`. `/api/buoys` intentionally has no
    `stale-while-revalidate` so reloads pull fresh readings synchronously;

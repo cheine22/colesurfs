@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone as dtz
 from zoneinfo import ZoneInfo
 
-from cache import ttl_cache, record_api_calls
+from cache import model_aware_cache, record_api_calls
 from config import FORECAST_DAYS, TIMEZONE, SPOTS, m_to_ft
 from wave_common import safe_float as _safe, build_swell_components, make_wave_record
 
@@ -44,11 +44,12 @@ CMEMS_VARS = [
     "VHM0_SW2", "VTM01_SW2", "VMDR_SW2",
 ]
 
-# Long TTL so an occasional CMEMS outage does not wipe the cache before
-# the 30-minute warmer can refresh. skip_none=True keeps the last-known-good
-# payload in place when a fetch fails.
-# Re-fetch 4x/day so new CMEMS model runs are picked up within 6h
-_CMEMS_TTL_SECONDS = 21600
+# Hard TTL is only the outage backstop — actual refresh is run-aware:
+# the cache invalidates when a new CMEMS cycle publishes (~07/19 UTC, per
+# MODEL_UPDATE_HOURS_UTC), so the warmer ingests each run within ~30 min
+# of publication instead of a flat-TTL lag of up to 6 h. Failed re-fetches
+# serve the still-cached previous run (model_aware_cache stale fallback).
+_CMEMS_TTL_SECONDS = 86400
 
 # CMEMS publishes VTM01_SW1/SW2 (spectral mean period m1) but no VTPK_SW*.
 # Windy/Surfline/buoy-DPD use peak period Tp. For typical ocean swell
@@ -232,7 +233,9 @@ def raw_rows_to_hourly_records(raw_rows: list[dict]) -> list[dict]:
     return _rows_to_records(_interpolate_to_hourly(raw_rows))
 
 
-@ttl_cache(ttl_seconds=_CMEMS_TTL_SECONDS, skip_none=True)
+# model_arg_index=99 exceeds the (lat, lon) args on purpose so the checker
+# always sees the default "EURO" — this cache is EURO-only.
+@model_aware_cache(hard_ttl=_CMEMS_TTL_SECONDS, model_arg_index=99, quiet=True)
 def fetch_cmems_point(lat: float, lon: float) -> list | None:
     """Pull CMEMS wave forecast at a single lat/lon; return per-hour records
     in the waves._parse_response shape, or None on failure."""
@@ -260,6 +263,14 @@ def fetch_cmems_point(lat: float, lon: float) -> list | None:
     elapsed = time.monotonic() - t0
     print(f"[cmems] ({lat:.3f},{lon:.3f}) {len(records)} rows in {elapsed:.1f}s")
     return records
+
+
+# Run-aware invalidation on the wave-publication schedule (00Z/12Z cycles,
+# available ~07/19 UTC). Wired after both modules exist to avoid an import
+# cycle if wind.py ever grows a waves dependency.
+from wind import make_new_run_checker as _make_new_run_checker
+from config import MODEL_UPDATE_HOURS_UTC as _WAVE_HOURS
+fetch_cmems_point._new_run_checker = _make_new_run_checker(_WAVE_HOURS)
 
 
 def fetch_all_cmems_wave_forecasts() -> dict | None:

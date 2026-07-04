@@ -1,4 +1,4 @@
-# colesurfs · v1.9.1
+# colesurfs · v1.9.2
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -189,6 +189,10 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.9.2
+- **EURO waves ingest each CMEMS run ~30 min after publication.** `fetch_cmems_point` moved from a flat 6 h TTL to `@model_aware_cache` with run-aware invalidation on the CMEMS publication schedule (~07/19 UTC): the warmer picks up each new 00Z/12Z cycle on its next 30-min pass instead of lagging up to 6 h, and off-boundary requests stop re-fetching CMEMS entirely. Hard TTL raised to 24 h as an outage backstop (failed re-fetches serve the previous run). Note: 2 cycles/day is an upstream hard cap — CMEMS ANFC does not distribute ECMWF's 06/18Z wave runs, and ECMWF open data lacks swell partitions.
+- **EURO wind now refreshes 4x/day.** New `WIND_UPDATE_HOURS_UTC` (EURO `[1,7,13,19]` UTC) drives the wind-grid caches — Open-Meteo's `ecmwf_ifs025` ingests all four IFS runs. Kept separate from `MODEL_UPDATE_HOURS_UTC` so the dashboard's run indicator + smart refresh stay truthful about the wave-model run.
 
 ### v1.9.1
 - **Tide outages effectively eliminated.** Tide predictions are deterministic harmonics, so `tide.py` now pulls a ~4-month window per station (31 days back, 62–92 days forward, anchored to the calendar month) and caches it for 45 days with disk write-through; display requests slice + annotate from that cache with zero CO-OPS traffic. Fallback chain on a failed month-rollover fetch: previous month's cached window → in-process last-known-good (which also survives `POST /api/refresh`'s cache wipe). CO-OPS would need to be unreachable for weeks before a tide cell could go blank.

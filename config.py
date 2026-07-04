@@ -174,7 +174,19 @@ GRID_LO1  = float(GRID_LONS[0])    # -83.0 — westernmost
 FORECAST_DAYS = 10
 TIMEZONE      = "America/New_York"
 
+# Wave-model publication hours (UTC) — drives the dashboard run indicator,
+# smart refresh, and CMEMS cache invalidation. EURO waves are capped at
+# 2 cycles/day upstream: CMEMS ANFC distributes only the 00Z/12Z runs.
 MODEL_UPDATE_HOURS_UTC = {
     "GFS":  [4, 10, 16, 22],
     "EURO": [7, 19],
+}
+
+# Wind-model refresh hours (UTC). Open-Meteo's ecmwf_ifs025 ingests all four
+# IFS runs (00/06/12/18Z, available ~7 h after init), so wind caches refresh
+# 4x/day even though the EURO wave product stays 2x/day. Kept separate from
+# MODEL_UPDATE_HOURS_UTC so the run indicator stays truthful about wave runs.
+WIND_UPDATE_HOURS_UTC = {
+    "GFS":  [4, 10, 16, 22],
+    "EURO": [1, 7, 13, 19],
 }

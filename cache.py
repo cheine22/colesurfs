@@ -202,7 +202,8 @@ def get_cache_age(key: str) -> float | None:
     return _store.get_age(key)
 
 
-def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0):
+def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0,
+                      quiet: bool = False):
     """
     Decorator: cache with model-run-aware invalidation.
     Unlike ttl_cache, this uses a long hard TTL (default 6h) but allows
@@ -232,8 +233,9 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0):
             model_key = args[model_arg_index] if len(args) > model_arg_index else "EURO"
             checker = getattr(wrapper, '_new_run_checker', None)
             if checker and age is not None and not checker(model_key, age):
-                print(f"[smart-cache] {func.__qualname__}({model_key}): "
-                      f"cached {age:.0f}s ago, no new run → skip fetch")
+                if not quiet:
+                    print(f"[smart-cache] {func.__qualname__}({model_key}): "
+                          f"cached {age:.0f}s ago, no new run → skip fetch")
                 return True, cached
             if age is not None:
                 print(f"[smart-cache] {func.__qualname__}({model_key}): "
