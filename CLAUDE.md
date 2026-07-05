@@ -37,7 +37,7 @@ status; the model button will appear on the main dashboard once trained.
 ## csc2/ package
 
 - `csc2/schema.py` — buoy scope (5 east + 3 west), path layout, forecast-row columns
-- `csc2/logger.py` — live forecast logger (`com.colesurfs.csc2-log`, 3 AM + 3 PM ET). Pulls CMEMS + GFS via `waves_cmems.fetch_cmems_point` / `waves.fetch_wave_forecast` and writes per-cycle parquet shards
+- `csc2/logger.py` — live forecast logger (`com.colesurfs.csc2-logger`, 3 AM + 3 PM ET). Pulls CMEMS + GFS via `waves_cmems.fetch_cmems_point` / `waves.fetch_wave_forecast` and writes per-cycle parquet shards. (Label renamed from `csc2-log` 2026-07-05: the old label's launchd state became unspawnable — persistent EX_CONFIG even after re-bootstrap — while identical plist content ran fine under a new label. Old plist kept as `.disabled-poisoned-label`.)
 - `csc2/obs_logger.py` — live NDBC observation logger (`com.colesurfs.csc2-obs`, every 30 min). Appends to the shared `.csc_data/live_log/observations/` tree with dedup on (valid_utc, partition)
 - `csc2/gee_backfill.py` — historical EURO backfill via Google Earth Engine ImageCollection (`COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`). Cycle-preserving archive back to 2025-04-28
 - `csc2/aws_gfs_backfill.py` — historical GFS backfill via AWS S3 (`noaa-gfs-bdp-pds`) with byte-range GRIB2 fetches driven by `.idx` sidecars
@@ -266,7 +266,7 @@ The production stack runs as user-agent plists at `~/Library/LaunchAgents/`:
 - `com.colesurfs.server` — Flask + Waitress on :5151 (log `/tmp/colesurfs.log`)
 - `com.colesurfs.autopull` — `git pull origin main` every 90 s
 - `com.cloudflare.cloudflared` — tunnel to `surfreport.coleheine.com`
-- `com.colesurfs.csc2-log` — CSC2 forecast logger @ 3 AM + 3 PM ET
+- `com.colesurfs.csc2-logger` — CSC2 forecast logger @ 3 AM + 3 PM ET (label renamed from `csc2-log` 2026-07-05, see csc2/ section)
 - `com.colesurfs.csc2-obs` — CSC2 observation logger every 30 min
 - `com.colesurfs.csc2-retrain` — quarterly retrain (1st of Mar/Jun/Sep/Dec at 04:00 local). Wipes the archive-status cache, recomputes coverage, then runs `python -m csc2.train --version v1 --force` for both architectures. Auto-derives YYMMDD + coverage so naming stays correct.
 
