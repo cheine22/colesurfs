@@ -1,4 +1,4 @@
-# colesurfs · v1.9.3
+# colesurfs · v1.10.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -193,6 +193,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.10.0
+- **Double-tap to zoom on the map (mobile).** Two quick taps zoom in one level centered on the tap point, matching standard map behavior. Leaflet 1.9 dropped its legacy touch `tap` handler and iOS Safari never synthesizes the `dblclick` event the built-in handler listens for, so a custom touch double-tap detector (same tap heuristics as the mobile time scrubber) drives `setZoomAround`. Desktop double-click zoom continues through Leaflet's default `doubleClickZoom`; the touch path `preventDefault`s its second tap so Android can't fire both.
 
 ### v1.9.3
 - **Table outline redesign ("day-banded, squared" — approved as variant B2).** Per-hour vertical hairlines removed so consecutive hours fuse into continuous color runs; a single 1.5&nbsp;px `--border2` rule at each local-midnight column (`.day-start`, applied wherever the time grid renders: forecast headers/cells, historical strip, region-mode wind rows) provides day navigation instead. Horizontal hairlines fainter (`--cell-border` `#ffffff0a→#ffffff07` dark, `#00000012→#00000009` light); header rule 2&nbsp;px→1&nbsp;px; outer frame radius 8&nbsp;px→4&nbsp;px; sticky spot column separated with `--border1`. Colors, font, cell sizes, night markers, and region separator bands unchanged. Mockups for all variants remain in `design-demo/table.html`.

@@ -1539,7 +1539,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.9.3</span>
+    <span class="info-modal-version">v1.10.0</span>
   </div>
 </div>
 
@@ -1556,7 +1556,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.9.3</span>
+    <span class="about-version">v1.10.0</span>
   </div>
 </div>
 
@@ -1592,7 +1592,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.9.3</span>
+    <span class="footer-version">v1.10.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -4132,6 +4132,45 @@ function initMap() {
     // past the point where the full extent fits in a single canvas).
     if (regionMode || !WindRenderer.isFullExtent) _resubmitWind();
   });
+
+  // Double-tap to zoom (mobile). Leaflet 1.9 dropped its legacy touch `tap`
+  // handler, and iOS Safari never synthesizes the dblclick that the built-in
+  // doubleClickZoom handler listens for — so touch double-tap is dead without
+  // this. Same tap heuristics as the mobile scrubber: a "tap" = touchstart →
+  // touchend within 250ms with <10px movement; two taps within 350ms and
+  // 30px of each other zoom in one level around the tap point. Desktop
+  // double-click is handled by Leaflet's default doubleClickZoom.
+  {
+    const el = map.getContainer();
+    let _t0 = 0, _x0 = 0, _y0 = 0, _moved = false, _multi = false;
+    let _lastT = 0, _lastX = 0, _lastY = 0;
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length > 1) { _multi = true; _lastT = 0; return; }
+      _multi = false; _moved = false;
+      _t0 = Date.now(); _x0 = e.touches[0].clientX; _y0 = e.touches[0].clientY;
+    }, { passive: true });
+    el.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      if (t && (Math.abs(t.clientX - _x0) > 10 || Math.abs(t.clientY - _y0) > 10)) _moved = true;
+    }, { passive: true });
+    el.addEventListener('touchend', e => {
+      if (_multi || _moved || e.touches.length > 0 || (Date.now() - _t0) > 250) { _lastT = 0; return; }
+      const now = Date.now();
+      if ((now - _lastT) < 350 && Math.abs(_x0 - _lastX) < 30 && Math.abs(_y0 - _lastY) < 30) {
+        _lastT = 0;
+        // Also suppresses the browser's synthesized click/dblclick for this
+        // tap, so Android can't double-fire through doubleClickZoom.
+        e.preventDefault();
+        if (map.getZoom() < map.getMaxZoom()) {
+          const r = el.getBoundingClientRect();
+          map.setZoomAround(L.point(_x0 - r.left, _y0 - r.top), map.getZoom() + 1);
+        }
+      } else {
+        _lastT = now; _lastX = _x0; _lastY = _y0;
+      }
+    }, { passive: false });
+    el.addEventListener('touchcancel', () => { _lastT = 0; }, { passive: true });
+  }
 
   // Time badge — always top-right
   const TimeOverlayControl = L.Control.extend({
