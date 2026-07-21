@@ -1,4 +1,4 @@
-# colesurfs · v1.10.0
+# colesurfs · v1.10.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -193,6 +193,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.10.1
+- **Opening the app always shows the newest data.** Two fixes for the "refresh 2-3 times to see the new model run" problem. (1) Browser/edge HTTP caching on API responses is disabled: the old `s-maxage` + `stale-while-revalidate` edge policy served a stale copy on the first reload after a new run (revalidating in background), and the browser's `max-age` re-served that same stale copy on the next; all `/api/*` GETs are now `no-store` and HTML is `no-cache`, so every open reaches the origin, whose TTL cache + 30-min warmer keep responses fast. (2) A foreground-refresh hook (`visibilitychange`/`pageshow`): an installed webapp resumes its frozen page on re-open without ever refetching — the app now re-pulls everything when it comes to the foreground (throttled to once per 60 s), via a new soft mode on `refreshAll()` that skips the rate-limited `POST /api/refresh` origin bust. Trade-off accepted: no more edge `stale-if-error` (the origin's last-known-good fallback still covers upstream outages).
 
 ### v1.10.0
 - **Double-tap to zoom on the map (mobile).** Two quick taps zoom in one level centered on the tap point, matching standard map behavior. Leaflet 1.9 dropped its legacy touch `tap` handler and iOS Safari never synthesizes the `dblclick` event the built-in handler listens for, so a custom touch double-tap detector (same tap heuristics as the mobile time scrubber) drives `setZoomAround`. Desktop double-click zoom continues through Leaflet's default `doubleClickZoom`; the touch path `preventDefault`s its second tap so Android can't fire both.

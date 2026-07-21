@@ -231,16 +231,25 @@ them:
      is hard-capped at 2 cycles/day
    - Tides: month-anchored ~4-month window per station, 45-day TTL
      (`tide._fetch_station_window`), sliced locally per request
-2. **CDN edge cache** — controlled by `Cache-Control` headers set in
-   `app.py` → `_add_cache_headers`. `/api/buoys` intentionally has no
-   `stale-while-revalidate` so reloads pull fresh readings synchronously;
-   wave / wind / tide endpoints keep SWR because those data sources update
-   on model-run cadences that are slower than a typical page reload.
-3. **Browser cache** — `max-age` component of the same `Cache-Control`.
-4. **Frontend in-memory** — `historicalData[buoy_id]`, populated by
+2. **CDN edge + browser cache — intentionally DISABLED (2026-07).**
+   `_add_cache_headers` sends `no-store` on all `/api/*` GETs and
+   `no-cache` on HTML. The old policy table (edge `s-maxage` +
+   `stale-while-revalidate` + browser `max-age`) made a new model run
+   take 2-3 reloads to appear (SWR served stale while revalidating in
+   background; browser max-age then re-served that stale copy). Do not
+   re-add edge caching without solving that. Freshness is now bounded by
+   the origin TTL cache alone; the warmer keeps origin hits fast.
+3. **Frontend in-memory** — `historicalData[buoy_id]`, populated by
    `preloadHistoricalData()` after the initial render; invalidated on
    `refreshAll()` so a manual refresh re-pulls the historical-context
    endpoint in addition to clearing the origin caches.
+
+An installed webapp resumes its frozen page on re-open without reloading,
+so `index.html` also has a foreground-refresh hook (`_softRefresh`, on
+`visibilitychange`/`pageshow`): when the app becomes visible and the last
+successful `loadAll` is >60 s old, it runs `refreshAll({soft: true})` —
+the full re-fetch/re-render path minus the rate-limited
+`POST /api/refresh` origin bust and the "no new model data" short-circuit.
 
 The background cache warmer (`_cache_warmer_loop` in `app.py`) runs every
 1800 s and pre-fetches everything; it piggybacks on the TTL cache, so a

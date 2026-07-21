@@ -1539,7 +1539,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.10.0</span>
+    <span class="info-modal-version">v1.10.1</span>
   </div>
 </div>
 
@@ -1556,7 +1556,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.10.0</span>
+    <span class="about-version">v1.10.1</span>
   </div>
 </div>
 
@@ -1592,7 +1592,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.10.0</span>
+    <span class="footer-version">v1.10.1</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2519,6 +2519,7 @@ async function loadAll() {
   if (anyStale)        _setFreshnessChip('stale', 'STALE DATA', 'SHOWING LAST GOOD');
   else if (anyPartial) _setFreshnessChip('partial', 'PARTIAL DATA', '');
   else                 _setFreshnessChip(null);
+  _lastLoadTs = Date.now();
 }
 
 async function loadWindForecast(model) {
@@ -5910,12 +5911,16 @@ function showToast(msg, ms = 2500) {
   el._tid = setTimeout(() => el.classList.remove('show'), ms);
 }
 
-async function refreshAll() {
+async function refreshAll(opts = {}) {
+  // soft: re-fetch everything through normal GETs (origin TTL cache decides
+  // freshness) without the rate-limited POST /api/refresh cache bust or the
+  // "no new model data" short-circuit. Used by the foreground-refresh hook.
+  const soft = !!opts.soft;
   _outageDismissed = false;
   // Smart refresh: check if a new model run is available before doing the
   // expensive full cache-clear + re-fetch cycle.
   const outageVisible = document.getElementById('outage-modal-overlay')?.classList.contains('open');
-  if (!outageVisible) {
+  if (!soft && !outageVisible) {
     try {
       const st = await fetch(`/api/status?model=${activeModel}`).then(r => r.json());
       const newRun = st.model_run && st.model_run.run_time;
@@ -5926,7 +5931,7 @@ async function refreshAll() {
     } catch (_) { /* on failure, fall through to full refresh */ }
   }
 
-  await fetch('/api/refresh', { method: 'POST' });
+  if (!soft) await fetch('/api/refresh', { method: 'POST' });
 
   windByTime = {};
   windForecast = null;
@@ -5953,6 +5958,30 @@ async function refreshAll() {
   _historyPreloaded = false;
   preloadHistoricalData();
 }
+
+// ─── Foreground refresh ──────────────────────────────────────────────
+// An installed webapp resumes its frozen page on re-open — no reload, no
+// fetches — so the table shows whatever was rendered when it was last
+// backgrounded. Re-pull everything whenever the app becomes visible again,
+// throttled so rapid tab switches don't re-fetch pointlessly. _lastLoadTs
+// starts at 0 and is only stamped by loadAll, so this never races the
+// initial load.
+let _lastLoadTs = 0;
+let _softRefreshing = false;
+async function _softRefresh() {
+  if (_softRefreshing || !_lastLoadTs || Date.now() - _lastLoadTs < 60000) return;
+  _softRefreshing = true;
+  _setFreshnessChip('updating', 'UPDATING', '');
+  try { await refreshAll({ soft: true }); }
+  finally { _softRefreshing = false; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') _softRefresh();
+});
+// bfcache restore on browsers that skip the visibilitychange (e.g. iOS
+// Safari back-navigation): pageshow with persisted=true means the page was
+// revived from a frozen snapshot.
+window.addEventListener('pageshow', (e) => { if (e.persisted) _softRefresh(); });
 
 
 // ═══ 19. THEME TOGGLE ════════════════════════════════════════

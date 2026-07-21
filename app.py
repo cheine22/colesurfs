@@ -752,41 +752,23 @@ def apple_touch_icon():
     return send_from_directory(app.root_path, "apple-touch-icon.png", mimetype="image/png")
 
 
-# ─── Cache-Control headers for Cloudflare edge caching ──────────────────────
-# Policy table: (exact paths, path prefixes) → header. First match wins.
-# stale-while-revalidate: serve stale while refreshing in background.
-# stale-if-error: serve stale if origin errors (e.g. during Open-Meteo outages).
-# /api/buoys intentionally has NO stale-while-revalidate: SWR caused reloads
-# to serve stale buoy readings while a background revalidation ran, so the
-# *next* reload still saw stale data. Short max-age with no SWR → every
-# reload past the max-age window pulls fresh readings synchronously.
-_CACHE_POLICIES: list[tuple[tuple[str, ...], tuple[str, ...], str]] = [
-    (("/api/config",), (),
-     "public, max-age=300, s-maxage=3600, stale-while-revalidate=7200, stale-if-error=86400"),
-    (("/api/sun",), (),
-     "public, max-age=3600, s-maxage=43200, stale-while-revalidate=43200"),
-    ((), ("/api/forecast/",),
-     "public, max-age=120, s-maxage=1800, stale-while-revalidate=7200, stale-if-error=14400"),
-    (("/api/wind", "/api/wind_forecast", "/api/region_wind"), (),
-     "public, max-age=120, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=7200"),
-    (("/api/buoys",), (),
-     "public, max-age=30, s-maxage=60, stale-if-error=1800"),
-    (("/api/tides",), (),
-     "public, max-age=300, s-maxage=7200, stale-while-revalidate=14400, stale-if-error=86400"),
-    (("/api/buoy_historical_context",), ("/api/buoy_history/",),
-     "public, max-age=300, s-maxage=1800, stale-while-revalidate=3600, stale-if-error=14400"),
-]
-
-
+# ─── Cache-Control headers ──────────────────────────────────────────────────
+# Freshness-first policy (2026-07): browser max-age + edge stale-while-
+# revalidate meant a new model run took 2-3 reloads to appear (first reload
+# served stale from the edge while revalidating in background; the browser's
+# max-age then re-served that same stale copy on the next reload). API
+# responses are now no-store — never cached by browser or Cloudflare edge —
+# so every open reaches the origin, where the TTL cache + 30-min warmer keep
+# responses fast. Freshness is bounded by cache.py TTLs alone. HTML is
+# no-cache so autopulled UI changes appear on the next open.
 @app.after_request
 def _add_cache_headers(response):
-    if request.method != "GET" or response.status_code != 200:
+    if request.method != "GET":
         return response
-    path = request.path
-    for exact, prefixes, header in _CACHE_POLICIES:
-        if path in exact or any(path.startswith(p) for p in prefixes):
-            response.headers["Cache-Control"] = header
-            break
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    elif response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-cache"
     return response
 
 
