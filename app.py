@@ -65,6 +65,13 @@ _rate_lock = threading.Lock()
 _rate_hits: dict[str, list[float]] = {}   # "bucket:ip" → [timestamps]
 
 
+def _client_ip() -> str:
+    """Real client IP for rate-limit bucketing. Public traffic arrives via the
+    Cloudflare tunnel over loopback, so remote_addr alone would put every
+    visitor in one shared bucket; prefer the CF-set header when present."""
+    return request.headers.get("CF-Connecting-IP") or request.remote_addr or "unknown"
+
+
 def _rate_limited(bucket: str, ip: str, max_calls: int, window_sec: int) -> bool:
     """Return True if this IP has exceeded max_calls in the last window_sec seconds."""
     key = f"{bucket}:{ip}"
@@ -88,8 +95,7 @@ def _rate_limited(bucket: str, ip: str, max_calls: int, window_sec: int) -> bool
 def _check_api_rate_limit():
     """General rate limit: 60 requests/minute per IP on /api/* routes."""
     if request.path.startswith("/api/"):
-        ip = request.remote_addr or "unknown"
-        if _rate_limited("api", ip, max_calls=60, window_sec=60):
+        if _rate_limited("api", _client_ip(), max_calls=60, window_sec=60):
             return jsonify({"error": "rate limit exceeded"}), 429
 
 
@@ -400,8 +406,7 @@ def api_debug_spectral(station_id: str):
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
     """Clear all caches and reload swell + wind rules. Rate-limited to 1 call per 30s."""
-    ip = request.remote_addr or "unknown"
-    if _rate_limited("refresh", ip, max_calls=1, window_sec=30):
+    if _rate_limited("refresh", _client_ip(), max_calls=1, window_sec=30):
         return jsonify({"error": "rate limit exceeded, try again in 30s"}), 429
     _cache.clear_all()
     swell_rules.reload()

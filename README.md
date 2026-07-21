@@ -1,4 +1,4 @@
-# colesurfs · v1.10.1
+# colesurfs · v1.10.2
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -72,7 +72,7 @@ difference.
 
 | stream            | live (going forward)                                | historical backfill                                                              |
 |-------------------|-----------------------------------------------------|----------------------------------------------------------------------------------|
-| EURO (CMEMS)      | `com.colesurfs.csc2-log` @ 3 AM + 3 PM ET           | Google Earth Engine `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H` (2025-04 → today) |
+| EURO (CMEMS)      | `com.colesurfs.csc2-logger` @ 3 AM + 3 PM ET        | Google Earth Engine `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H` (2025-04 → today) |
 | GFS (Open-Meteo)  | same plist, same schedule                           | AWS `s3://noaa-gfs-bdp-pds/` byte-range GRIB2 fetch (scope A: 2025-04 → today)   |
 | Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet yearly archives (2021 → today)                                       |
 
@@ -102,11 +102,13 @@ exist — the minimum condition for a trainable sample). The page also scaffolds
 a live forecast row showing CSC2 vs EURO vs GFS for the selected buoy out to
 +240 h, activated once the model is trained.
 
-**Cadence to first training.** First model trains once we've accumulated
-paired cycle coverage for >=90% of days of the year; target is 60 months so the model can learn
-seasonal pattern changes. The GEE backfill brings us to ~12 months of
-lead-resolved CMEMS coverage at kickoff; GFS and NDBC backfills cover
-the same window with full lead structure; live loggers top both up daily.
+**Training cadence.** First models trained in v1.8 once east-pool paired
+coverage crossed the bar; current top performer is `CSC2+ML_260704_0.84_v5`
+(beats raw EURO on primary-swell height MAE, 0.527 vs 0.668 ft). Retraining
+is quarterly via `com.colesurfs.csc2-retrain` (1st of Mar/Jun/Sep/Dec), with
+a daily live-eval pass (`com.colesurfs.csc2-eval`) appending rolling skill
+per model. Long-term target remains 60 months of coverage so the model can
+learn seasonal pattern changes; live loggers top the archive up daily.
 
 **West-coast track** uses identical architecture; models train silently,
 artifacts land in `.csc2_models/west/`, and nothing is surfaced on the main
@@ -193,6 +195,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.10.2
+- **Hotfix: sitewide 429s after v1.10.1.** The `/api/*` rate limiter bucketed by `request.remote_addr`, but the Cloudflare tunnel delivers all public traffic over loopback — every visitor shared one 60 req/min bucket. Harmless while the edge absorbed most API traffic; v1.10.1's `no-store` policy sent every request to the origin and saturated the shared bucket within minutes of deploy. Limiter keys (general `/api/*` + `POST /api/refresh`) now use `CF-Connecting-IP` when present, falling back to `remote_addr`, so each real client gets its own bucket. The `/tuner` LAN gate is unchanged (it intentionally rejects CF-header traffic).
 
 ### v1.10.1
 - **Opening the app always shows the newest data.** Two fixes for the "refresh 2-3 times to see the new model run" problem. (1) Browser/edge HTTP caching on API responses is disabled: the old `s-maxage` + `stale-while-revalidate` edge policy served a stale copy on the first reload after a new run (revalidating in background), and the browser's `max-age` re-served that same stale copy on the next; all `/api/*` GETs are now `no-store` and HTML is `no-cache`, so every open reaches the origin, whose TTL cache + 30-min warmer keep responses fast. (2) A foreground-refresh hook (`visibilitychange`/`pageshow`): an installed webapp resumes its frozen page on re-open without ever refetching — the app now re-pulls everything when it comes to the foreground (throttled to once per 60 s), via a new soft mode on `refreshAll()` that skips the rate-limited `POST /api/refresh` origin bust. Trade-off accepted: no more edge `stale-if-error` (the origin's last-known-good fallback still covers upstream outages).
