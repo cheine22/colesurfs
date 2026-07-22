@@ -30,9 +30,9 @@ defs, metric tables).
 - `waves_cmems.py` — Copernicus Marine ANFC EURO fetch + shared processing
   pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2)
 - `wave_common.py` — shared `_safe`/component-builder/record-schema used by
-  both wave modules. Behavior locked by `tests/test_wave_identity.py`
+  both wave modules. Behavior locked by `development-assets/tests/test_wave_identity.py`
   (golden fixtures); regenerate goldens only for intentional changes via
-  `tests/regen_golden.py`
+  `development-assets/tests/regen_golden.py`
 - `wind.py`, `tide.py`, `sun.py` — other data sources. `fetch_all_spot_winds`
   batches all spot current-winds into one Open-Meteo call; per-spot
   `fetch_spot_wind` remains as fallback
@@ -46,6 +46,23 @@ defs, metric tables).
   (see "index.html landmarks" below)
 - `templates/csc.html` — the CSC2 eval page
 - `csc2/` — CSC2 package (see below)
+- `favicon.svg` + `favicon-{16,32,192}.png` + `apple-touch-icon*.png` — the
+  liquid-glass icon set (2026-07). The glass layers (edge refraction with
+  chromatic fringe, convex sheen, lip highlight + tube caustic, foam frost,
+  rim light, depth grade) are composited as pure SVG over the wave photo
+  embedded in `favicon.svg`; the PNGs are re-exported from that SVG (32 px
+  drops the fringe/spray, 16 px keeps only grade + lip + sheen;
+  apple-touch is square full-bleed since iOS applies its own mask).
+  Prior icon sets are archived in `development-assets/old-icons/`.
+- `interface-guide.png` — annotated interface guide, kept at repo root.
+  Living documentation: update it alongside README/CLAUDE.md whenever
+  visible UI changes land (see "Interface guide" landmark below)
+- `development-assets/` — dev-only material, gitignored and never synced
+  to GitHub: golden-fixture test suite (`tests/`), design mockups
+  (`design-demo/`), doc sources (`docs/`, incl.
+  `make_interface_guide.py`), icon archive (`old-icons/`), local-dev
+  launcher (`_local-launch.command`)
+- `_hold/` — staging for files awaiting manual review/deletion (gitignored)
 - Deployment specifics (how the app is served, restarted, tunneled) live in
   a local-only `hosting.md` that is intentionally git-ignored. Check the
   working directory for it when deploy-related questions come up.
@@ -175,8 +192,65 @@ cells are genuinely empty, not fallback-eligible).
 - **Fun+ Days column** — `computeModelOverview(spotName)` (samples both
   models on a fixed 3-hour stride regardless of UI resolution; tracks
   best `min(GFS_cat, EURO_cat)` for the cell colour and counts days
-  with ≥2 daytime windows ≥ FUN). Cell rendered between `spot-cell`
-  and `buoy-col` with class `model-overview`.
+  with ≥2 daytime windows ≥ FUN). A window additionally passes a
+  region-wind gate: ≥1 spot in the buoy's region must rate
+  Textured-or-better (per `regionWindData` + `windCondition`) at that
+  hour; the gate is skipped ("honest-empty") while region wind hasn't
+  loaded. Denominator = span of sampled future times in days. Cell
+  rendered between `spot-cell` and `buoy-col` with class
+  `model-overview`.
+- **Interface guide** — `interface-guide.png`, an annotated
+  production screenshot (numbered features + legend). Regenerate after
+  visible UI changes: headless-Chrome capture of `:5151` at 1440×1026
+  `--force-device-scale-factor=2`, composed by
+  `development-assets/docs/make_interface_guide.py` (badge coords are
+  layout-specific; rebuild them from the fresh capture). The image lives
+  at repo root and is maintained like README — regenerate it whenever a
+  visible UI change lands.
+- **Region clean-wind** — `_regionCleanWind(region, data=regionWindData)`
+  computes, per region per hour, whether ≥1 spot rates Glassy/Groomed/Clean
+  for whichever wind model's data is passed. `_windHatchState(region, t, data)`
+  returns tri-state `'solid'` (≥1 clean) / `'hatched'` (known, none clean) /
+  `null` (no wind record — fetch gap or hour outside the wind window). Drives
+  the white wind agreement chip (see Agreement chips), evaluated against BOTH
+  `regionWindData` (active) and `regionWindAlt` (hidden model). `_cleanWindCache`
+  is a WeakMap keyed on the wind-data object, so each model's data caches
+  independently and model switches / refreshes / snapshot loads invalidate
+  automatically. `setShowHistory` re-fetches both models' region_wind with
+  `past_days` in ALL modes (not just Regional) so historical hours are covered.
+  NB the state name `hatched` is vestigial — there is no visual hatch overlay
+  anymore (removed 2026-07, see Agreement chips history).
+- **Agreement chips** — `_agreementChips(spotName, t)` renders up to two small
+  tinted letter chips (`.agreement-chip`) stacked vertically in a forecast
+  cell's top-right corner (`.agreement-chips`, a right-aligned flex column;
+  only from `buildWaveCell`, including the "—" below-threshold path — not on
+  buoy-now or historical cells). Each chip is its letter in colour `col` on a
+  `color-mix(in srgb, col 13%, transparent)` wash.
+  **Swell agreement chip ("M", `.swell`):** `col` is the HIDDEN (non-active)
+  model's category colour (`_swellAgreementColor`) — matches the cell's own
+  colour when the models agree, reveals the other model's rating when they
+  diverge (a peek without a model switch). Shown ONLY for poor-or-better hidden
+  reads (WEAK+); a FLAT or below-threshold hidden read, or a missing alt record,
+  → no swell chip.
+  **Wind agreement chip ("W", `.wind`):** `col` is neutral-white (`var(--text0)`,
+  so white in dark mode, near-black in light), shown ONLY when BOTH models
+  report ≥1 clean spot in the region at that hour (`_windHatchState` === `'solid'`
+  for both `regionWindData` AND `regionWindAlt`) — a cross-model clean-wind
+  agreement. If either model is missing data or reads not-clean → no wind chip.
+  Readings are vertically centered (`.cell-inner` justify-content:center).
+  The info modal legend (`_populateAboutLegends`) renders the same M/W chips.
+  **No-overlap:** forecast cells carry a `wave-cell` class; `td.cell.wave-cell
+  .cell-inner` gets a right-gutter (`padding-right` 13px desktop / 12px mobile)
+  so the swell reading never runs under the chips, and the readings dropped the
+  `&nbsp;` separators (spacing now via `.comp-line { gap: 3px }`) to reclaim that
+  gutter width — net result the columns got ~3px NARROWER, not wider.
+  History: replaced a full-width `.model-agree` text pill (landed on ~88% of
+  cells, buried the reading) → filled colour dots → these M/W chips. The wind
+  rule also moved twice — cross-model hatch *concordance* (both agree either
+  way) → active-model clean-wind only (no alt fetch) → cross-model clean-wind
+  *agreement* (both must be clean), which is why the alt-model region-wind
+  fetch (`regionWindAlt`) is loaded alongside `regionWindData` everywhere the
+  latter is (re)loaded.
 - **Historical strip** — `_buildHistoricalCellsHtml(stationId, resolutionHours)`
   + `buildHistoricalCell(obs, cellTime)`. Cells carry `data-time` so the
   mobile slider's `_sliderTimes` array picks them up alongside forecast
@@ -264,7 +338,7 @@ Fault-tolerance:
   so it survives restarts; served with `_status: "stale"` when live fetch fails.
 - Partially-populated payloads (`/api/forecast/*`, `/api/wind`) carry
   `_status: "partial"` so the frontend can badge degraded data (badge UI
-  pending design approval — see `design-demo/index.html`).
+  pending design approval — see `development-assets/design-demo/index.html`).
 - The frontend stashes the last good payload set in
   `sessionStorage['cs_snapshot_v1']` (≤6 h) and instant-paints the table from
   it on reload before fresh fetches land.

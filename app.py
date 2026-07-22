@@ -93,10 +93,18 @@ def _rate_limited(bucket: str, ip: str, max_calls: int, window_sec: int) -> bool
 
 @app.before_request
 def _check_api_rate_limit():
-    """General rate limit: 60 requests/minute per IP on /api/* routes."""
+    """General rate limit on /api/* routes. A single dashboard page load
+    legitimately fires ~17-19 /api requests (both forecasts, both models'
+    region winds, wind grid + forecast, tides, buoys, sun, and one
+    historical-context call per buoy), so the ceiling must clear several
+    rapid refreshes. At 60/min the ~4th reload tripped it and left the page
+    half-loaded ("repeated refreshes disrupt the site"); 240/min ≈ 12 full
+    reloads per minute while still capping scrapers / runaway clients."""
     if request.path.startswith("/api/"):
-        if _rate_limited("api", _client_ip(), max_calls=60, window_sec=60):
-            return jsonify({"error": "rate limit exceeded"}), 429
+        if _rate_limited("api", _client_ip(), max_calls=240, window_sec=60):
+            resp = jsonify({"error": "rate limit exceeded"})
+            resp.headers["Retry-After"] = "30"
+            return resp, 429
 
 
 import ipaddress as _ipaddress
@@ -752,9 +760,27 @@ def _atomic_write_text(path: str, text: str) -> None:
 def favicon():
     return send_from_directory(app.root_path, "favicon.svg", mimetype="image/svg+xml")
 
+# PNG favicon fallbacks — iOS Safari does not render SVG favicons in tabs/bookmarks.
+@app.route("/favicon-16.png")
+def favicon_16():
+    return send_from_directory(app.root_path, "favicon-16.png", mimetype="image/png")
+
+@app.route("/favicon-32.png")
+def favicon_32():
+    return send_from_directory(app.root_path, "favicon-32.png", mimetype="image/png")
+
+@app.route("/favicon-192.png")
+def favicon_192():
+    return send_from_directory(app.root_path, "favicon-192.png", mimetype="image/png")
+
 @app.route("/apple-touch-icon.png")
 def apple_touch_icon():
     return send_from_directory(app.root_path, "apple-touch-icon.png", mimetype="image/png")
+
+# iOS probes this exact path (and older iOS prefers it) when no <link> matches.
+@app.route("/apple-touch-icon-precomposed.png")
+def apple_touch_icon_precomposed():
+    return send_from_directory(app.root_path, "apple-touch-icon-precomposed.png", mimetype="image/png")
 
 
 # ─── Cache-Control headers ──────────────────────────────────────────────────
@@ -772,6 +798,10 @@ def _add_cache_headers(response):
         return response
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.path == "/favicon.svg" or request.path.startswith(("/favicon-", "/apple-touch-icon")):
+        # Icons: always revalidate against origin (ETag) so an icon swap can
+        # never get stuck in the Cloudflare edge / browser cache for hours.
+        response.headers["Cache-Control"] = "no-cache"
     elif response.mimetype == "text/html":
         response.headers["Cache-Control"] = "no-cache"
     return response

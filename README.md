@@ -1,4 +1,4 @@
-# colesurfs · v1.10.2
+# colesurfs · v1.11.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -6,17 +6,19 @@ A surf forecast dashboard for the NY / NJ / New England coast. Designed to provi
 
 Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authenticates via the `copernicusmarine` CLI; everything else uses free unauthenticated NOAA / Open-Meteo endpoints.
 
+**New here?** See the **[annotated interface guide](./interface-guide.png)** — one screenshot with every feature numbered and explained (cell coloring, agreement chips, Fun+ Days, wind map, and more).
+
 ---
 
 ## Features
 
 - **Easy toggling between EURO & GFS wave forecasts** — hourly or 3-hour swell table with up to 3 swell partitions per cell, color-coded by swell category
-- **Model concordance** — "Model Agreement" badge appears when EURO and GFS predict the same swell category
+- **Model concordance & wind at a glance** — up to two small tinted letter chips stacked in each forecast cell's top-right corner. The **swell agreement chip** ("M") is coloured by the *hidden* model's swell category (matches the cell when EURO and GFS agree, reveals the other model's rating when they diverge; shown only for poor-or-better hidden reads). The **wind agreement chip** ("W", neutral-white) appears only when *both* models agree ≥1 spot in the buoy's region has clean wind at that hour.
 - **Customized swell rating scale** — 7 hierarchical tiers (Flat / Weak / Fun / Solid / Firing / Hectic / Monstro) per swell (current or modeled) based on swell size and period
-- **At-a-glance swell forecast evaluation** (new in v1.7) — per-spot count of days in the 10-day forecast where GFS and EURO both classify the primary swell as fun-or-better for ≥6 daytime hours. Cell colour tracks the best `min(GFS, EURO)` window across the forecast.
+- **At-a-glance swell forecast evaluation ("Fun+ Days", new in v1.7)** — per-region count of days in the forecast with ≥2 daytime 3-hour windows where *both* models rate the primary swell fun-or-better (`min(GFS, EURO) ≥ FUN`) *and* ≥1 spot in the region has Textured-or-better wind at that hour. Denominator is the forecast span in days; cell colour tracks the best `min(GFS, EURO)` window across the forecast.
 - **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or Preferences modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
 - **NOAA buoy readings** — live wave height, dominant period, and direction per buoy
-- **Historical buoy popup** — BUOY HISTORY button opens a 3-day modal with two stacked charts: a live frequency spectrum at the scrubbed time (top) and energy-over-time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile.
+- **Historical buoy popup** — BUOY SPECTRA button (or clicking any BUOY NOW cell) opens a 3-day modal with two stacked charts: a live frequency spectrum at the scrubbed time (top) and energy-over-time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile.
 - **Tide predictions** — NOAA CO-OPS harmonic predictions per spot, with Surfline-matched time corrections
 - **Individual swell components** — spectral analysis producing primary + secondary swell partitions from raw NDBC spectral files
 - **Animated wind map** — Leaflet.js with a custom HiDPI canvas particle system (Windy-style), synced to the swell table by hover time. Retina-aware tiles and rendering
@@ -42,7 +44,7 @@ All data is fetched from free or free-tier public services:
 
 How the live data flows from these sources to the dashboard (sun times are computed locally in `sun.py`; everything on this path is transient cache except the `.cache/` write-through and the last-known-good fallback — durable storage happens in the CSC2 pipeline):
 
-![Live data flow — sources → fetch modules → TTL cache → Flask → Cloudflare → browser](docs/data-flow.svg)
+![Live data flow — sources → fetch modules → TTL cache → Flask → Cloudflare → browser](development-assets/docs/data-flow.svg)
 
 ---
 
@@ -167,9 +169,11 @@ colesurfs/
 │   │   └── model=GFS/buoy=<id>/year=Y/month=M/cycle=YYYYMMDDTHHZ.parquet
 │   ├── logs/                  # per-job append-only text logs
 │   └── archive_status_cache.json   # cached payload for /api/csc2/archive_status
-└── .csc2_models/              # trained model weights (materializes when first model fits)
-    └── east/<version>/ …
-    └── west/<version>/ …
+├── .csc2_models/              # trained model weights (materializes when first model fits)
+│   └── east/<version>/ …
+│   └── west/<version>/ …
+├── development-assets/        # dev-only: tests, design mockups, doc sources, icon archive
+└── _hold/                     # staging for files awaiting manual review/deletion
 ```
 
 Why not Git?
@@ -196,7 +200,12 @@ Why not Git?
 
 ## Changelog
 
+### v1.11.0
+- **Liquid-glass favicon.** The barrel-wave artwork now sits under a composited "liquid glass" treatment — edge refraction with chromatic fringing, a convex specular sheen, a glass-bright lip along the curl with a caustic glow inside the tube, frosted foam, rim light, and a depth grade — built as pure SVG layers over the photo embedded in `favicon.svg`. All raster icons (`favicon-192/32/16.png`, `apple-touch-icon*.png`) are re-exported from that SVG; the 16 px export uses a simplified layer set for legibility, and apple-touch stays square full-bleed for iOS's own corner mask. Previous icon sets are archived in `development-assets/old-icons/`.
+- **Repo reorg: dev-only assets split out.** Everything not needed to run the live site (test suite, design mockups, doc sources, icon archive, local-dev launcher) moved to `development-assets/`, which is gitignored and never synced. The annotated `interface-guide.png` moved to repo root and is maintained as living documentation alongside this README.
+
 ### v1.10.2
+- **Repeated refreshes no longer disrupt the page.** A single load fires ~17-19 `/api/*` requests (both forecasts, both models' region winds, wind grid + forecast, tides, buoys, sun, per-buoy historical), so the per-IP `/api/*` ceiling of 60/min tripped on the ~4th rapid reload and left the page half-loaded until the window rolled off. Raised to 240/min (≈12 full reloads/min; still caps scrapers) and 429s now carry `Retry-After: 30`. Belt-and-suspenders: `_fetchWithTimeout` now rejects on any non-2xx, so a 429 body can't be parsed as data and corrupt the render — it falls through to the existing snapshot / last-known-good / outage path instead.
 - **Hotfix: sitewide 429s after v1.10.1.** The `/api/*` rate limiter bucketed by `request.remote_addr`, but the Cloudflare tunnel delivers all public traffic over loopback — every visitor shared one 60 req/min bucket. Harmless while the edge absorbed most API traffic; v1.10.1's `no-store` policy sent every request to the origin and saturated the shared bucket within minutes of deploy. Limiter keys (general `/api/*` + `POST /api/refresh`) now use `CF-Connecting-IP` when present, falling back to `remote_addr`, so each real client gets its own bucket. The `/tuner` LAN gate is unchanged (it intentionally rejects CF-header traffic).
 
 ### v1.10.1
@@ -206,7 +215,7 @@ Why not Git?
 - **Double-tap to zoom on the map (mobile).** Two quick taps zoom in one level centered on the tap point, matching standard map behavior. Leaflet 1.9 dropped its legacy touch `tap` handler and iOS Safari never synthesizes the `dblclick` event the built-in handler listens for, so a custom touch double-tap detector (same tap heuristics as the mobile time scrubber) drives `setZoomAround`. Desktop double-click zoom continues through Leaflet's default `doubleClickZoom`; the touch path `preventDefault`s its second tap so Android can't fire both.
 
 ### v1.9.3
-- **Table outline redesign ("day-banded, squared" — approved as variant B2).** Per-hour vertical hairlines removed so consecutive hours fuse into continuous color runs; a single 1.5&nbsp;px `--border2` rule at each local-midnight column (`.day-start`, applied wherever the time grid renders: forecast headers/cells, historical strip, region-mode wind rows) provides day navigation instead. Horizontal hairlines fainter (`--cell-border` `#ffffff0a→#ffffff07` dark, `#00000012→#00000009` light); header rule 2&nbsp;px→1&nbsp;px; outer frame radius 8&nbsp;px→4&nbsp;px; sticky spot column separated with `--border1`. Colors, font, cell sizes, night markers, and region separator bands unchanged. Mockups for all variants remain in `design-demo/table.html`.
+- **Table outline redesign ("day-banded, squared" — approved as variant B2).** Per-hour vertical hairlines removed so consecutive hours fuse into continuous color runs; a single 1.5&nbsp;px `--border2` rule at each local-midnight column (`.day-start`, applied wherever the time grid renders: forecast headers/cells, historical strip, region-mode wind rows) provides day navigation instead. Horizontal hairlines fainter (`--cell-border` `#ffffff0a→#ffffff07` dark, `#00000012→#00000009` light); header rule 2&nbsp;px→1&nbsp;px; outer frame radius 8&nbsp;px→4&nbsp;px; sticky spot column separated with `--border1`. Colors, font, cell sizes, night markers, and region separator bands unchanged. Mockups for all variants remain in `development-assets/design-demo/table.html`.
 
 ### v1.9.2
 - **EURO waves ingest each CMEMS run ~30 min after publication.** `fetch_cmems_point` moved from a flat 6 h TTL to `@model_aware_cache` with run-aware invalidation on the CMEMS publication schedule (~07/19 UTC): the warmer picks up each new 00Z/12Z cycle on its next 30-min pass instead of lagging up to 6 h, and off-boundary requests stop re-fetching CMEMS entirely. Hard TTL raised to 24 h as an outage backstop (failed re-fetches serve the previous run). Note: 2 cycles/day is an upstream hard cap — CMEMS ANFC does not distribute ECMWF's 06/18Z wave runs, and ECMWF open data lacks swell partitions.
@@ -219,7 +228,7 @@ Why not Git?
 - **Instant paint on reload.** The frontend stashes the last successful payload set (buoys, both forecasts, region wind, tides, sun) in `sessionStorage` (≤6 h) and renders the full table immediately on reload, skipping the loading screen while fresh fetches run in the background. A header **freshness chip** shows `UPDATING · DATA FROM Xm AGO` during the window, `PARTIAL DATA` when some upstreams are missing (per new backend `_status` metadata), or `STALE DATA` when serving last-known-good; hidden when everything is fresh.
 - **Skeleton loading cells.** First visits (no snapshot) render the table's real row structure as shimmering placeholders instead of a single "Loading…" line.
 - **Outage modal re-skinned onto palette surfaces** (`--bg1`/`--border2`/`--amber`) — drops the last hardcoded amber/brown hexes and now renders correctly in light mode.
-- **Wave-pipeline consolidation.** New `wave_common.py` holds the shared `_safe`/component-builder/record schema used by `waves.py` and `waves_cmems.py` (~150 duplicated lines removed). Behavior locked byte-for-byte by a new golden regression suite (`tests/test_wave_identity.py`, fixtures + `tests/regen_golden.py`).
+- **Wave-pipeline consolidation.** New `wave_common.py` holds the shared `_safe`/component-builder/record schema used by `waves.py` and `waves_cmems.py` (~150 duplicated lines removed). Behavior locked byte-for-byte by a new golden regression suite (`development-assets/tests/test_wave_identity.py`, fixtures + `development-assets/tests/regen_golden.py`).
 - **Fault tolerance.** Last-known-good forecasts persist to `.cache/lkg_forecast.json` and survive restarts (served with `_status: "stale"`); `/api/forecast/*` and `/api/wind` tag partially-populated payloads `_status: "partial"`; per-key single-flight locks in `cache.py` stop cache-miss stampedes on slow upstreams (cold CMEMS ≈ 90 s); `model_aware_cache` serves the still-valid cached value when a new-run re-fetch fails; typed error logging (timeout vs HTTP vs other) in wind/CMEMS fetchers.
 - **Backend perf.** Spot current-winds batched into one Open-Meteo call (`fetch_all_spot_winds`, was N per-spot requests); warmer startup delay 3 s → 0.5 s; precomputed grid-point constants; `/` and `/api/config` share one `_config_payload()`; Cache-Control rules centralized into a policy table; rate-limiter dict no longer grows unboundedly.
 - **Frontend smoothness.** Buoy-modal hover and mobile-scrubber redraws are rAF-gated; re-clicking the active model or history toggle no longer triggers redundant full rebuilds; `buildBuoyCell`/`buildHistoricalCell` share one `_buildSwellInner()`.

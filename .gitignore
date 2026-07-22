@@ -52,3 +52,7 @@ research_run_*.md
 
 # ─── Logs ───
 *.log
+
+# ─── Dev-only assets (mockups, tests, icon archive) — kept local, not synced ───
+development-assets/
+_hold/

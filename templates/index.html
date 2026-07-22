@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>colesurfs</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=22"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="colesurfs"/>
 
@@ -319,7 +321,7 @@
     td.cell {
       padding: 0; min-width: 66px; height: 46px;
       border-bottom: 1px solid var(--cell-border);
-      vertical-align: top;
+      vertical-align: top; position: relative;
     }
     th.day-start, td.cell.day-start {
       border-left: 1.5px solid var(--border2);
@@ -349,7 +351,24 @@
       display: flex; flex-direction: column; gap: 0;
       justify-content: center;
     }
-    .comp-line { display: flex; align-items: baseline; gap: 2px; line-height: 1.2; }
+    .comp-line { display: flex; align-items: baseline; gap: 3px; line-height: 1.2; }
+    .comp-line.null-dash { justify-content: center; opacity: .55; }
+    /* Agreement chips — small tinted letter chips stacked vertically (swell
+       agreement chip "M" above wind agreement chip "W") in a forecast cell's
+       top-right corner. M shows the hidden model's category colour (a peek at
+       the other model without switching, WEAK+ only); W is neutral-white and
+       appears when both models see clean wind in the region. `.wave-cell` gives
+       the reading a right gutter so the chips never overlap the swell text. */
+    .agreement-chips {
+      position: absolute; top: 3px; right: 2px;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+      pointer-events: none;
+    }
+    .agreement-chip {
+      font-size: 8px; font-weight: 800; line-height: 1;
+      padding: 0.5px 2px; border-radius: 3px;
+    }
+    td.cell.wave-cell .cell-inner { padding-right: 13px; }
     .comp-line.p1 { font-size: 11px; font-weight: 600; }
     .comp-line.p2 { font-size: 9.5px; font-weight: 500; opacity: .75; }
     .comp-line.p3 { font-size: 9.5px; font-weight: 400; opacity: .55; }
@@ -358,21 +377,6 @@
     .cell-emphasis .comp-line.p1 { font-weight: 800; }
     .cell-emphasis .comp-line.p2 { font-weight: 700; opacity: .88; }
     .cell-emphasis .comp-line.p3 { font-weight: 600; opacity: .72; }
-    .model-agree {
-      display: inline-block;
-      font-size: 9px; font-weight: 700; letter-spacing: .06em;
-      text-transform: uppercase;
-      padding: 1px 6px; border-radius: 3px;
-      margin-top: 3px;
-      background: rgba(255,255,255,.15);
-      border: 1px solid rgba(255,255,255,.18);
-    }
-    html[data-theme="light"] .model-agree,
-    html:not([data-theme="dark"]) .model-agree {
-      background: rgba(0,0,0,.08);
-      border-color: rgba(0,0,0,.1);
-    }
-
     .null-cell {
       display: flex; align-items: center; justify-content: center;
       height: 100%; color: var(--text3); font-size: 10px;
@@ -814,6 +818,7 @@
       .comp-line.p3 { font-size: 9px; }
       .c-ht { font-size: inherit; }
       .cell-inner { padding: 2px 4px; }
+      td.cell.wave-cell .cell-inner { padding-right: 12px; }
 
       /* Regional mode wind cells */
       .wind-cell { min-width: 56px; }
@@ -822,7 +827,6 @@
       .wind-gust { font-size: 8.5px; }
       .wind-tide { font-size: 8.5px; }
       .wind-cond { font-size: 8px; padding: 1px 4px; }
-      .model-agree { font-size: 8px; padding: 1px 4px; }
       td.spot-cell.wind-spot-cell {
         padding: 0; min-width: 52px; max-width: 52px;
         white-space: normal !important; word-break: break-word;
@@ -1539,7 +1543,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.10.2</span>
+    <span class="info-modal-version">v1.11.0</span>
   </div>
 </div>
 
@@ -1556,7 +1560,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.10.2</span>
+    <span class="about-version">v1.11.0</span>
   </div>
 </div>
 
@@ -1592,7 +1596,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.10.2</span>
+    <span class="footer-version">v1.11.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -1623,7 +1627,7 @@
 // ═══ 0. LOADING PROGRESS ════════════════════════════════════
 const _loader = {
   _done: 0,
-  _total: 9,   // config, buoys, euro, gfs, wind, regionWind, tides, sunData, windForecast
+  _total: 10,  // config, buoys, euro, gfs, wind, regionWind, altWind, tides, sunData, windForecast
   step(label) {
     this._done = Math.min(this._done + 1, this._total);
     const pct = Math.round((this._done / this._total) * 100);
@@ -1670,6 +1674,7 @@ let coastAngleLayer = null;
 // Regional mode state
 let regionMode      = null;   // null = overview; string = active buoy spot name
 let regionWindData  = {};     // { spot_name: [{time, speed_mph, ...}] }
+let regionWindAlt   = {};     // same shape, alternate model — feeds the wind dot's cross-model check
 let regionTideData  = {};     // { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, pct} } }
 
 // Side-by-side mode
@@ -2309,7 +2314,7 @@ function _saveSnapshot() {
   try {
     sessionStorage[_SNAPSHOT_KEY] = JSON.stringify({
       ts: Date.now(),
-      buoyData, forecastData, regionWindData, regionTideData, sunData,
+      buoyData, forecastData, regionWindData, regionWindAlt, regionTideData, sunData,
     });
   } catch (_) { /* quota exceeded — next load just paints the normal way */ }
 }
@@ -2325,6 +2330,7 @@ function _restoreSnapshot() {
     buoyData       = snap.buoyData;
     forecastData   = snap.forecastData;
     regionWindData = snap.regionWindData || {};
+    regionWindAlt  = snap.regionWindAlt  || {};
     regionTideData = snap.regionTideData || {};
     sunData        = snap.sunData || {};
     _snapshotTs    = snap.ts;
@@ -2399,7 +2405,14 @@ function _fetchWithTimeout(url, ms) {
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), ms);
   return fetch(url, { signal: ctrl.signal })
-    .then(r => r.json())
+    .then(r => {
+      // Reject on non-2xx (e.g. a 429 rate-limit body) so callers treat it as
+      // a failed fetch — Promise.allSettled marks it rejected and the existing
+      // last-known-good / snapshot / outage-banner path handles it, instead of
+      // the error JSON getting parsed as data and corrupting the render.
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${url}`);
+      return r.json();
+    })
     .finally(() => clearTimeout(tid));
 }
 
@@ -2422,12 +2435,13 @@ async function loadAll() {
   // Abort any fetch that doesn't respond within 9 s so the loading screen
   // doesn't block indefinitely when an upstream source is down.
   const T = 9000;
-  const [buoys, euro, gfs, wind, regionWind, tides] = await Promise.allSettled([
+  const [buoys, euro, gfs, wind, regionWind, altWind, tides] = await Promise.allSettled([
     track(_fetchWithTimeout('/api/buoys', T),                        'Buoy data loaded'),
     track(_fetchWithTimeout('/api/forecast/EURO', T),                'EURO forecast loaded'),
     track(_fetchWithTimeout('/api/forecast/GFS', T),                 'GFS forecast loaded'),
     track(_fetchWithTimeout(`/api/wind?model=${activeModel}`, T),    'Wind grid loaded'),
     track(_fetchWithTimeout(_regionWindUrl(activeModel), T), 'Regional wind loaded'),
+    track(_fetchWithTimeout(_regionWindUrl(_altModel()), T), 'Alt-model wind loaded'),
     track(_fetchWithTimeout(_tidesUrl(), T),                         'Tide data loaded'),
   ]);
 
@@ -2489,6 +2503,9 @@ async function loadAll() {
   } else {
     console.warn('[loadAll] region_wind fetch failed:', regionWind.status,
       regionWind.status === 'rejected' ? regionWind.reason : '(null value)');
+  }
+  if (altWind.status === 'fulfilled' && altWind.value) {
+    regionWindAlt = altWind.value;
   }
   if (tides.status === 'fulfilled' && tides.value) {
     regionTideData = tides.value;
@@ -2616,7 +2633,7 @@ function _swellCatIdx(catName) {
   return CFG.swell_categories.findIndex(c => c.name === catName);
 }
 
-// Primary (h, p) for a forecast record, mirroring getAltModelCat / buildBuoyCell.
+// Primary (h, p) for a forecast record, mirroring buildBuoyCell.
 function _primaryHP(rec) {
   if (!rec || rec.wave_height_ft == null) return null;
   const pc = rec.components && rec.components.length > 0 ? rec.components[0] : null;
@@ -2758,8 +2775,8 @@ function _buildSwellInner(rec) {
     const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
     inner += `<div class="comp-line ${cls}">
       <span class="c-ht">${c.height_ft}</span>
-      <span>&nbsp;@${c.period_s ?? '?'}</span>
-      <span>&nbsp;${arrow}${dir}</span>
+      <span>@${c.period_s ?? '?'}</span>
+      <span>${arrow}${dir}</span>
     </div>`;
   });
   inner += '</div>';
@@ -2808,17 +2825,40 @@ function preloadHistoricalData() {
   });
 }
 
-// Get the swell category from the alternate model for concordance checking.
-function getAltModelCat(spotName, time) {
-  const altModel = activeModel === 'EURO' ? 'GFS' : 'EURO';
-  const altRows  = (forecastData[altModel] || {})[spotName] || [];
-  const altRec   = altRows.find(r => r.time === time);
+function _altModel() { return activeModel === 'EURO' ? 'GFS' : 'EURO'; }
+
+// Colour for the SWELL AGREEMENT CHIP — the HIDDEN (non-active) model's swell
+// text colour at this hour: matches the cell's own colour when the models
+// agree, reveals the other model's rating when they diverge. Shown only when
+// the hidden model is poor-or-better (WEAK+) — FLAT and below-threshold reads
+// get no swell agreement chip.
+function _swellAgreementColor(spotName, t) {
+  const altRows = (forecastData[_altModel()] || {})[spotName] || [];
+  const altRec  = altRows.find(r => r.time === t);
   if (!altRec || altRec.wave_height_ft == null) return null;
   const pc = altRec.components && altRec.components.length > 0 ? altRec.components[0] : null;
-  const h  = pc ? pc.height_ft : altRec.wave_height_ft;
-  const p  = pc ? pc.period_s  : altRec.wave_period_s;
-  const [, , catName] = swellColor(h, p);
-  return catName;
+  const [, tx, cat] = swellColor(pc ? pc.height_ft : altRec.wave_height_ft,
+                                 pc ? pc.period_s  : altRec.wave_period_s);
+  return cat === 'FLAT' ? null : tx;
+}
+
+// The two agreement chips for a forecast cell, stacked M above W.
+// SWELL AGREEMENT CHIP ("M"): hidden model's category colour (WEAK+ only) —
+//   see _swellAgreementColor.
+// WIND AGREEMENT CHIP ("W"): neutral-white, shown only when BOTH models report
+//   ≥1 clean spot in the region at this hour (active + alt both 'solid'). If
+//   either model is missing data or reads not-clean → no wind agreement chip.
+function _agreementChips(spotName, t) {
+  if (!spotName || !t) return '';
+  const swellCol = _swellAgreementColor(spotName, t);
+  const cleanWind = _windHatchState(spotName, t, regionWindData) === 'solid'
+                 && _windHatchState(spotName, t, regionWindAlt)  === 'solid';
+  const chip = (kind, letter, col) =>
+    `<span class="agreement-chip ${kind}" style="color:${col};background:color-mix(in srgb, ${col} 13%, transparent)">${letter}</span>`;
+  let out = '';
+  if (swellCol)  out += chip('swell', 'M', swellCol);
+  if (cleanWind) out += chip('wind', 'W', 'var(--text0)');
+  return out ? `<div class="agreement-chips">${out}</div>` : '';
 }
 
 // Returns [bg, text, catName] for a swell height+period reading.
@@ -3240,11 +3280,14 @@ function buildBuoyCell(b, stationId, spotName) {
 }
 
 function buildWaveCell(r, t, extraClass = '', spotName = null) {
-  const tdCls = 'cell' + (extraClass ? ' ' + extraClass : '') + _dayStartCls(t);
+  const tdCls = 'cell wave-cell' + (extraClass ? ' ' + extraClass : '') + _dayStartCls(t);
   if (!r || r.wave_height_ft == null) {
     const [flatBg, flatFg] = swellColor(0, 10);
+    const chips = spotName ? _agreementChips(spotName, t) : '';
     return `<td class="${tdCls}" data-time="${t}" style="background:${flatBg}">
-              <div class="null-cell" style="color:${flatFg}">—</div></td>`;
+              <div class="cell-inner" style="color:${flatFg}">
+                <div class="comp-line p1 null-dash"><span>—</span></div>
+              </div>${chips}</td>`;
   }
   const primaryComp   = r.components && r.components.length > 0 ? r.components[0] : null;
   const primaryHeight = primaryComp ? primaryComp.height_ft : r.wave_height_ft;
@@ -3259,8 +3302,8 @@ function buildWaveCell(r, t, extraClass = '', spotName = null) {
       const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
       inner += `<div class="comp-line ${cls}">
         <span class="c-ht">${c.height_ft}</span>
-        <span>&nbsp;@${c.period_s ?? '?'}</span>
-        <span>&nbsp;${arrow}${dir}</span>
+        <span>@${c.period_s ?? '?'}</span>
+        <span>${arrow}${dir}</span>
       </div>`;
     });
   } else {
@@ -3268,19 +3311,13 @@ function buildWaveCell(r, t, extraClass = '', spotName = null) {
     const arrow = r.wave_direction_deg != null ? toArrow(r.wave_direction_deg) : '';
     inner += `<div class="comp-line p1">
       <span class="c-ht">${r.wave_height_ft}</span>
-      <span>&nbsp;@${r.wave_period_s ?? '?'}</span>
-      <span>&nbsp;${arrow}${dir}</span>
+      <span>@${r.wave_period_s ?? '?'}</span>
+      <span>${arrow}${dir}</span>
     </div>`;
   }
-  // Model concordance badge — show when both EURO and GFS agree on category
-  if (spotName && catName) {
-    const altCat = getAltModelCat(spotName, t);
-    if (altCat && altCat === catName) {
-      inner += `<span class="model-agree">Model Agreement</span>`;
-    }
-  }
   inner += '</div>';
-  return `<td class="${tdCls}" data-time="${t}" style="background:${bg}">${inner}</td>`;
+  const chips = spotName ? _agreementChips(spotName, t) : '';
+  return `<td class="${tdCls}" data-time="${t}" style="background:${bg}">${inner}${chips}</td>`;
 }
 
 /**
@@ -3333,6 +3370,45 @@ function windCondColor(cond) {
                 : { bg: '#e4e6f3', text: '#3e4390' };
   return dark ? { bg: '#1d1b1f', text: '#8a8085' }
               : { bg: '#e7e3e0', text: '#6f656a' };
+}
+
+// ── Region clean-wind gate ──────────────────────────────────
+// Reports whether ≥1 spot in a buoy's region rates Glassy/Groomed/Clean at
+// each hour (per the active wind model). Drives the white wind dot. Cached
+// per wind-data object (WeakMap) so model switches / refreshes / snapshot
+// loads invalidate automatically.
+const _cleanWindCache = new WeakMap();
+function _regionCleanWind(region, data = regionWindData) {
+  let byRegion = _cleanWindCache.get(data);
+  if (!byRegion) { byRegion = {}; _cleanWindCache.set(data, byRegion); }
+  let entry = byRegion[region];
+  if (entry) return entry;
+  entry = { clean: new Set(), known: new Set() };
+  const spots = ((CFG && CFG.wind_spots) || [])
+    .filter(ws => ws.buoy_region === region && ws.shore_normal != null);
+  for (const ws of spots) {
+    for (const rec of (data[ws.name] || [])) {
+      if (!rec || rec.speed_mph == null) continue;
+      entry.known.add(rec.time);
+      if (entry.clean.has(rec.time)) continue;
+      const cond = windCondition(rec.speed_mph, rec.direction_deg,
+                                  ws.shore_normal, rec.gust_mph);
+      if (cond === 'Glassy' || cond === 'Groomed' || cond === 'Clean')
+        entry.clean.add(rec.time);
+    }
+  }
+  byRegion[region] = entry;
+  return entry;
+}
+
+// Tri-state region wind outcome:
+// 'solid' (≥1 clean spot) | 'hatched' (known, none clean) | null (unknown —
+// no wind record at t; fetch failed or hour outside the wind window).
+function _windHatchState(region, t, data = regionWindData) {
+  if (!region || !t || !data) return null;
+  const { clean, known } = _regionCleanWind(region, data);
+  if (!known.has(t)) return null;
+  return clean.has(t) ? 'solid' : 'hatched';
 }
 
 /**
@@ -4260,6 +4336,12 @@ async function enterRegionMode(spotName) {
       if (data) regionWindData = data;
     } catch(e) { console.warn('[enterRegionMode] region_wind re-fetch failed:', e); }
   }
+  // Alt-model copy only feeds the wind dot — refill in the background.
+  if (!Object.keys(regionWindAlt).length) {
+    fetch(_regionWindUrl(_altModel())).then(r => r.json())
+      .then(alt => { if (alt) { regionWindAlt = alt; if (regionMode) buildTable(); } })
+      .catch(() => {});
+  }
 
   const scrollAnchor = _getScrollAnchor();
   buildTable();
@@ -4409,25 +4491,29 @@ function setModel(model, btn) {
   loadWindForecast(model);
   _refreshStatus();
 
-  // Always refresh regionWindData on model switch so that entering regional
-  // mode after a switch shows data from the newly selected model, not stale
-  // data from the previous model.
+  // Always refresh regionWindData (active) AND regionWindAlt (the other
+  // model, needed by the wind dot's cross-model check) on model switch so
+  // nothing renders against stale data. Rebuild in ALL modes when it lands.
   regionWindData = {};
-  fetch(_regionWindUrl(model))
-    .then(r => r.json())
-    .then(data => {
-      if (data) {
-        regionWindData = data;
-        console.log('[setModel] regionWindData refreshed:', Object.keys(data).length, 'spots');
-        if (regionMode) {
-          buildTable();
-          buildRegionWindMarkers(_displayTime);
-        }
-      } else {
-        console.warn('[setModel] region_wind returned null for model:', model);
-      }
-    })
-    .catch(e => { console.warn('[setModel] region_wind fetch error:', e); });
+  regionWindAlt  = {};
+  Promise.all([
+    fetch(_regionWindUrl(model)).then(r => r.json()).catch(() => null),
+    fetch(_regionWindUrl(model === 'EURO' ? 'GFS' : 'EURO')).then(r => r.json()).catch(() => null),
+  ]).then(([data, alt]) => {
+    if (alt) regionWindAlt = alt;
+    if (data) {
+      regionWindData = data;
+      console.log('[setModel] regionWindData refreshed:', Object.keys(data).length, 'spots');
+    } else {
+      console.warn('[setModel] region_wind returned null for model:', model);
+    }
+    if (data || alt) {
+      const anchor = _getScrollAnchor();
+      buildTable();
+      _scrollTableToTime(anchor);
+      if (regionMode) buildRegionWindMarkers(_displayTime);
+    }
+  });
 }
 
 function setResolution(r, btn) {
@@ -4958,6 +5044,19 @@ function _populateAboutLegends() {
       p.textContent = cat.name;
       swellEl.appendChild(p);
     });
+    const funCat = CFG.swell_categories.find(c => c.name === 'FUN') || CFG.swell_categories[0];
+    const glyphChip = (letter, col, label) => {
+      const el = document.createElement('span');
+      el.className = 'legend-pill';
+      el.style.background = dark ? 'var(--bg2)' : 'var(--bg1)';
+      el.style.color = dark ? 'var(--text1)' : 'var(--text2)';
+      el.style.border = '1px solid var(--border1)';
+      el.innerHTML = `<span class="agreement-chip" style="color:${col};background:color-mix(in srgb, ${col} 13%, transparent);margin-right:6px;vertical-align:middle">${letter}</span>${label}`;
+      swellEl.appendChild(el);
+    };
+    const funCol = dark ? funCat.dark_text : funCat.light_text;
+    glyphChip('M', funCol, "swell agreement — other model's rating");
+    glyphChip('W', 'var(--text0)', 'wind agreement — both models see clean wind');
   }
   const windEl = document.getElementById('about-wind-legend');
   if (windEl) {
@@ -5025,20 +5124,23 @@ function setShowHistory(val) {
     if (newMo) _setTableScrollX(ts, Math.max(0, newMo.offsetLeft - anchorViewportX));
     _markExpectedScroll(ts);
   }
-  // In Regional Mode we need region_wind AND tides to include past_days
-  // when history flips on (and to drop the extra payload when it flips
-  // off). Re-fetch both so the per-spot wind strip has historical records
-  // to render against.
-  if (regionMode) {
-    Promise.all([
-      fetch(_regionWindUrl(activeModel)).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(_tidesUrl()).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([wind, tides]) => {
-      if (wind)  regionWindData = wind;
-      if (tides) regionTideData = tides;
-      if (wind || tides) buildTable();
-    });
-  }
+  // History flips change region_wind's past_days window — needed by the
+  // region-mode wind strip AND the overview wind dot (both active + alt
+  // models) — plus tides' window in Regional Mode. Re-fetch so historical
+  // columns have records to render against (and drop the extra payload on
+  // flip-off).
+  Promise.all([
+    fetch(_regionWindUrl(activeModel)).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(_regionWindUrl(_altModel())).then(r => r.ok ? r.json() : null).catch(() => null),
+    regionMode
+      ? fetch(_tidesUrl()).then(r => r.ok ? r.json() : null).catch(() => null)
+      : Promise.resolve(null),
+  ]).then(([wind, alt, tides]) => {
+    if (wind)  regionWindData = wind;
+    if (alt)   regionWindAlt  = alt;
+    if (tides) regionTideData = tides;
+    if (wind || alt || tides) buildTable();
+  });
 }
 
 // Post-build hook: preload historical data and reset slider to the
@@ -5946,6 +6048,7 @@ async function refreshAll(opts = {}) {
 
   regionMode = null;
   regionWindData = {};
+  regionWindAlt  = {};
   regionTideData = {};
 
   // Start wind forecast in parallel with loadAll (same as init).
