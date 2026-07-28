@@ -226,12 +226,19 @@ cells are genuinely empty, not fallback-eligible).
   only from `buildWaveCell`, including the "—" below-threshold path — not on
   buoy-now or historical cells). Each chip is its letter in colour `col` on a
   `color-mix(in srgb, col 13%, transparent)` wash.
-  **Swell agreement chip ("M", `.swell`):** `col` is the HIDDEN (non-active)
-  model's category colour (`_swellAgreementColor`) — matches the cell's own
-  colour when the models agree, reveals the other model's rating when they
-  diverge (a peek without a model switch). Shown ONLY for poor-or-better hidden
-  reads (WEAK+); a FLAT or below-threshold hidden read, or a missing alt record,
-  → no swell chip.
+  **Swell agreement chip ("M", `.swell`):** a SOLID block in the HIDDEN
+  (non-active) model's category colour (`_swellAgreementColors` returns
+  `[fill, ink]` = that category's text colour + cell background, so the letter is
+  knocked out of the fill) — matches the cell's own colour when the models agree,
+  reveals the other model's rating when they diverge (a peek without a model
+  switch). Shown ONLY for poor-or-better hidden reads (WEAK+); a FLAT or
+  below-threshold hidden read, or a missing alt record, → no swell chip. The W
+  chip keeps the 13% wash; both share the same geometry so the stack stays
+  aligned. (v1.11.1 briefly tried a `min(active, hidden) ≥ FUN` gate to suppress
+  WEAK/FUN splits — reverted before release: it left ~2 chips per 1 600
+  spot-hours. The visibility problem it was aimed at was a *contrast* problem,
+  solved by the solid fill; variants weighed in
+  `development-assets/design-demo/agreement-chip.html`.)
   **Wind agreement chip ("W", `.wind`):** `col` is neutral-white (`var(--text0)`,
   so white in dark mode, near-black in light), shown ONLY when BOTH models
   report ≥1 clean spot in the region at that hour (`_windHatchState` === `'solid'`

@@ -1,4 +1,4 @@
-# colesurfs · v1.11.0
+# colesurfs · v1.11.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -13,7 +13,7 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 ## Features
 
 - **Easy toggling between EURO & GFS wave forecasts** — hourly or 3-hour swell table with up to 3 swell partitions per cell, color-coded by swell category
-- **Model concordance & wind at a glance** — up to two small tinted letter chips stacked in each forecast cell's top-right corner. The **swell agreement chip** ("M") is coloured by the *hidden* model's swell category (matches the cell when EURO and GFS agree, reveals the other model's rating when they diverge; shown only for poor-or-better hidden reads). The **wind agreement chip** ("W", neutral-white) appears only when *both* models agree ≥1 spot in the buoy's region has clean wind at that hour.
+- **Model concordance & wind at a glance** — up to two small tinted letter chips stacked in each forecast cell's top-right corner. The **swell agreement chip** ("M") is a solid block in the *hidden* model's swell category colour (matches the cell when EURO and GFS agree, reveals the other model's rating when they diverge; shown only for poor-or-better hidden reads). The **wind agreement chip** ("W", neutral-white) appears only when *both* models agree ≥1 spot in the buoy's region has clean wind at that hour.
 - **Customized swell rating scale** — 7 hierarchical tiers (Flat / Weak / Fun / Solid / Firing / Hectic / Monstro) per swell (current or modeled) based on swell size and period
 - **At-a-glance swell forecast evaluation ("Fun+ Days", new in v1.7)** — per-region count of days in the forecast with ≥2 daytime 3-hour windows where *both* models rate the primary swell fun-or-better (`min(GFS, EURO) ≥ FUN`) *and* ≥1 spot in the region has Textured-or-better wind at that hour. Denominator is the forecast span in days; cell colour tracks the best `min(GFS, EURO)` window across the forecast.
 - **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or Preferences modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
@@ -199,6 +199,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.11.1
+- **The swell agreement chip's colour actually reads now.** The "M" chip carried the hidden model's category colour as an 8px glyph on a 13% wash of itself — technically the right colour, but at that size it registered as "a small mark" before it registered as green-vs-blue, so the divergence it exists to show was easy to miss. The chip is now a **solid block** of the hidden model's colour with the letter knocked out in that category's cell background: same size, same position, same gutter, far more colour per pixel. The wind chip ("W") keeps its neutral-white wash and shares the geometry, so the stack stays aligned. Which hours get a chip is unchanged (hidden model WEAK-or-better). Variants weighed in `development-assets/design-demo/agreement-chip.html`.
 
 ### v1.11.0
 - **Liquid-glass favicon.** The barrel-wave artwork now sits under a composited "liquid glass" treatment — edge refraction with chromatic fringing, a convex specular sheen, a glass-bright lip along the curl with a caustic glow inside the tube, frosted foam, rim light, and a depth grade — built as pure SVG layers over the photo embedded in `favicon.svg`. All raster icons (`favicon-192/32/16.png`, `apple-touch-icon*.png`) are re-exported from that SVG; the 16 px export uses a simplified layer set for legibility, and apple-touch stays square full-bleed for iOS's own corner mask. Previous icon sets are archived in `development-assets/old-icons/`.

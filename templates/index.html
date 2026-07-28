@@ -353,12 +353,16 @@
     }
     .comp-line { display: flex; align-items: baseline; gap: 3px; line-height: 1.2; }
     .comp-line.null-dash { justify-content: center; opacity: .55; }
-    /* Agreement chips — small tinted letter chips stacked vertically (swell
-       agreement chip "M" above wind agreement chip "W") in a forecast cell's
-       top-right corner. M shows the hidden model's category colour (a peek at
-       the other model without switching, WEAK+ only); W is neutral-white and
-       appears when both models see clean wind in the region. `.wave-cell` gives
-       the reading a right gutter so the chips never overlap the swell text. */
+    /* Agreement chips — small letter chips stacked vertically (swell agreement
+       chip "M" above wind agreement chip "W") in a forecast cell's top-right
+       corner. M is a SOLID block in the hidden model's category colour with the
+       letter knocked out in that category's cell background (a peek at the other
+       model without switching, WEAK+ only) — solid because a 13% wash of an 8px
+       glyph read as "a mark" long before it read as a colour. W stays a
+       neutral-white letter on a 13% wash of itself, and appears when both models
+       see clean wind in the region. Both share this geometry so the stack stays
+       aligned. `.wave-cell` gives the reading a right gutter so the chips never
+       overlap the swell text. */
     .agreement-chips {
       position: absolute; top: 3px; right: 2px;
       display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
@@ -1543,7 +1547,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.11.0</span>
+    <span class="info-modal-version">v1.11.1</span>
   </div>
 </div>
 
@@ -1560,7 +1564,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.11.0</span>
+    <span class="about-version">v1.11.1</span>
   </div>
 </div>
 
@@ -1596,7 +1600,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.11.0</span>
+    <span class="footer-version">v1.11.1</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2827,37 +2831,40 @@ function preloadHistoricalData() {
 
 function _altModel() { return activeModel === 'EURO' ? 'GFS' : 'EURO'; }
 
-// Colour for the SWELL AGREEMENT CHIP — the HIDDEN (non-active) model's swell
-// text colour at this hour: matches the cell's own colour when the models
-// agree, reveals the other model's rating when they diverge. Shown only when
-// the hidden model is poor-or-better (WEAK+) — FLAT and below-threshold reads
-// get no swell agreement chip.
-function _swellAgreementColor(spotName, t) {
-  const altRows = (forecastData[_altModel()] || {})[spotName] || [];
-  const altRec  = altRows.find(r => r.time === t);
-  if (!altRec || altRec.wave_height_ft == null) return null;
-  const pc = altRec.components && altRec.components.length > 0 ? altRec.components[0] : null;
-  const [, tx, cat] = swellColor(pc ? pc.height_ft : altRec.wave_height_ft,
-                                 pc ? pc.period_s  : altRec.wave_period_s);
-  return cat === 'FLAT' ? null : tx;
+// Colours for the SWELL AGREEMENT CHIP — a SOLID block in the HIDDEN
+// (non-active) model's swell colour at this hour: matches the cell's own colour
+// when the models agree, reveals the other model's rating when they diverge.
+// Returns [fill, ink] — the hidden category's text colour fills the chip, its
+// cell background knocks the letter out — or null. Shown only when the hidden
+// model is poor-or-better (WEAK+); FLAT and below-threshold reads, or a missing
+// alt record, get no swell agreement chip.
+function _swellAgreementColors(spotName, t) {
+  const hp = _primaryHP(((forecastData[_altModel()] || {})[spotName] || []).find(r => r.time === t));
+  if (!hp) return null;
+  const [bg, tx, cat] = swellColor(hp.h, hp.p);
+  return (!cat || cat === 'FLAT') ? null : [tx, bg];
 }
 
 // The two agreement chips for a forecast cell, stacked M above W.
-// SWELL AGREEMENT CHIP ("M"): hidden model's category colour (WEAK+ only) —
-//   see _swellAgreementColor.
-// WIND AGREEMENT CHIP ("W"): neutral-white, shown only when BOTH models report
-//   ≥1 clean spot in the region at this hour (active + alt both 'solid'). If
-//   either model is missing data or reads not-clean → no wind agreement chip.
+// SWELL AGREEMENT CHIP ("M"): solid fill in the hidden model's category colour
+//   (WEAK+ only) — see _swellAgreementColors.
+// WIND AGREEMENT CHIP ("W"): neutral-white on a 13% wash of itself, shown only
+//   when BOTH models report ≥1 clean spot in the region at this hour (active +
+//   alt both 'solid'). If either model is missing data or reads not-clean → no
+//   wind agreement chip.
 function _agreementChips(spotName, t) {
   if (!spotName || !t) return '';
-  const swellCol = _swellAgreementColor(spotName, t);
+  const swell = _swellAgreementColors(spotName, t);
   const cleanWind = _windHatchState(spotName, t, regionWindData) === 'solid'
                  && _windHatchState(spotName, t, regionWindAlt)  === 'solid';
-  const chip = (kind, letter, col) =>
-    `<span class="agreement-chip ${kind}" style="color:${col};background:color-mix(in srgb, ${col} 13%, transparent)">${letter}</span>`;
   let out = '';
-  if (swellCol)  out += chip('swell', 'M', swellCol);
-  if (cleanWind) out += chip('wind', 'W', 'var(--text0)');
+  if (swell) {
+    out += `<span class="agreement-chip swell" style="background:${swell[0]};color:${swell[1]}">M</span>`;
+  }
+  if (cleanWind) {
+    const col = 'var(--text0)';
+    out += `<span class="agreement-chip wind" style="color:${col};background:color-mix(in srgb, ${col} 13%, transparent)">W</span>`;
+  }
   return out ? `<div class="agreement-chips">${out}</div>` : '';
 }
 
@@ -5045,18 +5052,21 @@ function _populateAboutLegends() {
       swellEl.appendChild(p);
     });
     const funCat = CFG.swell_categories.find(c => c.name === 'FUN') || CFG.swell_categories[0];
-    const glyphChip = (letter, col, label) => {
+    // `chipStyle` mirrors _agreementChips: M solid, W washed.
+    const glyphChip = (letter, chipStyle, label) => {
       const el = document.createElement('span');
       el.className = 'legend-pill';
       el.style.background = dark ? 'var(--bg2)' : 'var(--bg1)';
       el.style.color = dark ? 'var(--text1)' : 'var(--text2)';
       el.style.border = '1px solid var(--border1)';
-      el.innerHTML = `<span class="agreement-chip" style="color:${col};background:color-mix(in srgb, ${col} 13%, transparent);margin-right:6px;vertical-align:middle">${letter}</span>${label}`;
+      el.innerHTML = `<span class="agreement-chip" style="${chipStyle};margin-right:6px;vertical-align:middle">${letter}</span>${label}`;
       swellEl.appendChild(el);
     };
     const funCol = dark ? funCat.dark_text : funCat.light_text;
-    glyphChip('M', funCol, "swell agreement — other model's rating");
-    glyphChip('W', 'var(--text0)', 'wind agreement — both models see clean wind');
+    const funBg  = dark ? funCat.dark_bg   : funCat.light_bg;
+    glyphChip('M', `background:${funCol};color:${funBg}`, "swell agreement — other model's rating");
+    glyphChip('W', 'color:var(--text0);background:color-mix(in srgb, var(--text0) 13%, transparent)',
+              'wind agreement — both models see clean wind');
   }
   const windEl = document.getElementById('about-wind-legend');
   if (windEl) {
