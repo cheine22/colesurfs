@@ -45,6 +45,26 @@ defs, metric tables).
 - `templates/index.html` — the main dashboard frontend, ~5 k lines
   (see "index.html landmarks" below)
 - `templates/csc.html` — the CSC2 eval page
+- `gland.py` + `templates/gland.html` — the `/gland` page (Grajagan, East
+  Java). Deliberately NOT wired through `regions.yaml`: there is no NDBC
+  buoy and no CO-OPS station within thousands of km of G-Land, so the
+  dashboard's whole data spine is inapplicable. Its own sources are
+  GFS-Wave via Open-Meteo Marine, ECMWF-WAM via `waves_cmems.fetch_cmems_point`
+  (already lat/lon-generic), Open-Meteo `sea_level_height_msl` for tide,
+  Open-Meteo for wind, and AODN/IMOS near-real-time wave buoys off Western
+  Australia as upstream sentinels. See "gland.py landmarks" below.
+- `gland-swell-categorization.toml` + `templates/gland-tuner.html` — G-Land's
+  OWN FLAT..MONSTRO thresholds and the `/gland/tuner` page that edits them.
+  Deliberately a separate file from `swell-categorization-scheme.toml`:
+  the site-wide scheme is tuned for NY/NJ beach breaks and G-Land is a
+  long-period Indian Ocean point break. `gland.load_gland_bands()` /
+  `categorize_gland()` keep their own cache and never call
+  `swell_rules.load_bands()`, so editing one scheme cannot move the other —
+  verified by a 924-cell height×period sweep. Only the category *names* and
+  *colours* are shared. `/gland/tuner` and `/api/gland/tuner/save` are behind
+  the same LAN-only `_restrict_tuner` gate as `/tuner`.
+- `development-assets/docs/gland-cheatsheet.md` — the researched forecasting
+  notes behind the page's cheat-sheet panel, with sources
 - `csc2/` — CSC2 package (see below)
 - `favicon.svg` + `favicon-{16,32,192}.png` + `apple-touch-icon*.png` — the
   liquid-glass icon set (2026-07). The glass layers (edge refraction with
@@ -186,6 +206,113 @@ training inputs byte-identical to dashboard rendering.
 
 EURO has no equivalent fallback (honest-empty policy: CMEMS partition-null
 cells are genuinely empty, not fallback-eligible).
+
+## gland.py landmarks
+
+- **Swell is sampled offshore, not at the spot** (`SWELL_NODE_LAT/LON`).
+  The Blambangan peninsula shadows the inshore model cells: GFS-Wave at the
+  cell the pin snaps to (-8.75, 114.25) read 11.3 s from 180° while the next
+  cell south (-9.00, 114.25) read 15.3 s from 209° in the same hour — the
+  inshore cell has lost the long-period SSW entirely. Both models now read
+  -9.00, 114.25 (~32 km SSW), which matches Surfline's deepwater convention
+  and keeps GFS-vs-EURO like-for-like. **Wind and tide still come from the
+  spot itself** — only waves move offshore. Do not "fix" the node back to
+  the pin.
+- **Geography is traced, not invented.** `SECTIONS[*].lat/lon`, `REEF_LINE`,
+  `HARBOUR_CHANNEL` and `POINT_TIP` were read off Esri World Imagery
+  (2026-07) by pixel→latlng conversion, validated by the trace landing on
+  Surfline's pin to 4 decimal places. The point tip is at the **SW**; the
+  reef runs **north-east** into Grajagan Bay, so sections order
+  Kongs → Moneytrees → Speed Reef → (harbour channel) → Chickens →
+  Tiger Tracks with longitude increasing. An earlier schematic had this
+  backwards.
+- **`SWELL_BANDS` overlap on purpose.** 165-190 outer / 190-210 Speedies /
+  **205**-250 Moneytrees / 250-285 outer — so 205-210° feeds Speedies *and*
+  Moneytrees. Consumers must handle multiple matches (`bandsFor()` returns a
+  list, not a hit); the dial splits overlapping bands radially via the `ring`
+  field so both light up. Keep in sync with `SECTIONS[*].best_dir` — the dial
+  legend and the scoring must not disagree.
+- **The forecast table prints exact degrees, not compass points** — a
+  deliberate departure from the main dashboard's `toCard()`. At G-Land the
+  section a swell feeds turns on a few degrees (the 205-210° overlap), and a
+  22.5°-wide compass point cannot resolve that. Don't "harmonise" it back.
+- **The point map carries no live data.** Section markers and cards show
+  *preferred* size/direction/period/tide only. Live rating and wind belong
+  in the forecast table, not on the map.
+- **Swell-window filtering (`pick_gland_swell`)** — the reason this page
+  exists as its own module. The dashboard's energy-sorted "primary swell"
+  is *wrong* at G-Land: in the dry season the largest partition is
+  routinely a 7-8 s SE trade windsea that the west-facing point never
+  sees, while the surf is a smaller 16 s SSW line. Partitions are scored
+  as `H²·T · window_fit`, with a hard 9 s period floor
+  (`MIN_GROUNDSWELL_PERIOD`) and a direction taper across
+  `WINDOW_EDGE` (165-285°) peaking over `WINDOW_CORE` (200-240°, per
+  Surfline). Both models are ranked the same way so model-vs-model stays
+  apples-to-apples.
+- **`rank_sections`** — G-Land is five waves, not one, so the page ranks
+  the reef rather than rating the spot. Score is
+  `(dir 30 + period ≤15 + tide 30 + wind 25) × size_fit × ceiling × prestige`.
+  Note **size is a multiplicative gate, not an additive term** — Speedies
+  on a 3 ft day must be 0, not "a bit off"; an earlier additive version
+  gave it 27/100 off good wind and tide alone. `_quality_ceiling` caps the
+  whole reef by absolute swell size so a relative winner in marginal surf
+  still reads marginal. `prestige` encodes that Moneytrees/Speed Reef are
+  world-class and Chickens is, per Surfline, "a slightly lame little left".
+- **Per-section wind** — there is no single shore-normal here. The tip
+  faces due west and the shoreline swings to NNW as the wave wraps, so
+  each section carries its own `offshore` bearing (Kongs wants E, inside
+  wants SE; ESE is best overall). `wind_for_section` rates against that.
+- **Section scoring is server-side only.** `_build_timeline` merges all
+  sources onto one hourly timeline and emits a compact `sec_gfs` /
+  `sec_euro` score array per hour in `SECTIONS` order. `gland.html`
+  renders those numbers and never recomputes them — an earlier draft
+  duplicated the scoring in JS and the two drifted immediately.
+- **Translation layer (`translate_upstream`)** — turns WA buoy readings into a
+  G-Land arrival, following Collard/Ardhuin/Chapron (2009) swell tracking:
+  back-project each buoy along its great circle at `cg = gT/4π`, triangulate
+  the single storm position that explains *every* buoy's direction **and**
+  agrees on when it radiated (`_fit_source`, coarse 2° grid then 0.5° refine),
+  then forward-project that source to G-Land. Height uses geometric spreading
+  only (`_spread_factor`, energy ∝ 1/[α·sin α]); dissipation is deliberately
+  unmodelled rather than fudged. **The first implementation picked each buoy's
+  source independently by a storm-belt heuristic and averaged — sources
+  scattered by 3,700 km and it was meaningless. Confidence must come from rays
+  actually converging** (`bearing_err_deg`, `time_spread_h`), not from how many
+  buoys happen to share a period bin; a lone buoy always fits perfectly and
+  means nothing.
+  **Unvalidated.** There is no backtest — no archive of past buoy readings
+  paired with what G-Land actually did. The only check run so far is a
+  single-instant comparison against GFS/EURO (2026-07-29): height landed within
+  0.2 ft and period carried through, but **arrival direction was 18-23° off the
+  models**, which is wider than the 20°-wide Speedies band — so it cannot be
+  trusted to say which section a swell will feed. Sensitivity is quantified:
+  500 km of source-position error moves arrival bearing only 6.5° but shifts
+  ETA by 13 h, so ETA is the fragile output. Treat the whole layer as a
+  cross-check on the models, never as a replacement, and don't let the UI
+  wording drift toward claiming more.
+- **`compare_translation_to_models`** puts that cross-check on the page: for
+  each in-window cluster it looks up the timeline row at the hour the swell is
+  predicted to land (arrive_epoch is UTC; timeline keys are WIB = UTC+7 — the
+  +7 h shift and the round-to-nearest-hour are easy to get wrong) and reports
+  signed ΔHs / ΔT / ΔDir against GFS and EURO with an agree/close/diverge
+  verdict. Per-cell colours are per-axis while the verdict combines them, so a
+  green ΔHs next to a red verdict is correct, not a bug — it means height
+  agrees and direction doesn't, which is the method's known failure mode. This
+  comparison is legitimate rather than circular **because the translation has
+  no wave model anywhere in its chain** — it is in-situ readings plus
+  geometry. If anyone ever seeds the translation from model data, this panel
+  stops meaning anything.
+- **`fetch_upstream_model_swell` uses COMBINED sea state on purpose.** A
+  waverider reports total Hs/Tp/Dp, so combined is the like-for-like against an
+  observation. This is the one place on the page that touches combined values,
+  and it is model-vs-buoy; the G-Land forecast table stays on primary swell,
+  where model-vs-model belongs. Don't "unify" the two.
+- **Upstream buoys are sentinels, not intercepts.** `UPSTREAM_BUOYS` are
+  2,300-2,900 km away down the WA coast and are NOT on G-Land's swell
+  rays; the page says so explicitly. `north_offset` is how far off due
+  north G-Land sits from each buoy, and `transit_hours` is a distance
+  scale reference, not an ETA. Don't let either get relabelled into a
+  promise about arrival.
 
 ## index.html landmarks
 

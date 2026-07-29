@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>colesurfs — G-Land tuner</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+    :root {
+      --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f; --bg3:#222228;
+      --border0:#1e1e24; --border1:#2e2e38; --border2:#3e3e4e;
+      --text0:#e8e8f0; --text1:#a0a0b8; --text2:#606075; --text3:#404055;
+      --accent:#7c6af7; --green:#3fb950; --amber:#d29922; --red:#f85149;
+      --gl:#2ec4b6; --gl-dim:#0e3d38;
+      --font:'JetBrains Mono','Fira Code',monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) {
+        --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+        --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+        --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+        --gl:#0f8f84; --gl-dim:#d3f0ec;
+      }
+    }
+    html[data-theme="light"] {
+      --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+      --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+      --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+      --gl:#0f8f84; --gl-dim:#d3f0ec;
+    }
+    html, body { min-height:100vh; background:var(--bg0); color:var(--text0);
+                 font-family:var(--font); font-size:13px; }
+    .app-header { position:sticky; top:0; z-index:200; background:var(--bg1);
+      border-bottom:1px solid var(--border0); padding:0 20px; height:44px;
+      display:flex; align-items:center; justify-content:space-between; }
+    .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
+      color:var(--gl); display:inline-flex; align-items:center; gap:6px;
+      text-decoration:none; }
+    .header-logo .home { color:var(--text2); font-weight:500; }
+    .header-logo .sep { color:var(--text3); font-weight:400; }
+    .header-right { display:flex; align-items:center; gap:10px; }
+    .btn { background:var(--bg2); border:1px solid var(--border1); color:var(--text1);
+      border-radius:5px; padding:5px 12px; font-family:var(--font); font-size:11px;
+      cursor:pointer; letter-spacing:.05em; }
+    .btn:hover { color:var(--text0); border-color:var(--border2); }
+    .btn.primary { background:var(--gl-dim); border-color:var(--gl); color:var(--gl);
+                   font-weight:700; }
+    .btn:disabled { opacity:.45; cursor:default; }
+
+    .wrap { max-width:1400px; margin:0 auto; padding:18px 20px 80px; }
+    .panel { background:var(--bg1); border:1px solid var(--border0);
+             border-radius:10px; margin-bottom:16px; overflow:hidden; }
+    .panel-head { padding:11px 15px; border-bottom:1px solid var(--border0);
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      flex-wrap:wrap; }
+    .panel-title { font-size:11px; font-weight:700; letter-spacing:.14em;
+      text-transform:uppercase; color:var(--text1); }
+    .panel-title .dot { color:var(--gl); }
+    .panel-sub { font-size:10.5px; color:var(--text2); font-weight:400;
+                 text-transform:none; letter-spacing:.02em; }
+    .panel-body { padding:15px; }
+
+    .scope { background:var(--gl-dim); border-left:3px solid var(--gl);
+      border-radius:0 7px 7px 0; padding:11px 14px; font-size:11.5px;
+      line-height:1.7; color:var(--text1); margin-bottom:16px; }
+    .scope b { color:var(--gl); }
+
+    table.grid { border-collapse:separate; border-spacing:0; width:100%;
+                 font-size:11px; }
+    table.grid th { font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+      color:var(--text2); font-weight:600; padding:7px 8px; text-align:center;
+      border-bottom:1px solid var(--border1); white-space:nowrap; }
+    table.grid th.per { text-align:left; min-width:120px; }
+    table.grid td { padding:5px 6px; border-bottom:1px solid var(--border0);
+                    text-align:center; }
+    table.grid td.per { text-align:left; font-size:10.5px; color:var(--text1);
+                        font-weight:600; white-space:nowrap; }
+    table.grid td.per small { display:block; font-size:8.5px; color:var(--text3);
+                              font-weight:400; }
+    .cellwrap { display:flex; align-items:center; justify-content:center; gap:3px; }
+    .op { font-size:9.5px; color:var(--text3); width:10px; text-align:right; }
+    input.thr { width:52px; background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text0); border-radius:4px; padding:3px 5px; font-family:var(--font);
+      font-size:11px; text-align:center; font-variant-numeric:tabular-nums; }
+    input.thr:focus { outline:none; border-color:var(--gl); }
+    input.thr.dirty { border-color:var(--amber); color:var(--amber); }
+    .chip { font-size:9px; letter-spacing:.06em; text-transform:uppercase;
+      padding:3px 7px; border-radius:4px; border:1px dashed var(--border2);
+      color:var(--text3); cursor:pointer; background:none;
+      font-family:var(--font); }
+    .chip:hover { color:var(--text1); border-color:var(--border2); }
+    .catsel { border:1px solid var(--border1); border-radius:4px; padding:2px 5px; font-family:var(--font); font-size:10px; font-weight:700; letter-spacing:.04em; } .chip.always { border-style:solid; border-color:var(--border1);
+                   color:var(--text2); cursor:default; }
+    .del { background:none; border:0; color:var(--text3); cursor:pointer;
+           font-size:11px; padding:0 2px; }
+    .del:hover { color:var(--red); }
+
+    .legend { display:flex; gap:10px; flex-wrap:wrap; font-size:10px;
+              color:var(--text2); margin-top:12px; align-items:center; }
+    .legend .sw { display:inline-block; width:11px; height:11px; border-radius:3px;
+                  margin-right:5px; vertical-align:-2px; }
+
+    /* Preview heatmap */
+    table.hm { border-collapse:collapse; font-size:10px; margin-top:4px; }
+    table.hm th { font-size:9px; color:var(--text2); font-weight:600;
+                  padding:3px 5px; white-space:nowrap; }
+    table.hm th.axis { text-align:right; }
+    table.hm td { width:44px; height:24px; text-align:center; font-size:9.5px;
+      font-weight:700; font-variant-numeric:tabular-nums;
+      border:1px solid var(--bg0); }
+    .hm-wrap { overflow-x:auto; user-select:none; }
+    table.hm td.paintable { cursor:crosshair; }
+    table.hm td.painted { outline:1.5px solid var(--gl); outline-offset:-2px; }
+    .brush { display:flex; gap:3px; flex-wrap:wrap; align-items:center; }
+    .brush button { font-family:var(--font); font-size:8.5px; letter-spacing:.05em;
+      padding:3px 7px; border-radius:4px; border:1px solid transparent;
+      cursor:pointer; font-weight:700; }
+    .brush button.on { outline:2px solid var(--gl); outline-offset:1px; }
+    .brush .lbl { font-size:9px; color:var(--text2); margin-right:3px; }
+    .hint { font-size:10px; color:var(--text3); line-height:1.7; margin-top:10px; }
+    .status { font-size:10.5px; color:var(--text2); }
+    .status.ok { color:var(--green); }
+    .status.err { color:var(--red); }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <a class="header-logo" href="/gland">
+    <span class="home">colesurfs</span><span class="sep">/</span>G-LAND<span class="sep">/</span>TUNER
+  </a>
+  <div class="header-right">
+    <span class="status" id="status"></span>
+    <button class="btn" id="revertBtn">Revert</button>
+    <button class="btn primary" id="saveBtn" disabled>Save</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="scope">
+    <b>G-Land only.</b> These thresholds live in <code>gland-swell-categorization.toml</code>
+    and are read only by <a href="/gland" style="color:var(--gl)">/gland</a>. The rest of
+    the site keeps using <code>swell-categorization-scheme.toml</code>, edited at
+    <code>/tuner</code> — nothing you change here touches it.
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="dot">◆</span> Category thresholds
+        <span class="panel-sub">— rows are peak-period bands, columns are categories</span></span>
+    </div>
+    <div class="panel-body">
+      <div style="overflow-x:auto"><table class="grid" id="grid"></table></div>
+      <button class="btn" id="addRule" style="margin-top:10px">+ Add rule</button>
+      <div class="hint">
+        Rules are matched <b>top to bottom and the first hit wins</b>, so order is
+        priority — put the most specific rule first. Ranges are
+        <b>[min, max]</b>: min inclusive, max exclusive, <code>inf</code> for
+        unbounded. Leave <b>direction</b> blank to ignore it; a rule with a
+        direction can only ever match when the swell direction is known.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="dot">◆</span> Live preview
+        <span class="panel-sub">— height (ft) × period (s)</span></span>
+      <div class="brush" id="brush"></div>
+      <label style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:6px">
+        swell direction
+        <input type="number" id="previewDir" value="205" min="0" max="359" step="5"
+               style="width:62px;background:var(--bg2);border:1px solid var(--border1);
+                      color:var(--text0);border-radius:4px;padding:3px 5px;
+                      font-family:var(--font);font-size:11px;text-align:center"/>°
+      </label><span</span>
+    </div>
+    <div class="panel-body">
+      <div class="hm-wrap"><table class="hm" id="heat"></table></div>
+      <div class="legend" id="legend"></div>
+      <div class="hint">
+        Pick a brush above and <b>click or drag across the matrix</b> to paint
+        ratings straight onto it. Painted cells become high-priority rules on
+        save — adjacent cells of the same rating are merged into the largest
+        possible rectangles, so the rule list stays readable. <b>Erase</b>
+        removes a painted cell and lets the rules below show through.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CFG = {{ inline_config | safe }};
+const CATS = CFG.categories;
+let RULES = JSON.parse(JSON.stringify(CFG.rules));
+const ORIGINAL = JSON.stringify(CFG.rules);
+
+const isLight = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t === 'light') return true;
+  if (t === 'dark') return false;
+  return window.matchMedia('(prefers-color-scheme: light)').matches;
+};
+function catColors(cat){
+  const c = CFG.colors[cat] || CFG.colors.FLAT;
+  return isLight() ? [c.light_bg, c.light_text] : [c.dark_bg, c.dark_text];
+}
+
+/* Mirror of gland.categorize_gland — the preview must classify exactly the
+   way the server will once these rules are saved. */
+function inRange(v, r){
+  if (v == null || !r) return false;
+  const lo = r[0], hi = r[1];
+  return v >= lo && (hi === 'inf' || v < hi);
+}
+function categorize(h, p, dir){
+  if (h == null || p == null) return 'FLAT';
+  for (const r of RULES){
+    if (!inRange(p, r.period)) continue;
+    if (!inRange(h, r.height)) continue;
+    if (r.direction && !inRange(dir, r.direction)) continue;
+    return r.category;
+  }
+  return 'FLAT';
+}
+
+const numOrInf = v => {
+  const t = String(v).trim().toLowerCase();
+  if (t === 'inf' || t === '∞') return 'inf';
+  const n = parseFloat(t);
+  return isNaN(n) ? 0 : n;
+};
+
+function renderGrid(){
+  let h = `<thead><tr><th style="width:26px"></th><th class="per">Category</th>
+    <th colspan="2">Period (s)</th><th colspan="2">Height (ft)</th>
+    <th colspan="2">Direction (°)</th><th style="width:60px"></th></tr></thead><tbody>`;
+  RULES.forEach((r, i) => {
+    const [bg, ink] = catColors(r.category);
+    const opts = CATS.map(c => `<option value="${c}"${c===r.category?' selected':''}>${c}</option>`).join('');
+    const f = (kind, idx, val) =>
+      `<td><input class="thr" data-i="${i}" data-k="${kind}" data-x="${idx}"
+         value="${val === undefined || val === null ? '' : val}"/></td>`;
+    h += `<tr>
+      <td style="color:var(--text3);font-size:9px">${i+1}</td>
+      <td class="per"><select class="catsel" data-i="${i}"
+          style="background:${bg};color:${ink}">${opts}</select></td>
+      ${f('period',0,r.period[0])}${f('period',1,r.period[1])}
+      ${f('height',0,r.height[0])}${f('height',1,r.height[1])}
+      ${f('direction',0,r.direction?r.direction[0]:'')}${f('direction',1,r.direction?r.direction[1]:'')}
+      <td>
+        <button class="del" data-i="${i}" data-act="up"   title="Higher priority">▲</button>
+        <button class="del" data-i="${i}" data-act="down" title="Lower priority">▼</button>
+        <button class="del" data-i="${i}" data-act="rm"   title="Delete rule">×</button>
+      </td></tr>`;
+  });
+  document.getElementById('grid').innerHTML = h + '</tbody>';
+
+  document.querySelectorAll('.catsel').forEach(el =>
+    el.addEventListener('change', () => {
+      RULES[+el.dataset.i].category = el.value; touched(); renderAll();
+    }));
+  document.querySelectorAll('input.thr').forEach(el =>
+    el.addEventListener('input', () => {
+      const r = RULES[+el.dataset.i], k = el.dataset.k, x = +el.dataset.x;
+      if (k === 'direction'){
+        const both = [0,1].map(j => document.querySelector(
+          `input.thr[data-i="${el.dataset.i}"][data-k="direction"][data-x="${j}"]`).value.trim());
+        if (!both[0] && !both[1]) delete r.direction;
+        else r.direction = [numOrInf(both[0] || 0), numOrInf(both[1] || 360)];
+      } else {
+        r[k][x] = numOrInf(el.value);
+      }
+      el.classList.add('dirty'); touched();
+    }));
+  document.querySelectorAll('[data-act]').forEach(el =>
+    el.addEventListener('click', () => {
+      const i = +el.dataset.i, a = el.dataset.act;
+      if (a === 'rm') RULES.splice(i,1);
+      else if (a === 'up' && i > 0) RULES.splice(i-1, 0, RULES.splice(i,1)[0]);
+      else if (a === 'down' && i < RULES.length-1) RULES.splice(i+1, 0, RULES.splice(i,1)[0]);
+      touched(); renderAll();
+    }));
+}
+
+/* ── Paint brush ──────────────────────────────────────────────
+   Painted cells are stored by grid index and applied on top of the rules in
+   the preview. On save they are coalesced into maximal rectangles and
+   prepended to the rule list, so painting and rule-editing stay one model.
+   ───────────────────────────────────────────────────────────── */
+const HEIGHTS = [1,2,3,4,5,6,7,8,10,12,15,18];
+const PERIODS = [8,10,12,13,14,14.5,15,16,16.5,17,18,20,22];
+let BRUSH = 'FUN', PAINT = {}, painting = false;
+const pkey = (pi,hi) => pi + ',' + hi;
+
+function renderBrush(){
+  const opts = CATS.concat(['ERASE']);
+  document.getElementById('brush').innerHTML = '<span class="lbl">brush</span>' +
+    opts.map(c => {
+      const [bg, ink] = c === 'ERASE' ? ['transparent','var(--text2)'] : catColors(c);
+      return `<button data-b="${c}" class="${BRUSH===c?'on':''}"
+        style="background:${bg};color:${ink};${c==='ERASE'?'border-color:var(--border2)':''}"
+        >${c === 'ERASE' ? '⌫ ERASE' : c}</button>`;
+    }).join('');
+  document.querySelectorAll('#brush button').forEach(b =>
+    b.addEventListener('click', () => { BRUSH = b.dataset.b; renderBrush(); }));
+}
+
+function paintCell(pi, hi){
+  if (BRUSH === 'ERASE') delete PAINT[pkey(pi,hi)];
+  else PAINT[pkey(pi,hi)] = BRUSH;
+  touched(); renderHeat();
+}
+
+/* Greedy maximal rectangles over the painted grid, one pass per category. */
+function paintToRules(){
+  const seen = new Set(), rects = [];
+  const at = (pi,hi) => PAINT[pkey(pi,hi)];
+  for (let hi = 0; hi < HEIGHTS.length; hi++){
+    for (let pi = 0; pi < PERIODS.length; pi++){
+      const cat = at(pi,hi);
+      if (!cat || seen.has(pkey(pi,hi))) continue;
+      let w = 1;
+      while (pi + w < PERIODS.length && at(pi+w,hi) === cat
+             && !seen.has(pkey(pi+w,hi))) w++;
+      let h = 1;
+      outer: while (hi + h < HEIGHTS.length){
+        for (let k = 0; k < w; k++){
+          if (at(pi+k,hi+h) !== cat || seen.has(pkey(pi+k,hi+h))) break outer;
+        }
+        h++;
+      }
+      for (let a = 0; a < w; a++) for (let b = 0; b < h; b++) seen.add(pkey(pi+a,hi+b));
+      const pLo = PERIODS[pi];
+      const pHi = pi + w < PERIODS.length ? PERIODS[pi+w] : 'inf';
+      const hLo = HEIGHTS[hi];
+      const hHi = hi + h < HEIGHTS.length ? HEIGHTS[hi+h] : 'inf';
+      rects.push({category: cat, period: [pLo, pHi], height: [hLo, hHi]});
+    }
+  }
+  return rects;
+}
+
+function renderHeat(){
+  const dir = +document.getElementById('previewDir').value;
+  const heights = HEIGHTS, periods = PERIODS;
+  let h = '<thead><tr><th class="axis">ft \\ s</th>';
+  periods.forEach(p => h += `<th>${p}</th>`);
+  h += '</tr></thead><tbody>';
+  heights.slice().reverse().forEach((ft, ri) => {
+    const hi = heights.length - 1 - ri;
+    h += `<tr><th class="axis">${ft}</th>`;
+    periods.forEach((p, pi) => {
+      const painted = PAINT[pkey(pi,hi)];
+      const c = painted || categorize(ft, p, dir);
+      const [bg, ink] = catColors(c);
+      h += `<td class="paintable${painted?' painted':''}" data-pi="${pi}" data-hi="${hi}"
+        style="background:${bg};color:${ink}"
+        title="${ft}+ ft @ ${p}+ s @ ${dir}° → ${c}${painted?' (painted)':''}">${
+        c === 'FLAT' ? '' : c[0]}</td>`;
+    });
+    h += '</tr>';
+  });
+  document.getElementById('heat').innerHTML = h + '</tbody>';
+  document.querySelectorAll('#heat td.paintable').forEach(td => {
+    const go = () => paintCell(+td.dataset.pi, +td.dataset.hi);
+    td.addEventListener('mousedown', e => { e.preventDefault(); painting = true; go(); });
+    td.addEventListener('mouseenter', () => { if (painting) go(); });
+  });
+  document.getElementById('legend').innerHTML = CATS.map(c => {
+    const [bg, ink] = catColors(c);
+    return `<span><span class="sw" style="background:${bg};border:1px solid ${ink}"></span>${c}</span>`;
+  }).join('');
+}
+
+const renderAll = () => { renderGrid(); renderBrush(); renderHeat(); };
+document.addEventListener('mouseup', () => { painting = false; });
+
+function touched(){
+  const dirty = JSON.stringify(RULES) !== ORIGINAL || Object.keys(PAINT).length > 0;
+  document.getElementById('saveBtn').disabled = !dirty;
+  setStatus(dirty ? 'unsaved changes' : '');
+  renderHeat();
+}
+function setStatus(msg, cls){
+  const el = document.getElementById('status');
+  el.textContent = msg; el.className = 'status ' + (cls||'');
+}
+
+document.getElementById('previewDir').addEventListener('input', renderHeat);
+document.getElementById('addRule').addEventListener('click', () => {
+  RULES.push({category:'FUN', period:[12,'inf'], height:[3,'inf']});
+  touched(); renderAll();
+});
+document.getElementById('saveBtn').addEventListener('click', async () => {
+  setStatus('saving…');
+  try {
+    const r = await fetch('/api/gland/tuner/save', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({rules: paintToRules().concat(RULES)}),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    const n = paintToRules().length;
+    PAINT = {};
+    setStatus(`saved${n ? ` — ${n} painted rule${n>1?'s':''} merged in` : ''}`, 'ok');
+    document.getElementById('saveBtn').disabled = true;
+    location.reload();
+  } catch(e){ setStatus('save failed: ' + e.message, 'err'); }
+});
+document.getElementById('revertBtn').addEventListener('click', () => {
+  RULES = JSON.parse(ORIGINAL); PAINT = {}; renderAll(); touched();
+  setStatus('reverted to last saved');
+});
+
+renderAll();
+</script>
+</body>
+</html>

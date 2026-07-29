@@ -118,7 +118,9 @@ def _restrict_tuner():
     headers (CF-Ray, CF-Connecting-IP) or one where the Host header isn't
     a LAN/loopback address."""
     path = request.path or ""
-    if path != "/tuner" and not path.startswith("/api/tuner/"):
+    if (path not in ("/tuner", "/gland/tuner")
+            and not path.startswith("/api/tuner/")
+            and not path.startswith("/api/gland/tuner/")):
         return None
     if request.headers.get("CF-Ray") or request.headers.get("CF-Connecting-IP"):
         return jsonify({"error": "not found"}), 404
@@ -484,6 +486,158 @@ def csc_page():
 def csc_model_page():
     """CSC2 model documentation — explains the training pipeline end-to-end."""
     return render_template("csc-model.html")
+
+
+# ─── G-Land (Grajagan, East Java) ────────────────────────────────────────────
+# Standalone from the main dashboard on purpose: there is no NDBC buoy and no
+# CO-OPS tide station within thousands of km of G-Land, so none of the
+# regions.yaml plumbing applies. See gland.py for the source list.
+
+@app.route("/gland")
+def gland_page():
+    """G-Land forecast page — cheat sheet + live model data for Grajagan."""
+    import gland as _gland
+    payload = {
+        "lat": _gland.GLAND_LAT,
+        "lon": _gland.GLAND_LON,
+        "tz": _gland.GLAND_TZ,
+        "surfline_url": _gland.SURFLINE_URL,
+        "sections": _gland.SECTIONS,
+        "reef_line": _gland.REEF_LINE,
+        "harbour_channel": _gland.HARBOUR_CHANNEL,
+        "point_tip": _gland.POINT_TIP,
+        "upstream": _gland.UPSTREAM_BUOYS,
+        "window_core": _gland.WINDOW_CORE,
+        "window_edge": _gland.WINDOW_EDGE,
+        "swell_bands": _gland.SWELL_BANDS,
+        "swell_node": {"lat": _gland.SWELL_NODE_LAT,
+                       "lon": _gland.SWELL_NODE_LON,
+                       "km": _gland.SWELL_NODE_KM},
+        # G-Land's own ladder, colours and match rules — DREAMY and BIG do
+        # not exist site-wide, so these must not come from swell_rules.
+        "categories": _gland.GLAND_CATEGORIES,
+        "colors": _gland.GLAND_COLORS,
+        "rules": _gland.gland_rules_payload(),
+    }
+    return render_template(
+        "gland.html",
+        inline_config=_json.dumps(payload, separators=(',', ':')),
+    )
+
+
+@app.route("/api/gland/all")
+def api_gland_all():
+    """Everything the G-Land page needs in one call: both wave models, tide,
+    wind, the Western Australian sentinel buoys, and the moon phase."""
+    import gland as _gland
+    data = _gland.fetch_all()
+    meta = data.get("meta") or {}
+    if not meta.get("have_gfs") and not meta.get("have_euro"):
+        return jsonify({"error": "no wave model data available"}), 503
+    return jsonify(data)
+
+
+@app.route("/gland/tuner")
+def gland_tuner_page():
+    """G-Land-only swell category tuner. Writes gland-swell-categorization.toml
+    and touches nothing the rest of the site reads — the site-wide scheme in
+    swell-categorization-scheme.toml is edited at /tuner and is unaffected."""
+    import gland as _gland
+    payload = {
+        "rules": _gland.gland_rules_payload(),
+        "categories": _gland.GLAND_CATEGORIES,
+        "colors": _gland.GLAND_COLORS,
+    }
+    return render_template(
+        "gland-tuner.html",
+        inline_config=_json.dumps(payload, separators=(',', ':')),
+    )
+
+
+@app.route("/api/gland/tuner/save", methods=["POST"])
+def api_gland_tuner_save():
+    """Persist G-Land rule edits and reload just the G-Land rules."""
+    import gland as _gland
+    payload = request.get_json(silent=True) or {}
+    rules = payload.get("rules")
+    if not isinstance(rules, list) or not rules:
+        return jsonify({"error": "no rules supplied"}), 400
+
+    def pair(v):
+        lo, hi = v
+        fmt = lambda x: '"inf"' if str(x).lower() == "inf" else repr(float(x))
+        return f"[{fmt(lo)}, {fmt(hi)}]"
+
+    lines = [
+        "# G-Land Swell Categorization Scheme",
+        "# G-LAND ONLY — auto-written by /api/gland/tuner/save; edit at /gland/tuner.",
+        "# Ordered rules: the FIRST match wins, so order is priority.",
+        "#   period/height/direction are [min, max]; \"inf\" is unbounded;",
+        "#   min is inclusive, max exclusive. Omit direction to ignore it.",
+        "",
+    ]
+    for r in rules:
+        lines.append("[[rule]]")
+        lines.append(f'category  = "{r["category"]}"')
+        lines.append(f'period    = {pair(r.get("period", [0, "inf"]))}')
+        lines.append(f'height    = {pair(r.get("height", [0, "inf"]))}')
+        if r.get("direction"):
+            lines.append(f'direction = {pair(r["direction"])}')
+        lines.append("")
+    try:
+        _atomic_write_text(_gland.GLAND_TOML, "\n".join(lines) + "\n")
+        _gland.reload_gland_rules()
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+    return jsonify({"status": "saved", "rules": len(rules)})
+
+
+@app.route("/api/gland/tides")
+def api_gland_tides():
+    """Tide highs/lows for a date range (lookup tool). Capped at 14 days."""
+    import gland as _gland
+    import datetime as _dt
+    start = request.args.get("start", "")
+    end = request.args.get("end", "")
+    try:
+        d0 = _dt.date.fromisoformat(start)
+        d1 = _dt.date.fromisoformat(end)
+    except ValueError:
+        return jsonify({"error": "start and end must be YYYY-MM-DD"}), 400
+    if d1 < d0:
+        d0, d1 = d1, d0
+    if (d1 - d0).days > 13:
+        d1 = d0 + _dt.timedelta(days=13)
+    data = _gland.fetch_gland_tide_range(d0.isoformat(), d1.isoformat())
+    if not data:
+        return jsonify({"error": "tide data unavailable for that range"}), 503
+    return jsonify(data)
+
+
+@app.route("/api/gland/history")
+def api_gland_history():
+    """Past 14 days at G-Land. Fetched on demand from Open-Meteo's own past
+    analysis plus the harmonic tide — nothing is archived locally."""
+    import gland as _gland
+    try:
+        days = int(request.args.get("days", _gland.HISTORY_DAYS))
+    except ValueError:
+        days = _gland.HISTORY_DAYS
+    days = max(1, min(days, 30))
+    data = _gland.fetch_gland_history(days)
+    if not data:
+        return jsonify({"error": "history unavailable"}), 503
+    return jsonify(data)
+
+
+@app.route("/api/gland/upstream")
+def api_gland_upstream():
+    """Just the WA sentinel buoys — used for the standalone refresh."""
+    import gland as _gland
+    data = _gland.fetch_upstream_buoys()
+    if data is None:
+        return jsonify({"error": "AODN unavailable"}), 503
+    return jsonify(data)
 
 
 @app.route("/api/csc2/archive_status")

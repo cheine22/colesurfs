@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>colesurfs — G-Land</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=22"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="G-Land"/>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+       G-Land — colesurfs palette, warmed toward jungle/volcanic
+    ═══════════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f; --bg3:#222228;
+      --border0:#1e1e24; --border1:#2e2e38; --border2:#3e3e4e;
+      --text0:#e8e8f0; --text1:#a0a0b8; --text2:#606075; --text3:#404055;
+      --accent:#7c6af7; --accent-glow:#7c6af733;
+      --green:#3fb950; --green-dim:#1a4a22;
+      --amber:#d29922; --red:#f85149;
+      --font:'JetBrains Mono','Fira Code',monospace;
+      --cell-border:#ffffff07;
+      /* G-Land accent — the reef/jungle teal that sets this page apart */
+      --gl:#2ec4b6; --gl-dim:#0e3d38; --gl-glow:#2ec4b633;
+      --sand:#e0b878;
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) {
+        --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+        --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+        --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+        --green-dim:#ddf4e2; --accent-glow:#7c6af718; --cell-border:#00000009;
+        --gl:#0f8f84; --gl-dim:#d3f0ec; --gl-glow:#2ec4b622; --sand:#8a6a30;
+      }
+    }
+    html[data-theme="light"] {
+      --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+      --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+      --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+      --green-dim:#ddf4e2; --accent-glow:#7c6af718; --cell-border:#00000009;
+      --gl:#0f8f84; --gl-dim:#d3f0ec; --gl-glow:#2ec4b622; --sand:#8a6a30;
+    }
+
+    html, body { min-height:100vh; background:var(--bg0); color:var(--text0);
+                 font-family:var(--font); font-size:13px;
+                 max-width:100%; overflow-x:hidden; }
+
+    /* ─── Header ─── */
+    /* Matches the main dashboard header exactly — same metrics, same accent
+       logo, same PREFERENCES-style buttons. */
+    .app-header { position:sticky; top:0; z-index:800; background:var(--bg1);
+      border-bottom:1px solid var(--border0); padding:0 24px; height:44px;
+      display:flex; align-items:center; justify-content:space-between; }
+    .header-left { display:inline-flex; align-items:center; gap:8px; }
+    .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
+      color:var(--accent); display:inline-flex; align-items:center; gap:3px;
+      text-decoration:none; cursor:pointer; }
+    .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+    .header-crumb { font-size:14px; font-weight:700; letter-spacing:.12em;
+                    color:var(--gl); }
+    .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:5px; }
+    .header-right { display:flex; align-items:center; gap:18px; min-width:0; }
+    .header-left { min-width:0; }
+    /* Mobile: two dated clocks + PREFERENCES don't fit beside the logo. */
+    @media (max-width:760px) {
+      .app-header { padding:0 12px; }
+      .header-right { gap:9px; }
+      .zone-clock { font-size:9px; gap:4px; }
+      .zone-clock b { font-size:8px; }
+      .live-dot { display:none; }
+    }
+    @media (max-width:560px) {
+      .zone-clock.ny { display:none; }
+      .zone-clock b { display:none; }
+      .header-logo { font-size:12px; letter-spacing:.08em; }
+      .icon-btn { font-size:7.5px; padding:2px 6px; }
+    }
+    .zone-clock { display:inline-flex; align-items:baseline; gap:6px; font-size:10px;
+                  color:var(--gl); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .zone-clock b { color:var(--text2); font-weight:600; letter-spacing:.1em; font-size:9px; }
+
+    /* ─── Modals — same shape as the main dashboard's preferences ─── */
+    .modal-overlay { position:fixed; inset:0; z-index:900; display:none;
+      align-items:center; justify-content:center; background:rgba(0,0,0,.62);
+      backdrop-filter:blur(2px); padding:20px; }
+    .modal-overlay.open { display:flex; }
+    .modal { position:relative; background:var(--bg1); border:1px solid var(--border1);
+      border-radius:12px; padding:22px 24px; min-width:260px;
+      display:flex; flex-direction:column; gap:9px;
+      box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    .modal.wide { min-width:min(660px, 92vw); max-height:86vh; overflow-y:auto; }
+    .modal-title { font-size:13px; font-weight:700; letter-spacing:.1em;
+      color:var(--accent); display:flex; align-items:center; gap:6px;
+      margin-bottom:6px; }
+    .modal-title .wave-glyph { font-size:1.4em; line-height:1; }
+    .modal-close { position:absolute; top:10px; right:12px; background:none;
+      border:0; color:var(--text3); font-size:13px; cursor:pointer; }
+    .modal-close:hover { color:var(--text0); }
+    .modal-btn { background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text1); border-radius:6px; padding:8px 14px; font-size:11px;
+      font-family:var(--font); letter-spacing:.08em; cursor:pointer;
+      text-decoration:none; text-align:center; transition:color .15s, border-color .15s; }
+    .modal-btn:hover { color:var(--gl); border-color:var(--gl); }
+    .modal-btn.inline { padding:5px 12px; }
+
+    .tide-range { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+    .tide-range label { font-size:10px; color:var(--text2); letter-spacing:.06em;
+      display:flex; flex-direction:column; gap:4px; }
+    .tide-range input { background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text0); border-radius:5px; padding:5px 8px;
+      font-family:var(--font); font-size:11px; }
+    .tide-note { font-size:9.5px; color:var(--text3); margin:2px 0 6px; }
+    table.tidetbl { width:100%; border-collapse:collapse; font-size:11px;
+                    font-variant-numeric:tabular-nums; }
+    table.tidetbl th { text-align:left; font-size:9px; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--text2); font-weight:600;
+      padding:5px 8px; border-bottom:1px solid var(--border1); }
+    table.tidetbl td { padding:5px 8px; border-bottom:1px solid var(--border0);
+                       color:var(--text1); }
+    table.tidetbl td.d { font-weight:600; color:var(--text0); white-space:nowrap; }
+    .tev { display:inline-block; margin-right:12px; white-space:nowrap; }
+    .tev b { font-weight:700; }
+    .tev.H b { color:var(--gl); }
+    .tev.L b { color:var(--amber); }
+    .tev span { color:var(--text3); margin-left:3px; }
+    .live-dot { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--text2); }
+    .live-dot::before { content:''; width:6px; height:6px; border-radius:50%;
+      background:var(--green); box-shadow:0 0 5px var(--green);
+      animation:pulse 2.4s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+    #clock { font-size:10px; color:var(--text2); letter-spacing:.05em;
+             font-variant-numeric:tabular-nums; }
+    .icon-btn { background:none; border:1px solid var(--border1); border-radius:5px;
+      color:var(--text2); font-size:8px; font-family:var(--font);
+      letter-spacing:.1em; font-weight:600; padding:2px 8px; cursor:pointer;
+      transition:color .15s, border-color .15s; text-decoration:none;
+      display:inline-flex; align-items:center; }
+    .icon-btn:hover { color:var(--accent); border-color:var(--accent); }
+
+    .wrap { max-width:1500px; margin:0 auto; padding:18px 20px 80px; }
+
+    /* ─── Footer — matches the main dashboard, minus side-by-side ─── */
+    .app-footer {
+      position:fixed; bottom:0; left:0; right:0; z-index:800;
+      background:var(--bg1); border-top:1px solid var(--border0);
+      padding:0 24px; height:38px;
+      display:flex; align-items:center; justify-content:space-between;
+      user-select:none;
+    }
+    .footer-sig { font-size:10px; letter-spacing:.18em; color:var(--text3);
+                  transition:color .2s; }
+    .footer-sig:hover { color:var(--text2); }
+    .footer-center { display:flex; align-items:center; gap:8px; }
+    .footer-version { font-size:8.5px; letter-spacing:.08em; color:var(--text3);
+                      font-family:var(--font); }
+    .footer-btns { display:flex; align-items:center; gap:10px; }
+    .footer-divider { color:var(--text3); font-size:12px; }
+    .footer-btn { padding:3px 11px; border:1px solid var(--border1);
+      border-radius:5px; background:transparent; color:var(--text3);
+      font-family:var(--font); font-size:10px; letter-spacing:.1em;
+      cursor:pointer; transition:color .15s, border-color .15s; }
+    .footer-btn:hover { color:var(--gl); border-color:var(--gl); }
+    @media (max-width:560px) {
+      .app-footer { padding:0 12px; height:34px; }
+      .footer-sig { font-size:8px; letter-spacing:.1em; }
+      .footer-btn { font-size:8.5px; padding:2px 8px; letter-spacing:.06em; }
+      .footer-center { display:none; }
+    }
+
+    /* ─── Section shell ─── */
+    .panel { background:var(--bg1); border:1px solid var(--border0);
+             border-radius:10px; margin-bottom:16px; overflow:hidden; }
+    .panel-head { padding:11px 15px; border-bottom:1px solid var(--border0);
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      flex-wrap:wrap; }
+    .panel-title { font-size:11px; font-weight:700; letter-spacing:.14em;
+      text-transform:uppercase; color:var(--text1); }
+    .panel-title .dot { color:var(--gl); }
+    .panel-sub { font-size:10.5px; color:var(--text2); font-weight:400;
+                 letter-spacing:.02em; text-transform:none; }
+    .panel-body { padding:15px; }
+
+    /* ─── Hero ─── */
+    .hero { display:grid; grid-template-columns:1.15fr .85fr; gap:16px;
+            margin-bottom:16px; }
+    @media (max-width:1040px){ .hero{ grid-template-columns:1fr; } }
+
+    .hero-title { font-size:26px; font-weight:700; letter-spacing:.04em;
+                  margin-bottom:2px; }
+    .hero-title .gl { color:var(--gl); }
+    .hero-loc { font-size:11px; color:var(--text2); letter-spacing:.06em;
+                margin-bottom:14px; }
+    .hero-loc .zone b { color:var(--text1); font-weight:600; letter-spacing:.1em; }
+    .hero-loc .zone span { color:var(--gl); font-variant-numeric:tabular-nums; }
+
+    /* Height · Period · Direction · Wind · Tide — direction and tide are
+       wider because each carries a diagram. */
+    .now-grid { display:grid; gap:10px;
+                grid-template-columns:.8fr .8fr 1.25fr .9fr 1.45fr; }
+    @media (max-width:1240px){ .now-grid{ grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:720px){ .now-grid{ grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:460px){ .now-grid{ grid-template-columns:1fr; } }
+    .now-cell { background:var(--bg2); border:1px solid var(--border0);
+      border-radius:8px; padding:10px 11px; display:flex; flex-direction:column; }
+    .now-label { font-size:9.5px; letter-spacing:.13em; text-transform:uppercase;
+                 color:var(--text2); margin-bottom:5px; }
+    .now-val { font-size:22px; font-weight:700; line-height:1.1;
+               font-variant-numeric:tabular-nums; }
+    .now-val .u { font-size:12px; font-weight:600; opacity:.6; margin-left:2px; }
+    .now-sub { font-size:10px; color:var(--text2); margin-top:3px; line-height:1.45; }
+    .now-cell .fill { flex:1; }
+    /* Dial sits beside the readout rather than under it — that alone removed
+       most of the dead space in this row. */
+    .dir-wrap { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+    .dir-dial { display:block; flex:none; }
+    /* Value and its meta share one baseline row so the tide cell stays as
+       short as the others despite carrying a chart. */
+    .tide-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+    .tide-meta { font-size:9.5px; color:var(--text2); line-height:1.4;
+                 flex:1 1 auto; min-width:0; }
+    .band-key { display:flex; flex-direction:column; gap:1px; margin-top:5px; }
+    .band-key div { font-size:8.5px; color:var(--text2); display:flex;
+                    align-items:center; gap:4px; }
+    .band-key i { width:8px; height:8px; border-radius:2px; flex:none;
+                  display:inline-block; font-style:normal; }
+    .band-key b { color:var(--text1); font-weight:600; }
+    .band-key .on b, .band-key .on { color:var(--gl); }
+    .tide-svg { display:block; width:100%; height:auto; margin-top:2px; }
+
+    /* ─── Maps ─── */
+    .geo-map { width:100%; height:390px; border-radius:8px; overflow:hidden;
+               border:1px solid var(--border1); background:var(--bg2); }
+    .geo-map.tall { height:460px; margin-bottom:14px; }
+    .leaflet-control-attribution { font-size:8px !important; opacity:.5; }
+    .map-tip { background:rgba(10,10,14,.82); border:1px solid #2ec4b655;
+      color:#e8e8f0; font:600 10px/1.3 'JetBrains Mono',monospace;
+      padding:2px 5px; border-radius:4px; box-shadow:none; white-space:nowrap; }
+    .map-tip::before { display:none !important; }
+    .map-tip.buoy { border-color:#7c6af755; }
+    /* Numbered marker labels sit inside the dot itself. */
+    .map-tip.num { background:none; border:0; color:#04201d; font-weight:800;
+                   font-size:10px; padding:0; box-shadow:none; }
+    .map-wrap { position:relative; }
+    .map-btn { position:absolute; z-index:500; right:10px; top:10px;
+      background:var(--bg1); border:1px solid var(--border2); color:var(--text1);
+      border-radius:5px; padding:4px 9px; font-family:var(--font); font-size:10px;
+      cursor:pointer; letter-spacing:.05em; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+    .map-btn:hover { color:var(--text0); border-color:var(--gl); }
+    .map-layers { position:absolute; z-index:500; left:10px; bottom:10px;
+      display:flex; gap:4px; background:var(--bg1); border:1px solid var(--border2);
+      border-radius:6px; padding:4px; box-shadow:0 1px 4px rgba(0,0,0,.3); }
+    .map-layers .tg { font-size:9.5px; padding:2px 7px; }
+    /* Compass rose — also carries the swell window, which is why the old
+       "SW–SSW swell" arrow could come off the map. */
+    .map-compass { position:absolute; z-index:500; left:10px; bottom:10px;
+      background:rgba(10,10,14,.78); border:1px solid var(--border2);
+      border-radius:8px; padding:5px; line-height:0; }
+    html[data-theme="light"] .map-compass { background:rgba(255,255,255,.88); }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) .map-compass { background:rgba(255,255,255,.88); }
+    }
+    .map-legend { position:absolute; z-index:500; right:10px; bottom:10px;
+      background:rgba(10,10,14,.8); border:1px solid var(--border2);
+      border-radius:6px; padding:6px 8px; font-size:9px; color:#c8c8d8;
+      line-height:1.6; pointer-events:none; }
+    html[data-theme="light"] .map-legend { background:rgba(255,255,255,.88); color:#484860; }
+
+    /* ─── The point schematic ─── */
+    .reef-wrap { position:relative; }
+    .reef-svg { width:100%; height:auto; display:block; }
+    /* Section cards carry PREFERRED conditions only — no live rating, no
+       wind. What the section wants, not what it's doing. */
+    .sec-row { display:grid; gap:9px; margin-top:12px;
+               grid-template-columns:repeat(5,1fr); }
+    @media (max-width:1100px){ .sec-row{ grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:680px){ .sec-row{ grid-template-columns:repeat(2,1fr); } }
+    @media (max-width:440px){ .sec-row{ grid-template-columns:1fr; } }
+    .sec-chip { background:var(--bg2); border:1px solid var(--border0);
+      border-top:3px solid var(--gl); border-radius:7px; padding:10px 11px; }
+    .sec-name { font-size:11px; font-weight:700; letter-spacing:.03em;
+                margin-bottom:2px; color:var(--text0);
+                display:flex; align-items:center; gap:6px; }
+    .sec-num { display:inline-flex; align-items:center; justify-content:center;
+      width:15px; height:15px; border-radius:50%; background:var(--gl);
+      color:#04201d; font-size:9px; font-weight:800; flex:none; }
+    .sec-blurb { font-size:9.5px; color:var(--text2); line-height:1.5;
+                 margin-bottom:8px; }
+    .sec-prefs { display:flex; flex-direction:column; gap:4px; }
+    .pref { display:grid; grid-template-columns:46px 1fr; gap:6px;
+            font-size:10px; align-items:baseline; }
+    .pref span { color:var(--text3); letter-spacing:.06em; text-transform:uppercase;
+                 font-size:8.5px; }
+    .pref b { color:var(--text1); font-weight:600; }
+    .pref b em { font-style:normal; color:var(--gl); }
+
+    .sec-detail { margin-top:12px; background:var(--bg2); border:1px solid var(--border0);
+      border-radius:8px; padding:13px 14px; font-size:11.5px; line-height:1.65;
+      color:var(--text1); }
+    .sec-detail h4 { font-size:12px; color:var(--text0); margin-bottom:6px;
+                     letter-spacing:.04em; }
+    .sec-detail .kv { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .kvi { background:var(--bg3); border-radius:5px; padding:3px 8px; font-size:10px;
+           color:var(--text1); }
+    .kvi b { color:var(--gl); font-weight:600; }
+
+    /* ─── Compass ─── */
+    .compass-grid { display:grid; grid-template-columns:auto 1fr; gap:18px;
+                    align-items:center; }
+    @media (max-width:700px){ .compass-grid{ grid-template-columns:1fr; } }
+    .compass-legend { font-size:11px; line-height:1.8; color:var(--text1); }
+    .compass-legend .sw { display:inline-block; width:10px; height:10px;
+      border-radius:2px; margin-right:7px; vertical-align:-1px; }
+
+    /* ─── Forecast table ─── */
+    .tbl-scroll { overflow-x:auto; }
+    table.fc { border-collapse:separate; border-spacing:0; font-size:11px;
+               white-space:nowrap; }
+    table.fc th, table.fc td { border-right:1px solid var(--cell-border);
+      border-bottom:1px solid var(--cell-border); padding:0; }
+    .row-lbl { position:sticky; left:0; z-index:5; background:var(--bg1);
+      border-right:1px solid var(--border1) !important; padding:0 12px 0 14px !important;
+      text-align:left; font-weight:600; font-size:10.5px; letter-spacing:.05em;
+      min-width:146px; max-width:146px; color:var(--text1);
+      overflow:hidden; text-overflow:ellipsis; }
+    .row-lbl small { display:block; font-size:8.5px; color:var(--text3);
+                     font-weight:400; letter-spacing:.02em;
+                     overflow:hidden; text-overflow:ellipsis; }
+    .day-hd { text-align:center; font-size:10px; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--text2); background:var(--bg2);
+      padding:5px 0 !important; border-left:1px solid var(--border1) !important; }
+    .day-hd.today { color:var(--gl); font-weight:700; }
+    .hr-hd { text-align:center; font-size:9px; color:var(--text3); padding:3px 0 !important;
+             background:var(--bg2); font-variant-numeric:tabular-nums; }
+    .hr-hd.dawn { color:var(--sand); }
+    /* min-width is sized so the widest reading ("3.8 @15 ↑SSW" at 10.5 px
+       mono ≈ 78 px) fits without clipping; overflow:hidden is the guard. */
+    td.cell { text-align:center; height:52px; min-width:92px; overflow:hidden;
+              font-variant-numeric:tabular-nums; }
+    .cell-inner { display:flex; flex-direction:column; align-items:center;
+                  justify-content:center; height:100%; gap:1px; overflow:hidden;
+                  text-align:center; padding:0 3px; }
+    .comp-line { display:flex; align-items:baseline; justify-content:center;
+                 gap:4px; line-height:1.25; white-space:nowrap; max-width:100%; }
+    .comp-line.p1 { font-size:10.5px; font-weight:700; }
+    .comp-line.p2 { font-size:8px; opacity:.5; font-weight:500; }
+    .c-ht { font-size:11.5px; font-weight:800; letter-spacing:-.01em; }
+    /* Period and direction step back from the height so the eye lands on size
+       first, then reads down. */
+    .c-pd { opacity:.72; font-weight:600; }
+    .c-dir { opacity:.9; font-weight:600; font-size:9.5px; }
+    /* H·T² — the energy proxy, on its own line under the reading. */
+    /* Inline energy chart: one bar per cell, scaled across the visible row so
+       the shape of the swell's build and fade reads at a glance. */
+    /* Energy chart lives in its own row so the bars have the height to make
+       differences visible. */
+    td.en-cell { height:62px; vertical-align:bottom; padding:0 !important;
+                 min-width:92px; }
+    .e-bar { width:100%; height:46px; display:flex; align-items:flex-end;
+             justify-content:center; padding-top:3px; }
+    .e-bar i { display:block; width:56%; min-height:2px; border-radius:2px 2px 0 0;
+               background:currentColor; opacity:.85; }
+    /* Sits under the bar in the bar's own colour, so it stays legible against
+       the row background at any bar height. */
+    .en-val { font-size:9px; font-weight:600; color:currentColor; opacity:.8;
+              display:block; text-align:center; line-height:1;
+              padding:3px 0 4px; font-variant-numeric:tabular-nums; }
+    .sun-cell { font-size:9px; letter-spacing:.02em; }
+    .tide-when { font-size:8px; color:var(--text2); letter-spacing:.02em; }
+    td.sec-cell { text-align:center; height:26px; font-size:10.5px; font-weight:600;
+                  min-width:88px; }
+    .tide-cell .hilo { font-size:7.5px; color:var(--text2); letter-spacing:.06em; }
+    .arrow { display:inline-block; }
+    .row-lbl.sec-lbl { font-weight:500; color:var(--text2); }
+    tr.spot-sep td { height:6px; background:var(--bg0); padding:0 !important;
+                     border:0 !important; }
+    th.th-spot { background:var(--bg2); font-size:10.5px; font-weight:600;
+                 letter-spacing:.05em; color:var(--text1); vertical-align:bottom;
+                 padding-bottom:5px !important; }
+    .spot-link { color:inherit; text-decoration:none;
+                 border-bottom:1px dotted var(--border2); }
+    .spot-link:hover { color:var(--gl); border-bottom-color:var(--gl); }
+    /* Night columns get the dashboard's dimmed treatment. */
+    .night-col { box-shadow: inset 0 0 0 999px rgba(10,10,30,.16); }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) .night-col { box-shadow: inset 0 0 0 999px rgba(40,40,90,.05); }
+    }
+    html[data-theme="light"] .night-col { box-shadow: inset 0 0 0 999px rgba(40,40,90,.05); }
+    .hr-hd .moon { font-size:7px; opacity:.5; margin-right:1px; }
+    /* Past columns read as observed: desaturated, with a divider at "now". */
+    th.past-col { color:var(--text3); }
+    th.day-hd.past-col { color:var(--text3); opacity:.75; }
+    th.hr-hd:not(.past-col) + th.hr-hd.past-col,
+    th.hr-hd.past-col + th.hr-hd:not(.past-col) {
+      border-left:2px solid var(--gl) !important; }
+
+    /* ── Mobile: the sticky label column and the data columns both shrink so
+          more hours fit. On a 393 px iPhone viewport this takes the visible
+          column count from ~2.7 to ~4.8. ── */
+    @media (max-width:640px) {
+      .row-lbl { min-width:74px !important; max-width:74px !important;
+                 font-size:9px !important; padding:0 5px 0 7px !important; }
+      .row-lbl small { font-size:7.5px !important; }
+      th.th-spot { font-size:9px !important; letter-spacing:.02em !important; }
+      td.cell, td.sec-cell, td.en-cell { min-width:66px !important; }
+      /* Let the direction wrap to a second line instead of overflowing. */
+      .comp-line { flex-wrap:wrap; row-gap:0; }
+      .comp-line.p1 { font-size:9.5px; }
+      .c-ht { font-size:9.5px; }
+      .comp-line.p2 { font-size:7.5px; }
+      td.cell { height:auto; min-height:52px; }
+      .en-val { font-size:8px; }
+    }
+    td.ov-cell { text-align:center; font-variant-numeric:tabular-nums;
+                 border-radius:4px; }
+    td.ov-cell .c-ht { margin-right:3px; }
+
+    /* Pills, matching the main dashboard: each one is a miniature of the cell
+       it stands for — same background, same text colour. An 11 px swatch with
+       a 1 px border in the (bright) text colour read as the border, not the
+       cell, which is what made the legend look like different colours. */
+    .legend { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+    .legend-pill { padding:2px 9px; border-radius:100px; font-size:9px;
+      font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+      border:1px solid transparent; }
+    html[data-theme="light"] .legend-pill { border-color:rgba(0,0,0,.12); }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) .legend-pill { border-color:rgba(0,0,0,.12); }
+    }
+
+    /* ─── Upstream ─── */
+    table.up { width:100%; border-collapse:collapse; font-size:11px; }
+    table.up th { text-align:left; font-size:9.5px; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--text2); font-weight:600;
+      padding:6px 9px; border-bottom:1px solid var(--border1); }
+    table.up td { padding:7px 9px; border-bottom:1px solid var(--border0);
+                  font-variant-numeric:tabular-nums; }
+    table.up tr:hover td { background:var(--bg2); }
+    .site { font-weight:600; color:var(--text0); }
+    .aim { display:inline-block; padding:1px 6px; border-radius:4px; font-size:9.5px; }
+    .aim.good { background:var(--gl-dim); color:var(--gl); }
+    .aim.off  { background:var(--bg3); color:var(--text2); }
+    .stale { color:var(--text3); }
+
+    /* ─── Translation layer ─── */
+    .xlate { background:var(--bg2); border:1px solid var(--border1);
+             border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+    .xlate-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;
+                  margin-bottom:9px; }
+    .xlate-head b { font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+                    color:var(--gl); }
+    .xlate-head span { font-size:9.5px; color:var(--text3); }
+    .xlate-none { font-size:11px; color:var(--text2); line-height:1.7; }
+
+    /* ── One card per translated swell: its own numbers, then each model's,
+          then the signed deltas. ── */
+    .xcard { background:var(--bg1); border:1px solid var(--border0);
+             border-radius:7px; padding:10px 12px; margin-bottom:10px; }
+    .xcard-head { display:flex; align-items:baseline; gap:9px; flex-wrap:wrap;
+                  margin-bottom:8px; }
+    .xcard-head b { font-size:12px; color:var(--text0); }
+    .xmeta { font-size:9px; color:var(--text3); }
+    .xeta { margin-left:auto; font-size:11px; font-weight:700; color:var(--gl);
+            text-align:right; }
+    .xeta small { display:block; font-size:8.5px; font-weight:400; color:var(--text3); }
+    table.xcmp { width:100%; border-collapse:collapse; font-size:10.5px;
+                 font-variant-numeric:tabular-nums; }
+    table.xcmp th { text-align:left; font-size:8.5px; letter-spacing:.08em;
+      text-transform:uppercase; color:var(--text3); font-weight:600;
+      padding:3px 7px; border-bottom:1px solid var(--border0); }
+    table.xcmp td { padding:5px 7px; border-bottom:1px solid var(--border0);
+                    color:var(--text1); }
+    table.xcmp tr:last-child td { border-bottom:0; }
+    table.xcmp tr.mine td { background:var(--gl-dim); color:var(--text0);
+                            font-weight:600; }
+    table.xcmp td.who { font-weight:600; color:var(--text0); }
+    table.xcmp td.nowin { color:var(--text3); font-style:italic; }
+    td.dlt { font-size:10px; color:var(--text2); }
+    td.dlt.ok  { color:var(--green); }
+    td.dlt.mid { color:var(--amber); }
+    td.dlt.off { color:var(--red); }
+    .vd { font-size:8.5px; letter-spacing:.06em; text-transform:uppercase;
+          padding:1px 6px; border-radius:4px; }
+    .vd.agree   { background:#3fb95022; color:var(--green); font-weight:700; }
+    .vd.close   { background:#d2992222; color:var(--amber); }
+    .vd.diverge { background:#f8514922; color:var(--red); }
+    .xcard-foot { font-size:9.5px; color:var(--text2); line-height:1.6;
+                  margin-top:7px; }
+    /* Both of these are wide numeric tables; on a phone they must scroll
+       inside their own container rather than stretch the card. */
+    .tbl-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    table.xcmp, table.up { min-width:520px; }
+    @media (max-width:640px) {
+      .xcard { padding:9px 10px; }
+      .xcard-head { gap:6px; }
+      .xeta { margin-left:0; text-align:left; }
+      table.xcmp, table.up { font-size:10px; min-width:480px; }
+      table.xcmp th, table.up th { font-size:8px; padding:3px 5px; }
+      table.xcmp td, table.up td { padding:4px 5px; }
+      .xlate { padding:10px; }
+    }
+    .xcard-foot b.ok  { color:var(--green); }
+    .xcard-foot b.mid { color:var(--amber); }
+    .xcard-foot b.off { color:var(--red); }
+    .conf { display:inline-block; padding:1px 6px; border-radius:4px;
+            font-size:9px; letter-spacing:.06em; text-transform:uppercase; }
+    .conf.firm { background:var(--gl-dim); color:var(--gl); font-weight:700; }
+    .conf.fair { background:#d2992222; color:var(--amber); }
+    .conf.weak { background:var(--bg3); color:var(--text3); }
+
+
+    /* ─── Cheat sheet ─── */
+    .cheat { display:grid; grid-template-columns:repeat(auto-fit,minmax(310px,1fr));
+             gap:14px; }
+    .card { background:var(--bg2); border:1px solid var(--border0);
+            border-radius:9px; padding:13px 15px; }
+    .card h3 { font-size:11px; letter-spacing:.13em; text-transform:uppercase;
+      color:var(--gl); margin-bottom:9px; padding-bottom:7px;
+      border-bottom:1px solid var(--border0); }
+    .card ul { list-style:none; }
+    .card li { font-size:11.5px; line-height:1.72; color:var(--text1);
+               padding-left:15px; position:relative; margin-bottom:5px; }
+    .card li::before { content:'▸'; position:absolute; left:0; color:var(--text3); }
+    .card li b, .card li strong { color:var(--text0); font-weight:600; }
+    .card li .num { color:var(--gl); font-weight:700; }
+    .card p { font-size:11.5px; line-height:1.72; color:var(--text1); }
+
+    .dl { display:grid; grid-template-columns:auto 1fr; gap:5px 12px; font-size:11.5px; }
+    .dl dt { color:var(--text2); }
+    .dl dd { color:var(--text0); font-weight:600; }
+
+    .srcs { font-size:10px; color:var(--text2); line-height:1.9; }
+    .srcs a { color:var(--text1); text-decoration:none; border-bottom:1px dotted var(--border2); }
+    .srcs a:hover { color:var(--gl); }
+
+    .season { display:grid; grid-template-columns:repeat(12,1fr); gap:3px; margin-top:4px; }
+    .mo { text-align:center; border-radius:4px; padding:6px 0 5px; font-size:9px;
+          letter-spacing:.04em; }
+    .mo b { display:block; font-size:10.5px; font-weight:700; margin-top:2px; }
+
+    .toggles { display:flex; gap:6px; align-items:center; }
+    .tg { background:var(--bg2); border:1px solid var(--border1); color:var(--text2);
+      border-radius:5px; padding:3px 9px; font-family:var(--font); font-size:10px;
+      cursor:pointer; letter-spacing:.05em; }
+    .tg.on { background:var(--gl-dim); border-color:var(--gl); color:var(--gl); font-weight:600; }
+    a.tg { text-decoration:none; display:inline-flex; align-items:center; }
+    a.tg:hover { color:var(--gl); border-color:var(--gl); }
+
+    .loading { padding:40px; text-align:center; color:var(--text2); font-size:12px; }
+    .err { padding:16px; color:var(--red); font-size:11.5px; }
+    .footnote { font-size:10px; color:var(--text3); line-height:1.7; margin-top:10px; }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-left">
+    <a class="header-logo" href="/"><span class="wave-glyph">∿</span>colesurfs</a>
+  </div>
+  <div class="header-right">
+    <span class="live-dot">LIVE</span>
+    <span class="zone-clock"><b>G-LAND</b><span id="clkGland">—</span></span>
+    <span class="zone-clock ny"><b>NEW YORK</b><span id="clkNY">—</span></span>
+  </div>
+</header>
+
+<!-- ══ Preferences modal — mirrors the main dashboard's ══ -->
+<div class="modal-overlay" id="prefsOverlay">
+  <div class="modal">
+    <button class="modal-close" id="prefsClose">✕</button>
+    <div class="modal-title"><span class="wave-glyph">∿</span>G-Land · preferences</div>
+    <button class="modal-btn" id="refreshBtn">↺ REFRESH NOW</button>
+    <button class="modal-btn" id="themeBtn">◑ THEME</button>
+    <a class="modal-btn" href="/gland/tuner">⇞ TUNER</a>
+    <a class="modal-btn" href="/">∿ MAIN DASHBOARD</a>
+  </div>
+</div>
+
+<!-- ══ Tide lookup ══ -->
+<div class="modal-overlay" id="tideOverlay">
+  <div class="modal wide">
+    <button class="modal-close" id="tideClose">✕</button>
+    <div class="modal-title"><span class="wave-glyph">≈</span>G-Land · tide lookup</div>
+    <div class="tide-range">
+      <label>From <input type="date" id="tideFrom"/></label>
+      <label>To <input type="date" id="tideTo"/></label>
+      <button class="modal-btn inline" id="tideGo">Look up</button>
+    </div>
+    <div class="tide-note">Up to 14 days per lookup, any date. Times are local (WIB).</div>
+    <div id="tideResult"></div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ═══ NOW ═══ -->
+  <div class="panel">
+    <div class="panel-body">
+      <div class="hero-title">Grajagan <span class="gl">/ G-Land</span></div>
+      <div class="hero-loc">-8.7269, 114.3488 &nbsp;·&nbsp; Alas Purwo, East Java</div>
+      <div class="now-grid" id="nowGrid"></div>
+    </div>
+  </div>
+
+  <!-- ═══ FORECAST ═══ -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="dot">◆</span> 10-day forecast</span>
+      <div class="legend" id="legend"></div>
+      <div class="toggles">
+        <button class="tg on" id="res3">3 h</button>
+        <button class="tg" id="res1">1 h</button>
+        <span style="width:8px"></span>
+        <button class="tg" id="histBtn" title="Show the past 14 days">History</button>
+        <span style="width:8px"></span>
+        <button class="tg" id="tideLookupBtn" title="Tide lookup by date range">Tide Lookup</button>
+      </div>
+    </div>
+    <div class="tbl-scroll" id="fcWrap"><div class="loading">Loading model data…</div></div>
+  </div>
+
+  <!-- ═══ THE POINT ═══ -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="dot">◆</span> Reef overview</span>
+    </div>
+    <div class="panel-body">
+      <div class="map-wrap">
+        <div id="reefMap" class="geo-map"></div>
+        <button class="map-btn" id="reefRecenter">⤢ Re-center</button>
+        <div class="map-compass" id="reefCompass"></div>
+      </div>
+      <div class="sec-row" id="secRow"></div>
+    </div>
+  </div>
+
+  <!-- ═══ UPSTREAM ═══ -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="dot">◆</span> Upstream sentinels
+        <span class="panel-sub">— the nearest in-situ wave measurements on Earth</span></span>
+    </div>
+    <div class="panel-body">
+      <div class="map-wrap">
+        <div id="buoyMap" class="geo-map tall"></div>
+        <button class="map-btn" id="buoyRecenter">⤢ Re-center</button>
+        <div class="map-layers" id="buoyLayers">
+          <button class="tg on" data-src="BUOY">Buoys</button>
+          <button class="tg" data-src="GFS">GFS</button>
+          <button class="tg" data-src="EURO">EURO</button>
+        </div>
+      </div>
+      <div id="translateWrap"></div>
+      <div id="upWrap"><div class="loading">Loading buoys…</div></div>
+      <div class="footnote">
+        Transit = deep-water group travel time for that period over that distance
+        (c<sub>g</sub> = gT/4π) — how far ahead the buoy sits, not a promise the swell
+        arrives. Aim = degrees off due north from buoy to G-Land; closer to 0° means a
+        northbound swell there is more literally pointed at Java.
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CHEAT SHEET ═══ -->
+  <div class="panel">
+    <div class="panel-head">
+      <span class="panel-title"><span class="dot">◆</span> Cheat sheet
+        <span class="panel-sub">— everything worth knowing before you paddle out</span></span>
+    </div>
+    <div class="panel-body">
+      <div class="cheat">
+
+        <div class="card">
+          <h3>Swell direction — the headline</h3>
+          <ul>
+            <li><b>Best: <span class="num">SW to SSW, 240°–200°</span></b> across the reef as a whole. This is Surfline's call and it matches every other source.</li>
+            <li>Split by which section each angle feeds:
+              <b><span class="num">165–190°</span></b> outer window ·
+              <b><span class="num">190–210°</span></b> Speedies ·
+              <b><span class="num">210–250°</span></b> Moneytrees ·
+              <b><span class="num">250–285°</span></b> outer window.</li>
+            <li><b>More westerly (240°–270°)</b> arrives more directly — less turning, less energy spent — so the <b>biggest</b> surf comes on a west-angled long-period swell. But the bathymetry focuses it into <b>Kongs</b>, and everything inside drops off noticeably.</li>
+            <li><b>More southerly (200°–180°)</b> wants <b>long period</b>. Long lines slow down and bend back into the point — the famous <b>"growers"</b> that get bigger down the line as energy refracts in from the bay. On a straight south swell the wrap is over <span class="num">90°</span> to reach the inside.</li>
+            <li><b>Short-period south</b> sweeps straight past the top of the point — the drop-off south of the point is over <span class="num">1500 m</span>, so it feels like the waves break "out to sea."</li>
+            <li><b>Straight south (~180°)</b> is the most extreme angle G-Land can receive at all.</li>
+            <li><b>Ignore anything from the E/SE.</b> That is trade windsea. It is offshore here and never becomes surf.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Tide</h3>
+          <ul>
+            <li>Surfline rates the spot <b>"Tide: All"</b> — but that is the reef as a whole, not any one section.</li>
+            <li><b>Speedies needs high water</b>, and on the biggest days it wants <b>the highest water of the month</b> — a spring tide around the new or full moon.</li>
+            <li><b>Moneytrees</b> prefers a higher tide, though the modern consensus is it is more fun shallower than the old high-tide-only orthodoxy.</li>
+            <li><b>Kongs</b> is surfable at low "up to the limits of your courage."</li>
+            <li><b>Low tide is where people get hurt.</b> The reef in front of Moneytrees is fully exposed at low.</li>
+            <li>Indonesian tides are genuinely complex — multiple amphidromes, strong diurnal inequality. Range at G-Land runs roughly <span class="num">1.5–2.5 m</span>.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Where the swell is born</h3>
+          <ul>
+            <li>Most Indonesian swell forms between the <b>Cape of Good Hope</b> and <b>Heard Island</b> — the deep Southern Indian Ocean.</li>
+            <li>The <b>Kerguelen Islands</b> region is the classic genesis zone. A low coalescing west of Kerguelen is the tell.</li>
+            <li><b>Typical travel time: 5–6 days</b> from storm to reef.</li>
+            <li>Following a great-circle path, Indo can receive swell from the <b>central South Atlantic, 15,000 km away — about 9 days</b> of travel. That is the outer limit, and it is why a 16-day forecast is not fantasy here the way it is on an east coast.</li>
+            <li><b>Aim matters more than strength.</b> A very strong storm aimed south of Java delivers power and long lines but <b>poor consistency</b> — few waves per set on the front end.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Live data — what exists</h3>
+          <ul>
+            <li><b>Wave buoys near G-Land:</b> none. Not one, anywhere in the swell window.</li>
+            <li><b>NDBC 53401</b> (the only Indonesian NDBC station) — DART tsunami buoy, <b>disestablished 2008</b>.</li>
+            <li><b>Nearest tide gauge:</b> IOC station at <b>Port of Grajagan</b>, 20 km away — but its sea-level sensor is dead; it only transmits battery voltage. Verified live, July 2026.</li>
+            <li><b>Nearest working gauge on this coast:</b> <b>Prigi</b>, 292 km WNW, reporting now. Too far to borrow given Indonesian tidal complexity.</li>
+            <li><b>Christmas Island (AU)</b>, 970 km at bearing 79° — live radar gauge, sits on the westerly-swell corridor. Water level only, no waves.</li>
+            <li><b>So: tide and waves here are modelled, not measured.</b> GFS-Wave and ECMWF-WAM for swell, a global tide model for water level, and the WA sentinel line above for the only real in-situ check.</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h3>Sources</h3>
+        <div class="srcs">
+          <a href="https://www.surfline.com/surf-news/mechanics-g-land-java-indonesia/78526" target="_blank" rel="noopener">Surfline — The Mechanics of G-Land, Java, Indonesia</a> (Jonathan Warren, lineup notes by Nick Carroll) &nbsp;·&nbsp;
+          <a href="https://www.surfline.com/surf-news/quiksilver-roxy-pro-g-land-official-forecast/152673" target="_blank" rel="noopener">Surfline — Quiksilver/Roxy Pro G-Land Official Forecast</a> (Kevin Wallis) &nbsp;·&nbsp;
+          <a href="https://www.surfline.com/surf-report/g-land/5842041f4e65fad6a7708d30" target="_blank" rel="noopener">Surfline — G-Land spot forecast</a> &nbsp;·&nbsp;
+          <a href="https://www.swellnet.com/news/form-guide/2022/05/19/long-range-forecast-quiksilver-pro-gland" target="_blank" rel="noopener">Swellnet — Long Range Forecast: Quiksilver Pro G'Land</a> (Stu Nettle) &nbsp;·&nbsp;
+          <a href="https://g-land.com/waves/" target="_blank" rel="noopener">G-Land Joyo's Surf Camp — Waves</a> &nbsp;·&nbsp;
+          <a href="https://en.wikipedia.org/wiki/G-Land" target="_blank" rel="noopener">Wikipedia — G-Land</a> &nbsp;·&nbsp;
+          <a href="https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2008jc005215" target="_blank" rel="noopener">Collard, Ardhuin &amp; Chapron (2009) — swell field monitoring</a> (the back-projection / triangulation method) &nbsp;·&nbsp;
+          <a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank" rel="noopener">Esri World Imagery</a> (reef trace + satellite basemap) &nbsp;·&nbsp;
+          <a href="https://open-meteo.com/en/docs/marine-weather-api" target="_blank" rel="noopener">Open-Meteo Marine API</a> (GFS-Wave, tide) &nbsp;·&nbsp;
+          <a href="https://marine.copernicus.eu/" target="_blank" rel="noopener">Copernicus Marine</a> (ECMWF-WAM ANFC) &nbsp;·&nbsp;
+          <a href="https://portal.aodn.org.au/" target="_blank" rel="noopener">AODN / IMOS</a> + <a href="https://transport.wa.gov.au/marine/charts-warnings-current-conditions/coastal-data-charts/wave-data" target="_blank" rel="noopener">WA Dept. of Transport</a> (sentinel buoys) &nbsp;·&nbsp;
+          <a href="https://www.ioc-sealevelmonitoring.org/" target="_blank" rel="noopener">IOC Sea Level Station Monitoring Facility</a> &nbsp;·&nbsp;
+          <a href="https://www.ndbc.noaa.gov/station_page.php?station=53401" target="_blank" rel="noopener">NDBC station 53401</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer class="app-footer">
+  <span class="footer-sig">made by cole and claude &copy; 2026</span>
+  <div class="footer-center"><span class="footer-version">v1.12.0</span></div>
+  <div class="footer-btns">
+    <button class="footer-btn" id="themeBtn2" title="Toggle light/dark mode">◑ THEME</button>
+    <span class="footer-divider">·</span>
+    <button class="footer-btn" id="prefsBtn" title="Preferences">PREFERENCES</button>
+  </div>
+</footer>
+
+<script>
+const CFG = {{ inline_config | safe }};
+const CAT_COLORS = CFG.colors;
+let DATA = null, MODEL = 'GFS', STRIDE = 3, ACTIVE_SEC = null;
+let HIST = null, SHOW_HIST = false;
+
+/* ─── helpers ─────────────────────────────────────────────── */
+const pad = n => String(n).padStart(2,'0');
+/* 12-hour clock, compact: 5:37am / 12pm / 9:20pm. */
+function ampm(h, m){
+  const suf = h < 12 ? 'am' : 'pm';
+  const hr = h % 12 === 0 ? 12 : h % 12;
+  return (m ? `${hr}:${pad(m)}` : `${hr}`) + suf;
+}
+const hhmmAmPm = t => ampm(+t.slice(0,2), +t.slice(3,5));
+const isLight = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t === 'light') return true;
+  if (t === 'dark') return false;
+  return window.matchMedia('(prefers-color-scheme: light)').matches;
+};
+function catColors(cat){
+  const c = CAT_COLORS[cat] || CAT_COLORS.FLAT;
+  return isLight() ? [c.light_bg, c.light_text] : [c.dark_bg, c.dark_text];
+}
+const DIRS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+const compassPt = d => (d==null) ? '—' : DIRS[Math.round(((d%360)+360)%360/22.5)%16];
+// Arrow points the way the swell/wind is TRAVELLING (from-direction + 180).
+const arrowFor = d => (d==null) ? '' :
+  `<span class="arrow" style="transform:rotate(${(d+180)%360}deg)">↑</span>`;
+
+/* Category thresholds mirror swell-categorization-scheme.toml. */
+/* Ordered match rules from gland-swell-categorization.toml (CFG.rules) —
+   first hit wins, so order is priority. Mirrors gland.categorize_gland,
+   including the direction test that DREAMY depends on. */
+function inRange(v, r){
+  if (v == null) return false;
+  const lo = r[0], hi = r[1];
+  return v >= lo && (hi === 'inf' || v < hi);
+}
+function categorize(h, p, dir){
+  if (h == null || p == null) return 'FLAT';
+  for (const r of (CFG.rules || [])){
+    if (!inRange(p, r.period)) continue;
+    if (!inRange(h, r.height)) continue;
+    if (r.direction && !inRange(dir, r.direction)) continue;
+    return r.category;
+  }
+  return 'FLAT';
+}
+
+/* ─── data access ─────────────────────────────────────────
+   All section scoring lives in gland.py. The page renders the numbers the
+   server computed; it never recomputes them, so there is one implementation
+   of the G-Land rules rather than two that can drift apart.
+   ───────────────────────────────────────────────────────── */
+const swellOf = r => (MODEL === 'GFS' ? r.gfs : r.euro) || null;
+
+
+/* Wind rating for a given section — display only; the score already has it. */
+function windForSection(sec, spd, dir){
+  if (spd == null || dir == null) return {rating:null, offset:null};
+  const off = Math.abs(((dir - sec.offshore + 180) % 360 + 360) % 360 - 180);
+  let rating;
+  if (spd < 3) rating = 'GLASSY';
+  else if (off <= 45) rating = spd <= 14 ? 'GROOMED' : 'STRONG OFFSHORE';
+  else if (off <= 80) rating = spd <= 12 ? 'CLEAN' : 'TEXTURED';
+  else if (off <= 115) rating = spd <= 10 ? 'TEXTURED' : 'CHOPPY';
+  else rating = spd > 6 ? 'ONSHORE' : 'TEXTURED';
+  return {rating, offset: Math.round(off)};
+}
+
+/* ─── NOW panel ───────────────────────────────────────────── */
+function nowRow(rows){
+  const key = new Date().toLocaleString('sv-SE',{timeZone:CFG.tz})
+                        .slice(0,13).replace(' ','T');
+  let best = rows[0];
+  for (const r of rows){ if (r.time <= key) best = r; else break; }
+  return best;
+}
+
+/* Bands overlap (205–210° is Speedies AND Moneytrees), so this returns every
+   match, not the first one. */
+function bandsFor(deg){
+  if (deg == null) return [];
+  return CFG.swell_bands.filter(b => deg >= b.lo && deg < b.hi);
+}
+const BAND_COLOR = {outer:'var(--text2)', speedies:'var(--amber)', moneytrees:'var(--gl)'};
+
+/* ── Direction dial: the swell window split by which section each angle feeds ── */
+function dirDial(deg){
+  const S=112, cx=S/2, cy=S/2, R=45, ri=29;
+  const pol=(d,r)=>[cx+r*Math.sin(d*Math.PI/180), cy-r*Math.cos(d*Math.PI/180)];
+  const arc=(a1,a2,ro,rn,fill,op)=>{
+    const [x1,y1]=pol(a1,ro), [x2,y2]=pol(a2,ro);
+    const [x3,y3]=pol(a2,rn), [x4,y4]=pol(a1,rn);
+    const lg=((a2-a1+360)%360)>180?1:0;
+    return `<path d="M ${x1} ${y1} A ${ro} ${ro} 0 ${lg} 1 ${x2} ${y2}
+            L ${x3} ${y3} A ${rn} ${rn} 0 ${lg} 0 ${x4} ${y4} Z"
+            fill="${fill}" opacity="${op}"/>`;
+  };
+  // Overlapping bands are split radially: Speedies rides the outer half of the
+  // ring, Moneytrees the inner half, so 205-210° visibly lights both.
+  const active = bandsFor(deg);
+  const rmid = (R + ri) / 2;
+  let out = `<circle cx="${cx}" cy="${cy}" r="${R}" fill="none"
+              stroke="var(--border1)" stroke-width="1"/>`;
+  CFG.swell_bands.forEach(b => {
+    const on = active.some(a => a.lo === b.lo && a.hi === b.hi);
+    const ro = b.ring === 'inner' ? rmid : R;
+    const rn = b.ring === 'outer' ? rmid : ri;
+    out += arc(b.lo, b.hi, ro, rn, BAND_COLOR[b.key] || 'var(--gl)', on ? 0.8 : 0.2);
+  });
+  [['N',0],['E',90],['S',180],['W',270]].forEach(([l,d])=>{
+    const [x,y]=pol(d,R+10);
+    out += `<text x="${x}" y="${y+3.5}" text-anchor="middle" font-size="8.5"
+             fill="var(--text3)">${l}</text>`;
+  });
+  if (deg != null){
+    const [xo,yo]=pol(deg,ri-2), [xi,yi]=pol(deg,9);
+    const [ax,ay]=pol(deg+8,20), [bx,by]=pol(deg-8,20);
+    out += `<line x1="${xo}" y1="${yo}" x2="${xi}" y2="${yi}" stroke="var(--text0)"
+             stroke-width="2" stroke-linecap="round"/>
+            <polygon points="${xi},${yi} ${ax},${ay} ${bx},${by}" fill="var(--text0)"/>`;
+  }
+  out += `<circle cx="${cx}" cy="${cy}" r="2.5" fill="var(--text2)"/>`;
+  return `<svg class="dir-dial" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">${out}</svg>`;
+}
+
+/* ── Tide curve for the calendar day, with a marker at the current hour ── */
+function tideDayChart(rows, nowT){
+  const day = nowT.slice(0,10);
+  const d = rows.filter(r => r.time.slice(0,10) === day && r.tide_ft != null);
+  if (d.length < 4) return '';
+  const W=250, H=70, PL=4, PR=4, PT=16, PB=19;
+  const lo=Math.min(...d.map(r=>r.tide_ft)), hi=Math.max(...d.map(r=>r.tide_ft));
+  const span = (hi-lo) || 1;
+  const X = i => PL + i*(W-PL-PR)/(d.length-1);
+  const Y = v => PT + (hi-v)/span*(H-PT-PB);
+  const pts = d.map((r,i)=>[X(i),Y(r.tide_ft)]);
+  const line = pts.map((p,i)=>`${i?'L':'M'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+  const area = `${line} L ${X(d.length-1).toFixed(1)} ${H-PB} L ${PL} ${H-PB} Z`;
+  const ci = Math.max(0, d.findIndex(r => r.time === nowT));
+  const cx = X(ci), cy = Y(d[ci].tide_ft);
+
+  // Labels sit above highs and below lows, and their x is clamped so the
+  // first/last event of the day can't run off either edge of the viewBox.
+  let marks = '';
+  d.forEach((r,i)=>{ if (r.hilo){
+    const px = Math.min(W-22, Math.max(22, X(i)));
+    const py = r.hilo === 'H' ? Y(r.tide_ft)-6 : Y(r.tide_ft)+9;
+    marks += `<circle cx="${X(i).toFixed(1)}" cy="${Y(r.tide_ft).toFixed(1)}" r="2"
+               fill="var(--text2)"/>
+              <text x="${px.toFixed(1)}" y="${py.toFixed(1)}"
+               text-anchor="middle" font-size="7.5" fill="var(--text2)">${
+                 r.hilo}&#8202;${r.tide_ft>0?'+':''}${r.tide_ft.toFixed(1)}</text>`;
+  }});
+  // 00 / 06 / 12 / 18 ticks
+  let ticks='';
+  d.forEach((r,i)=>{ const h=+r.time.slice(11,13);
+    if (h%6===0){
+      const tx = Math.min(W-8, Math.max(8, X(i)));
+      ticks += `<text x="${tx.toFixed(1)}" y="${H-4}" text-anchor="middle"
+        font-size="7.5" fill="var(--text3)">${ampm(h, 0)}</text>`;
+    }});
+
+  return `<svg class="tide-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--gl)" stop-opacity=".30"/>
+      <stop offset="100%" stop-color="var(--gl)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <path d="${area}" fill="url(#tg)"/>
+    <path d="${line}" fill="none" stroke="var(--gl)" stroke-width="1.6"
+      stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    ${marks}${ticks}
+    <line x1="${cx.toFixed(1)}" y1="${PT-4}" x2="${cx.toFixed(1)}" y2="${H-PB}"
+      stroke="var(--text0)" stroke-width="1" stroke-dasharray="2 2" opacity=".55"/>
+    <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3.5"
+      fill="var(--text0)" stroke="var(--bg2)" stroke-width="1.5"/>
+  </svg>`;
+}
+
+function renderNow(rows){
+  const r = nowRow(rows); if (!r) return;
+  const sw = swellOf(r), w = r.wind || {}, moon = DATA.moon || {};
+  const cat = sw ? categorize(sw.height_ft, sw.period_s, sw.direction_deg) : 'FLAT';
+  const [bg, ink] = catColors(cat);
+  const mtWind = windForSection(CFG.sections[1], w.speed_kt, w.direction_deg);
+  const active = sw ? bandsFor(sw.direction_deg) : [];
+  // Range for the day the chart is showing — DATA.tide_range_m is the whole
+  // 10-day span and disagreed with the curve on screen.
+  const dayFt = rows.filter(x => x.time.slice(0,10) === r.time.slice(0,10)
+                             && x.tide_ft != null).map(x => x.tide_ft);
+  const rangeFt = dayFt.length
+    ? (Math.max(...dayFt) - Math.min(...dayFt)).toFixed(1) : null;
+
+  const bandKey = CFG.swell_bands.map(b => {
+    const on = active.some(a => a.lo === b.lo && a.hi === b.hi);
+    return `<div class="${on?'on':''}"><i style="background:${BAND_COLOR[b.key]||'var(--gl)'};
+      opacity:${on?.9:.35}"></i><span>${b.lo}–${b.hi}° <b>${b.label}</b></span></div>`;
+  }).join('');
+
+  document.getElementById('nowGrid').innerHTML = `
+    <div class="now-cell" style="background:${bg}">
+      <div class="now-label">Swell height</div>
+      <div class="now-val" style="color:${ink}">${
+        sw ? sw.height_ft.toFixed(1)+'<span class="u">ft</span>' : '—'}</div>
+      <div class="now-sub" style="color:${ink};opacity:.8">${sw ? '' : 'nothing in window'}</div>
+    </div>
+
+    <div class="now-cell">
+      <div class="now-label">Swell period</div>
+      <div class="now-val" style="color:var(--gl)">${
+        sw ? sw.period_s.toFixed(0)+'<span class="u">s</span>' : '—'}</div>
+    </div>
+
+    <div class="now-cell">
+      <div class="now-label">Swell direction</div>
+      <div class="dir-wrap">
+        <div>
+          <div class="now-val">${sw ? Math.round(sw.direction_deg)+'<span class="u">°</span>' : '—'}</div>
+          <div class="now-sub" style="margin-top:0">${sw ? compassPt(sw.direction_deg) : ''}</div>
+          <div class="band-key">${bandKey}</div>
+        </div>
+        ${dirDial(sw ? sw.direction_deg : null)}
+      </div>
+    </div>
+
+    <div class="now-cell">
+      <div class="now-label">Wind</div>
+      <div class="now-val">${w.speed_kt != null
+        ? Math.round(w.speed_kt)+'<span class="u">kt</span>' : '—'}</div>
+      <div class="now-sub">${w.direction_deg != null
+        ? `${compassPt(w.direction_deg)} ${Math.round(w.direction_deg)}°` : ''}</div>
+      <div class="now-sub" style="color:var(--gl)">${mtWind.rating||''}</div>
+    </div>
+
+    <div class="now-cell">
+      <div class="now-label">Tide</div>
+      <div class="tide-head">
+        <div class="now-val">${r.tide_ft != null
+          ? (r.tide_ft>0?'+':'')+r.tide_ft.toFixed(1)+'<span class="u">ft</span>' : '—'}</div>
+        <div class="tide-meta">${(r.tide_state||'').toUpperCase()}${
+          rangeFt != null ? ` · ∆${rangeFt} ft today` : ''}${
+          moon.label ? ` · ${moon.label}` : ''}${
+          moon.spring ? ' <b style="color:var(--gl)">SPRING</b>' : ''}</div>
+      </div>
+      ${tideDayChart(rows, r.time)}
+    </div>`;
+}
+
+/* ─── Maps ────────────────────────────────────────────────────
+   Esri World Imagery for the reef (you need to see the reef), and the same
+   Carto basemap the main dashboard uses for the sentinel overview.
+   ───────────────────────────────────────────────────────────── */
+const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const CARTO = () => isLight()
+  ? 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png'
+  : 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+let reefMap = null, buoyMap = null, buoyLayer = null;
+
+function renderReefMap(){
+  if (reefMap) return;
+  reefMap = L.map('reefMap', {
+    center:[-8.7290, 114.3510], zoom:14, zoomControl:true,
+    attributionControl:true, scrollWheelZoom:false,
+  });
+  L.tileLayer(ESRI, {maxZoom:18, attribution:'Esri World Imagery'}).addTo(reefMap);
+
+  // The reef edge, and the direction a swell peels along it.
+  L.polyline(CFG.reef_line, {color:'#2ec4b6', weight:3, opacity:.85}).addTo(reefMap);
+  L.polyline(CFG.reef_line, {color:'#fff', weight:1, opacity:.45}).addTo(reefMap);
+
+  L.circleMarker(CFG.harbour_channel, {radius:5, color:'#e0b878', weight:2,
+    fillColor:'#000', fillOpacity:.35}).addTo(reefMap)
+    .bindTooltip('Harbour channel — boat landing', {className:'map-tip'});
+
+  // Labels attach straight to their own marker — no offsets, no leader lines.
+  // Anchoring the tooltip to the dot is what makes the pairing unambiguous;
+  // the earlier offset-plus-leader version just looked like scattered text.
+  // Sides alternate along the reef so neighbours never stack.
+  // Moneytrees sits just NE of Kongs, so a 'bottom' label on it reached back
+  // over Kongs' dot — it points up-right instead, and Kongs drops below.
+  // Dots all sit ON the reef line, so labels are pushed clear of it
+  // vertically — alternating up/down with enough offset that no label can
+  // reach a neighbour's dot. Moneytrees and Speedies are only ~280 m apart
+  // and were covering each other at the default offset.
+  // Moneytrees anchors LEFT rather than top — a centred label above its dot
+  // still reached Speedies' dot, which sits only ~280 m north-east.
+  // Tiger Tracks is the north-easternmost dot, so a right-anchored label runs
+  // off the east edge on a narrow map however the view is padded. Flip it to
+  // the left there — the only section whose anchor depends on width.
+  // On a phone the whole reef renders ~120 px wide, so five names cannot fit
+  // without colliding however they are anchored. Narrow screens get numbered
+  // markers keyed to the numbered cards below; desktop keeps the names.
+  const narrow = reefMap.getSize().x < 520;
+  const LBL = {kongs:['bottom',0,10], moneytrees:['left',-11,5],
+               speedies:['bottom',10,10], chickens:['top',0,-22],
+               tigertracks:['right',10,0]};
+  CFG.sections.forEach((s, i) => {
+    const [dir, ox, oy] = LBL[s.key] || ['top', 0, -16];
+    L.circleMarker([s.lat, s.lon], {radius: narrow ? 9 : 6, color:'#fff',
+      weight:2, fillColor:'#2ec4b6', fillOpacity:1}).addTo(reefMap)
+      .bindTooltip(narrow ? String(i + 1) : s.name,
+        {permanent:true, className:'map-tip' + (narrow ? ' num' : ''),
+         direction: narrow ? 'center' : dir, offset: narrow ? [0, 0] : [ox, oy]})
+      .bindPopup(`<b>${s.name}</b><br>${s.blurb}`);
+  });
+  renderCompass();
+  // Extend the bounds east of the last reef point rather than padding the
+  // viewport. Heavy right-padding shrank the fit box until Leaflet clamped and
+  // pushed Tiger Tracks' dot clean off the map; growing the bounds guarantees
+  // room for the north-easternmost label at any width.
+  // NB: fitBounds() silently no-ops on this map — it computes the right view
+  // (verified via getBoundsZoom) but never applies it, which is why padding and
+  // label-offset tweaks all appeared to do nothing while Tiger Tracks' dot sat
+  // off-screen. getBoundsZoom + setView applies the same result reliably.
+  const fit = () => {
+    const b = L.latLngBounds(CFG.reef_line);
+    const ne = CFG.reef_line[CFG.reef_line.length - 1];
+    b.extend([ne[0] + 0.0015, ne[1] + 0.0065]);   // room for the NE label
+    const z = Math.min(15, reefMap.getBoundsZoom(b, false, L.point(22, 38)));
+    reefMap.setView(b.getCenter(), z, {animate: false});
+  };
+  fit();
+  setTimeout(() => { reefMap.invalidateSize(); fit(); }, 120);
+}
+
+/* North-up compass. Line-drawn rather than filled: an arc for the swell
+   window, tick marks for the rose, hollow needle. */
+function renderCompass(){
+  const S=78, c=S/2, R=29, ri=23;
+  const pol=(d,r)=>[c+r*Math.sin(d*Math.PI/180), c-r*Math.cos(d*Math.PI/180)];
+  const arcPath=(a1,a2,r)=>{
+    const [x1,y1]=pol(a1,r), [x2,y2]=pol(a2,r);
+    const lg=((a2-a1+360)%360)>180?1:0;
+    return `M ${x1} ${y1} A ${r} ${r} 0 ${lg} 1 ${x2} ${y2}`;
+  };
+  const [e1,e2]=CFG.window_edge, [c1,c2]=CFG.window_core;
+  let out = `<circle cx="${c}" cy="${c}" r="${R}" fill="none"
+              stroke="var(--border2)" stroke-width=".8"/>`;
+  // Swell window: a thin outer arc for the full window, a heavier one for the core.
+  out += `<path d="${arcPath(e1,e2,ri)}" fill="none" stroke="#2ec4b6"
+           stroke-width="1" opacity=".55"/>`;
+  out += `<path d="${arcPath(c1,c2,ri)}" fill="none" stroke="#2ec4b6"
+           stroke-width="2.5" opacity=".95" stroke-linecap="round"/>`;
+  // End caps mark the window edges.
+  [e1,e2].forEach(a => { const [x,y]=pol(a,ri);
+    out += `<circle cx="${x}" cy="${y}" r="1.3" fill="#2ec4b6" opacity=".7"/>`; });
+  // Rose ticks every 30°, longer on the cardinals.
+  for (let d=0; d<360; d+=30){
+    const long = d % 90 === 0;
+    const [x1,y1]=pol(d,R), [x2,y2]=pol(d, R - (long?5:2.5));
+    out += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+             stroke="var(--border2)" stroke-width="${long?1:.6}"/>`;
+  }
+  // Hollow north needle.
+  const [nx,ny]=pol(0,R-6), [ax,ay]=pol(0,4);
+  out += `<line x1="${ax}" y1="${ay}" x2="${nx}" y2="${ny}" stroke="var(--red)"
+           stroke-width="1.2"/>
+          <polygon points="${nx},${ny} ${pol(0,R-11.5).map(v=>v.toFixed(2)).join(',')}"
+           fill="none"/>`;
+  const [tx,ty]=pol(0,R-6), [lx,ly]=pol(-8,R-13), [rx,ry]=pol(8,R-13);
+  out += `<polygon points="${tx},${ty} ${lx},${ly} ${rx},${ry}" fill="none"
+           stroke="var(--red)" stroke-width="1.1" stroke-linejoin="round"/>`;
+  out += `<circle cx="${c}" cy="${c}" r="1.6" fill="none" stroke="var(--text2)" stroke-width=".8"/>`;
+  [['N',0],['E',90],['S',180],['W',270]].forEach(([l,d])=>{
+    const [x,y]=pol(d,R+7);
+    out += `<text x="${x}" y="${y+2.8}" text-anchor="middle" font-size="7"
+             font-family="var(--font)" font-weight="700"
+             fill="${l==='N'?'var(--text1)':'var(--text3)'}">${l}</text>`;
+  });
+  document.getElementById('reefCompass').innerHTML =
+    `<svg width="${S+14}" height="${S+14}" viewBox="-7 -7 ${S+14} ${S+14}">${out}</svg>`;
+}
+
+function renderSectionCards(){
+  document.getElementById('secRow').innerHTML = CFG.sections.map((s, i) => `
+    <div class="sec-chip">
+      <div class="sec-name"><span class="sec-num">${i + 1}</span>${s.name}</div>
+      <div class="sec-blurb">${s.blurb}</div>
+      <div class="sec-prefs">
+        <div class="pref"><span>Size</span><b>${s.size_ft[0]*2}–${s.size_ft[1]*2} ft</b></div>
+        <div class="pref"><span>Swell</span><b><em>${s.best_dir[0]}–${s.best_dir[1]}°</em>
+          ${compassPt((s.best_dir[0]+s.best_dir[1])/2)}</b></div>
+        <div class="pref"><span>Period</span><b>${s.best_period[0]}–${s.best_period[1]} s</b></div>
+        <div class="pref"><span>Tide</span><b><em>${s.tide}</em></b></div>
+      </div>
+    </div>`).join('');
+}
+
+function buoyBounds(){
+  const rows = DATA.upstream || [];
+  // Include triangulated storm sources — they sit thousands of km west of the
+  // buoy line and would otherwise fall outside the frame.
+  const srcs = ((DATA.translation||{}).clusters || [])
+    .filter(c => c.in_window).map(c => c.source);
+  return L.latLngBounds(rows.map(b=>[b.lat,b.lon])
+    .concat([[CFG.lat, CFG.lon]]).concat(srcs));
+}
+
+/* MAP_SRC selects what the sentinel markers show: the buoys' own readings, or
+   either model sampled at the same nine positions. Model values here are the
+   COMBINED sea state, because that is what a waverider reports — this is a
+   model-vs-observation check, not the model-vs-model comparison that lives in
+   the forecast table on primary swell. */
+let MAP_SRC = 'BUOY';
+
+function readingFor(b){
+  if (MAP_SRC === 'BUOY') return {hs:b.hs_ft, tp:b.tp_s, dp:b.dp_deg, src:'buoy'};
+  const m = ((DATA.upstream_models || {})[b.site] || {})[MAP_SRC];
+  return m ? {hs:m.hs_ft, tp:m.tp_s, dp:m.dp_deg, src:MAP_SRC} : {hs:null,tp:null,dp:null,src:MAP_SRC};
+}
+
+function renderBuoyMap(){
+  const rows = DATA.upstream || [];
+  if (!rows.length) return;
+  if (!buoyMap){
+    buoyMap = L.map('buoyMap', {center:[-21.0, 115.5], zoom:4, zoomControl:true,
+      attributionControl:true, scrollWheelZoom:false});
+    L.tileLayer(CARTO(), {maxZoom:12, opacity:isLight()?0.9:0.7,
+      detectRetina:true, attribution:'CARTO'}).addTo(buoyMap);
+    buoyLayer = L.layerGroup().addTo(buoyMap);
+  }
+  buoyLayer.clearLayers();
+
+  const GL = [CFG.lat, CFG.lon];
+  L.circleMarker(GL, {radius:8, color:'#2ec4b6', weight:2, fillColor:'#2ec4b6',
+    fillOpacity:.9}).addTo(buoyLayer)
+    .bindTooltip('G-LAND', {permanent:true, className:'map-tip', direction:'top'});
+
+  rows.forEach(b => {
+    const rd = readingFor(b);
+    L.polyline([[b.lat,b.lon], GL], {color:'#7c6af7', weight:1, opacity:.22,
+      dashArray:'3 5'}).addTo(buoyLayer);
+    const has = rd.hs != null;
+    const cat = has ? categorize(rd.hs, rd.tp || 12, rd.dp) : 'FLAT';
+    const [bg, ink] = catColors(cat);
+    L.circleMarker([b.lat,b.lon], {radius: has ? 6+Math.min(6, rd.hs/2) : 4,
+      color: ink, weight:2, fillColor: bg,
+      fillOpacity: has ? .9 : .35, dashArray: rd.src==='buoy' ? null : '3 3'})
+      .addTo(buoyLayer)
+      .bindTooltip(`${b.site} — ${rd.src==='buoy'?'observed':rd.src}<br>${
+        has ? rd.hs.toFixed(1)+' ft' : 'no data'}${
+        rd.tp!=null ? ' @'+rd.tp.toFixed(0)+'s' : ''}${
+        rd.dp!=null ? ' '+compassPt(rd.dp) : ''}`,
+        {className:'map-tip buoy', direction:'top'});
+    if (rd.dp != null){
+      const d = (rd.dp + 180) % 360, L0 = 2.2;
+      const dLat = L0*Math.cos(d*Math.PI/180);
+      const dLon = L0*Math.sin(d*Math.PI/180)/Math.cos(b.lat*Math.PI/180);
+      L.polyline([[b.lat,b.lon],[b.lat+dLat, b.lon+dLon]],
+        {color:'#7c6af7', weight:2, opacity:.8}).addTo(buoyLayer);
+    }
+  });
+
+  // Triangulated storm sources, and the ray each one sends to G-Land.
+  ((DATA.translation||{}).clusters || []).forEach(c => {
+    if (!c.in_window) return;
+    const op = c.confidence === 'firm' ? .95 : c.confidence === 'fair' ? .7 : .4;
+    L.polyline([c.source, GL], {color:'#e0b878', weight:2, opacity:op*.8,
+      dashArray:'7 5'}).addTo(buoyLayer);
+    L.circleMarker(c.source, {radius:7, color:'#e0b878', weight:2,
+      fillColor:'#e0b878', fillOpacity:op*.5}).addTo(buoyLayer)
+      .bindTooltip(`Storm source · ${c.tp_s}s<br>${
+        c.n_buoys} buoys · ${c.confidence}<br>→ G-Land in ${
+        Math.round(c.lead_h)} h from ${c.arrive_dir}°`,
+        {className:'map-tip', direction:'top'});
+  });
+
+  buoyMap.fitBounds(buoyBounds().pad(0.12));
+  setTimeout(()=>buoyMap.invalidateSize(), 60);
+
+}
+
+/* ─── Translation layer ───────────────────────────────────────
+   Back-projects each buoy's reading along its great circle at the group speed
+   of its peak period, triangulates the one storm position consistent with all
+   of them, then forward-projects that storm to G-Land. Method follows Collard,
+   Ardhuin & Chapron (2009); the maths lives in gland.py.
+   ───────────────────────────────────────────────────────────── */
+function renderTranslation(){
+  const tr = DATA.translation || {};
+  const cl = (tr.clusters || []).filter(c => c.in_window);
+  const el = document.getElementById('translateWrap');
+  if (!cl.length){
+    el.innerHTML = `<div class="xlate"><div class="xlate-head">
+      <b>WA Extrapolation vs models</b></div>
+      <div class="xlate-none">No storm source consistent with the current buoy
+      readings puts swell inside G-Land's window. That is a normal result — the
+      WA line often sees swell aimed entirely at Australia.</div></div>`;
+    return;
+  }
+
+  const cards = cl.map(c => {
+    const arr = new Date(c.arrive_epoch*1000);
+    const when = arr.toLocaleString('en-US', {timeZone:CFG.tz, weekday:'short',
+      day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true})
+      .replace(',', '').replace(' AM',' am').replace(' PM',' pm');
+    const mc = c.model_check;
+
+    // The WA-extrapolated row, then one row per model with signed deltas.
+    const dCell = (v, unit, tol) => {
+      if (v == null) return '<td class="dlt">—</td>';
+      const a = Math.abs(v);
+      const cls = a <= tol[0] ? 'ok' : a <= tol[1] ? 'mid' : 'off';
+      return `<td class="dlt ${cls}">${v>0?'+':''}${v}${unit}</td>`;
+    };
+    let rows = `<tr class="mine">
+      <td class="who">WA Extrapolation</td>
+      <td>${c.hs_ft != null ? c.hs_ft.toFixed(1)+' ft' : '—'}</td>
+      <td>${c.tp_s} s</td>
+      <td>${arrowFor(c.arrive_dir)} ${c.arrive_dir}°</td>
+      <td class="dlt"></td><td class="dlt"></td><td class="dlt"></td></tr>`;
+
+    if (mc){
+      ['GFS','EURO'].forEach(k => {
+        const m = (mc.models||{})[k];
+        if (!m) return;
+        if (!m.in_window){
+          rows += `<tr><td class="who">${k}</td>
+            <td colspan="6" class="nowin">nothing in G-Land's window at this hour</td></tr>`;
+          return;
+        }
+        rows += `<tr>
+          <td class="who">${k}</td>
+          <td>${m.hs_ft.toFixed(1)} ft</td>
+          <td>${m.period_s} s</td>
+          <td>${arrowFor(m.direction_deg)} ${m.direction_deg}°</td>
+          ${dCell(m.d_hs,' ft',[1,2])}${dCell(m.d_tp,' s',[1.5,3])}${dCell(m.d_dir,'°',[15,30])}
+          <td><span class="vd ${m.verdict}">${m.verdict}</span></td></tr>`;
+      });
+    }
+
+    return `<div class="xcard">
+      <div class="xcard-head">
+        <span class="conf ${c.confidence}">${c.confidence}</span>
+        <b>${c.tp_s} s swell</b>
+        <span class="xmeta">${c.n_buoys} buoy${c.n_buoys>1?'s':''} ·
+          source ${Math.abs(c.source[0]).toFixed(1)}°S ${c.source[1].toFixed(1)}°E ·
+          ${c.source_km.toLocaleString()} km · ray misfit ${c.bearing_err_deg}° / ${c.time_spread_h} h</span>
+        <span class="xeta">${c.lead_h < 0 ? 'arriving now' : '+'+Math.round(c.lead_h)+' h'}
+          <small>${when}</small></span>
+      </div>
+      <div class="tbl-x"><table class="xcmp">
+        <thead><tr><th>Source</th><th>Hs</th><th>Period</th><th>From</th>
+          <th>ΔHs</th><th>ΔT</th><th>ΔDir</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+      ${mc ? `<div class="xcard-foot">Compared against the model forecast for
+        <b>${mc.time.slice(0,10)} ${ampm(+mc.time.slice(11,13), 0)} WIB</b> — the hour this swell is predicted to
+        land. ${mc.best === 'agree'
+          ? 'Buoys and models <b class="ok">agree</b>.'
+          : mc.best === 'close'
+          ? 'Buoys and models are <b class="mid">close</b> — check ΔDir before trusting the section call.'
+          : 'Buoys and models <b class="off">diverge</b>. Trust the models.'}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="xlate">
+    <div class="xlate-head"><b>WA Extrapolation vs models</b>
+      <span>independent estimate — in-situ readings + great-circle geometry, no wave model in the chain</span></div>
+    ${cards}
+    <div class="footnote" style="margin-top:4px">
+      Each buoy's reading is back-projected along its great circle at
+      c<sub>g</sub> = gT/4π; the storm position is the one that best explains every
+      buoy's direction <i>and</i> agrees on when it radiated; that storm is then
+      projected forward to G-Land. Height is scaled by geometric spreading only
+      (energy ∝ 1/[α·sin α]) — dissipation is not modelled. <b>This method is
+      unvalidated against outcomes</b>: there is no backtest. In spot checks its
+      height lands close but its <b>direction runs ~20° off the models</b>, which is
+      wider than the 20°-wide Speedies band — so it cannot be trusted to call which
+      section a swell feeds. Use it to corroborate that a swell is real and roughly
+      how big, not to override the models.
+    </div>
+  </div>`;
+}
+
+/* ─── Forecast table ──────────────────────────────────────────
+   Modelled on buildRegionTable() in index.html: a sticky SPOT column, day
+   headers spanning their hours, night columns dimmed, and the swell row
+   carrying the same "height @period ↑dir" component lines the dashboard
+   uses. Row 1 is G-Land itself (the buoy-equivalent); the rows under it are
+   the reef sections (the spot-equivalent).
+   ───────────────────────────────────────────────────────────── */
+function isNight(t){ const h = +t.slice(11,13); return h < 6 || h >= 18; }
+
+function renderTable(rows){
+  const today = new Date().toLocaleString('sv-SE',{timeZone:CFG.tz}).slice(0,10);
+  const nowKey = new Date().toLocaleString('sv-SE',{timeZone:CFG.tz})
+                           .slice(0,13).replace(' ','T');
+
+  // History is prepended, not merged in place: where the two overlap the
+  // forecast row wins, since it carries both models.
+  let source = rows;
+  if (SHOW_HIST && HIST && HIST.timeline){
+    const have = new Set(rows.map(r => r.time));
+    source = HIST.timeline.filter(r => !have.has(r.time) && r.time < nowKey)
+                          .concat(rows);
+  }
+  const from = SHOW_HIST && HIST ? '0000-00-00' : nowKey.slice(0,10);
+  const use = source.filter(r => r.time >= from
+                          && (+r.time.slice(11,13)) % STRIDE === 0);
+  if (!use.length){
+    document.getElementById('fcWrap').innerHTML =
+      '<div class="err">No forecast rows in range.</div>';
+    return;
+  }
+
+  const days = [];
+  use.forEach(r => {
+    const d = r.time.slice(0,10);
+    if (!days.length || days[days.length-1].d !== d) days.push({d, n:0});
+    days[days.length-1].n++;
+  });
+
+  let head = `<tr><th class="row-lbl th-spot" rowspan="2"><a class="spot-link"
+    href="${CFG.surfline_url}" target="_blank" rel="noopener noreferrer"
+    title="Open the Surfline report for G-Land">G-LAND</a></th>`;
+  days.forEach(d => {
+    const dt = new Date(d.d + 'T12:00:00Z');
+    head += `<th class="day-hd ${d.d===today?'today':''}${d.d<today?' past-col':''}" colspan="${d.n}">${
+      dt.toLocaleDateString('en-US',{weekday:'short',timeZone:'UTC'})} ${dt.getUTCDate()}</th>`;
+  });
+  head += '</tr><tr>';
+  use.forEach(r => {
+    const h = +r.time.slice(11,13);
+    const night = isNight(r.time);
+    const past = r.time < nowKey ? ' past-col' : '';
+    head += `<th class="hr-hd${night?' night-col':''}${past}${h>=5&&h<=9?' dawn':''}">${
+      night ? '<span class="moon">🌙</span>' : ''}${ampm(h, 0)}</th>`;
+  });
+  head += '</tr>';
+
+  // ── Row 1: G-Land swell, both models, dashboard component style ──
+  const swellRow = (key, label, sub) => {
+    let s = `<tr><td class="row-lbl">${label}</td>`;
+    use.forEach(r => {
+      const night = isNight(r.time) ? ' night-col' : '';
+      const sw = r[key];
+      if (!sw){
+        const [bg,ink] = catColors('FLAT');
+        s += `<td class="cell${night}" style="background:${bg};color:${ink}">
+                <div class="cell-inner"><div class="comp-line p1">—</div></div></td>`;
+        return;
+      }
+      const cat = categorize(sw.height_ft, sw.period_s, sw.direction_deg);
+      const [bg, ink] = catColors(cat);
+      // Show the runner-up in-window partition as a p2 line, like the dashboard.
+      // Match on `type`, not object identity — JSON gives `sw` and its twin
+      // inside `*_all` as separate objects, so `!==` would never exclude it.
+      const all = (key === 'gfs' ? r.gfs_all : r.euro_all) || [];
+      const second = all.filter(c => c.in_window && c.type !== sw.type)
+                        .sort((a,b)=>b.gland_score-a.gland_score)[0];
+      // Exact degrees, not a compass point — a deliberate departure from the
+      // main dashboard. At G-Land the section a swell feeds turns on a few
+      // degrees (205-210° is the Speedies/Moneytrees overlap), and "SSW"
+      // spans 22.5° which is far too coarse to resolve that.
+      let inner = `<div class="comp-line p1">
+          <span class="c-ht">${sw.height_ft.toFixed(1)}</span>
+          <span class="c-pd">${sw.period_s.toFixed(0)}s</span>
+        </div>
+        <div class="comp-line p1 c-dir">${arrowFor(sw.direction_deg)}${
+          Math.round(sw.direction_deg)}°</div>`;
+      if (second) inner += `<div class="comp-line p2">${second.height_ft.toFixed(1)} · ${
+        second.period_s.toFixed(0)}s · ${Math.round(second.direction_deg)}°</div>`;
+      s += `<td class="cell${night}" style="background:${bg};color:${ink}"
+        title="${sw.height_ft} ft · ${sw.period_s} s · ${Math.round(sw.direction_deg)}° · ${cat}">
+        <div class="cell-inner">${inner}</div></td>`;
+    });
+    return s + '</tr>';
+  };
+
+  // One bar per column, shared scale, drawn under the model whose row it follows.
+  const energyRow = (key, label) => {
+    let s = `<tr><td class="row-lbl sec-lbl">${label}</td>`;
+    use.forEach(r => {
+      const night = isNight(r.time) ? ' night-col' : '';
+      const sw = r[key];
+      if (!sw){ s += `<td class="en-cell${night}"></td>`; return; }
+      const cat = categorize(sw.height_ft, sw.period_s, sw.direction_deg);
+      const ink = catColors(cat)[1];
+      const e = Math.round(sw.height_ft * sw.period_s ** 2);
+      s += `<td class="en-cell${night}" title="${label} energy ${e}" style="color:${ink}">
+        <div class="e-bar"><i style="height:${enPct(sw)}%"></i></div>
+        <span class="en-val">${e}</span></td>`;
+    });
+    return s + '</tr>';
+  };
+
+  // Energy H*T^2, normalised across the MIN-MAX of everything visible in both
+  // model rows. Scaling from zero would render a 700-1100 spread as a row of
+  // near-identical full-height bars; min-max makes the build and fade legible.
+  // The absolute number sits above each bar so the stretched scale can't
+  // mislead about magnitude.
+  let enMin = Infinity, enMax = 0;
+  use.forEach(r => ['gfs','euro'].forEach(k => {
+    const sw = r[k];
+    if (!sw) return;
+    const e = sw.height_ft * sw.period_s ** 2;
+    enMax = Math.max(enMax, e); enMin = Math.min(enMin, e);
+  }));
+  const enSpan = enMax - enMin;
+  const enPct = sw => {
+    const e = sw.height_ft * sw.period_s ** 2;
+    if (!isFinite(enMin) || enSpan <= 0) return 60;
+    return Math.round(10 + (e - enMin) / enSpan * 90);
+  };
+
+  let body = swellRow('gfs','GFS','')
+           + energyRow('gfs','GFS energy')
+           + swellRow('euro','ECMWF-WAM','')
+           + energyRow('euro','ECMWF energy')
+           + `<tr class="spot-sep"><td colspan="${use.length+1}"></td></tr>`;
+
+  // ── Wind + tide, the environment rows ──
+  body += '<tr><td class="row-lbl">Wind</td>';
+  use.forEach(r => {
+    const night = isNight(r.time) ? ' night-col' : '';
+    const w = r.wind;
+    if (!w || w.speed_kt == null){ body += `<td class="cell${night}">·</td>`; return; }
+    const rate = r.wind_rating;
+    const good = ['GLASSY','GROOMED','CLEAN'].includes(rate);
+    const mid  = ['STRONG OFFSHORE','TEXTURED'].includes(rate);
+    const [bg, ink] = good ? catColors('FUN') : mid ? catColors('WEAK') : catColors('FLAT');
+    body += `<td class="cell${night}" style="background:${bg};color:${ink}"
+      title="${Math.round(w.speed_kt)} kt ${compassPt(w.direction_deg)} — ${rate}">
+      <div class="cell-inner"><div class="comp-line p1"><span class="c-ht">${
+        Math.round(w.speed_kt)}</span><span>${arrowFor(w.direction_deg)}${
+        compassPt(w.direction_deg)}</span></div></div></td>`;
+  });
+  body += '</tr>';
+
+  // Map each tide turning point and each sunrise/sunset to the displayed
+  // column nearest in time, so their real clock time survives the 3 h stride.
+  const colMin = use.map(r => +r.time.slice(0,10).replace(/-/g,'')*1440 + (+r.time.slice(11,13))*60);
+  const nearestCol = (dateStr, hhmm) => {
+    const m = +dateStr.replace(/-/g,'')*1440 + (+hhmm.slice(0,2))*60 + (+hhmm.slice(3,5));
+    let bi = -1, bd = Infinity;
+    colMin.forEach((c, i) => { const dd = Math.abs(c - m); if (dd < bd){ bd = dd; bi = i; } });
+    return bd <= 120 ? bi : -1;      // only if within 2 h of a column
+  };
+  const tideAt = {}, sunAt = {};
+  const allTideEv = (DATA.tide_events || [])
+    .concat(SHOW_HIST && HIST ? (HIST.tide_events || []) : []);
+  const allSun = Object.assign({}, SHOW_HIST && HIST ? (HIST.sun || {}) : {},
+                               DATA.sun || {});
+  allTideEv.forEach(e => {
+    const i = nearestCol(e.date, e.time);
+    if (i >= 0) tideAt[i] = e;
+  });
+  Object.entries(allSun).forEach(([d, v]) => {
+    [['sunrise','↑'],['sunset','↓']].forEach(([k, glyph]) => {
+      if (!v[k]) return;
+      const i = nearestCol(d, v[k].slice(11,16));
+      if (i >= 0) sunAt[i] = {glyph, t: v[k].slice(11,16), kind:k};
+    });
+  });
+
+  body += '<tr><td class="row-lbl">Tide</td>';
+  use.forEach((r, i) => {
+    const night = isNight(r.time) ? ' night-col' : '';
+    if (r.tide_ft == null){ body += `<td class="cell${night}">·</td>`; return; }
+    const ink = r.tide_state==='high' ? 'var(--gl)'
+              : r.tide_state==='low'  ? 'var(--amber)' : 'var(--text1)';
+    const ev = tideAt[i];
+    body += `<td class="cell${night} tide-cell" title="${r.tide_ft} ft — ${r.tide_state||''}">
+      <div class="cell-inner"><div class="comp-line p1" style="color:${ink}">${
+        r.tide_ft>0?'+':''}${r.tide_ft.toFixed(1)}</div>
+      <div class="tide-when">${ev
+        ? `<b style="color:${ev.type==='H'?'var(--gl)':'var(--amber)'}">${ev.type}</b> ${
+            hhmmAmPm(ev.time)}` : ''}</div></div></td>`;
+  });
+  body += '</tr>';
+
+  body += '<tr><td class="row-lbl">Daylight</td>';
+  use.forEach((r, i) => {
+    const night = isNight(r.time) ? ' night-col' : '';
+    const sv = sunAt[i];
+    if (!sv){ body += `<td class="cell${night}">·</td>`; return; }
+    const col = sv.kind === 'sunrise' ? 'var(--sand)' : 'var(--accent)';
+    body += `<td class="cell${night}" title="${sv.kind} ${hhmmAmPm(sv.t)}">
+      <div class="cell-inner"><div class="comp-line sun-cell" style="color:${col}">${
+        sv.glyph} ${hhmmAmPm(sv.t)}</div></div></td>`;
+  });
+  body += '</tr>';
+
+
+  document.getElementById('fcWrap').innerHTML =
+    `<table class="fc"><thead>${head}</thead><tbody>${body}</tbody></table>`;
+
+  document.getElementById('legend').innerHTML = CFG.categories.map(c => {
+    const [bg, ink] = catColors(c);
+    return `<span class="legend-pill" style="background:${bg};color:${ink}">${c}</span>`;
+  }).join('');
+
+}
+
+/* ─── Sentinel overview table ─────────────────────────────────
+   Modelled on the dashboard's overview table: one row per station, the
+   headline reading rendered as a coloured swell cell, supporting numbers
+   in plain columns.
+   ───────────────────────────────────────────────────────────── */
+function renderUpstream(){
+  const rows = DATA.upstream || [];
+  if (!rows.length){
+    document.getElementById('upWrap').innerHTML = '<div class="err">AODN unavailable.</div>';
+    return;
+  }
+  const now = Date.now();
+  const body = rows.map(b => {
+    const age = b.time ? (now - Date.parse(b.time))/3600000 : null;
+    const stale = age == null || age > 6;
+    const has = b.hs_ft != null;
+    const cat = has ? categorize(b.hs_ft, b.tp_s || 12, b.dp_deg) : 'FLAT';
+    const [bg, ink] = catColors(cat);
+    return `<tr>
+      <td class="site">${b.site}</td>
+      <td class="ov-cell" style="background:${bg};color:${ink}">
+        ${has ? `<span class="c-ht">${b.hs_ft.toFixed(1)}</span><span>@${
+          b.tp_s != null ? b.tp_s.toFixed(0) : '?'}</span>` : '—'}</td>
+      <td>${b.dp_deg != null
+        ? `${arrowFor(b.dp_deg)} ${compassPt(b.dp_deg)} ${b.dp_deg}°` : '<span class="stale">—</span>'}</td>
+      <td>${b.distance_km.toLocaleString()} km</td>
+      <td><span class="aim ${b.north_offset<=10?'good':'off'}">${b.north_offset}° off N</span></td>
+      <td>${b.transit_hours != null ? (b.transit_hours/24).toFixed(1)+' d' : '—'}</td>
+      <td class="${stale?'stale':''}">${b.time ? new Date(b.time).toLocaleString('en-US',
+        {timeZone:CFG.tz, month:'short', day:'numeric', hour:'numeric',
+         minute:'2-digit', hour12:true}).replace(',', '')
+         .replace(' AM',' am').replace(' PM',' pm') : '—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('upWrap').innerHTML = `<div class="tbl-x"><table class="up">
+    <thead><tr><th>Station</th><th>Hs @ Tp</th><th>Direction</th><th>Distance</th>
+      <th>Aim</th><th>Transit</th><th>Last reading (WIB)</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+
+/* ─── Boot ────────────────────────────────────────────────── */
+async function load(){
+  try {
+    const r = await fetch('/api/gland/all', {cache:'no-store'});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    DATA = await r.json();
+  } catch(e){
+    document.getElementById('fcWrap').innerHTML =
+      `<div class="err">Could not load G-Land data: ${e.message}</div>`;
+    return;
+  }
+  redraw();
+}
+function redraw(){
+  if (!DATA) return;
+  const rows = DATA.timeline || [];
+  renderNow(rows);
+  renderTable(rows);
+  renderUpstream();
+  renderReefMap();
+  renderSectionCards();
+  renderBuoyMap();
+  renderTranslation();
+}
+
+document.getElementById('reefRecenter').addEventListener('click', () => {
+  if (!reefMap) return;
+  const b = L.latLngBounds(CFG.reef_line);
+  const ne = CFG.reef_line[CFG.reef_line.length - 1];
+  b.extend([ne[0] + 0.0015, ne[1] + 0.0065]);
+  reefMap.setView(b.getCenter(),
+    Math.min(15, reefMap.getBoundsZoom(b, false, L.point(22, 38))), {animate:true});
+});
+document.getElementById('buoyRecenter').addEventListener('click', () => {
+  if (buoyMap) buoyMap.fitBounds(buoyBounds().pad(0.12));
+});
+document.querySelectorAll('#buoyLayers .tg').forEach(b =>
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#buoyLayers .tg').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); MAP_SRC = b.dataset.src; renderBuoyMap();
+  }));
+
+/* ─── History ─────────────────────────────────────────────────
+   Nothing is archived locally — the past 14 days come from Open-Meteo's own
+   past analysis plus the harmonic tide, fetched once on first toggle.
+   ───────────────────────────────────────────────────────────── */
+document.getElementById('histBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('histBtn');
+  if (!SHOW_HIST && !HIST){
+    btn.textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/gland/history', {cache:'no-store'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      HIST = await r.json();
+    } catch(e){
+      btn.textContent = 'History'; btn.title = 'History unavailable: ' + e.message;
+      return;
+    }
+  }
+  SHOW_HIST = !SHOW_HIST;
+  btn.textContent = 'History';
+  btn.classList.toggle('on', SHOW_HIST);
+  redraw();
+  // Land the viewport on "now" rather than 14 days ago.
+  requestAnimationFrame(() => {
+    const w = document.getElementById('fcWrap');
+    const c = w.querySelector('th.hr-hd:not(.past-col)');
+    if (SHOW_HIST && c) w.scrollLeft = c.offsetLeft - w.clientWidth * 0.28;
+    else if (w) w.scrollLeft = 0;
+  });
+});
+
+document.getElementById('res3').addEventListener('click', e => {
+  STRIDE = 3; e.target.classList.add('on');
+  document.getElementById('res1').classList.remove('on'); redraw();
+});
+document.getElementById('res1').addEventListener('click', e => {
+  STRIDE = 1; e.target.classList.add('on');
+  document.getElementById('res3').classList.remove('on'); redraw();
+});
+/* ─── Modals ──────────────────────────────────────────────── */
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+['prefs','tide'].forEach(k => {
+  const ov = document.getElementById(k+'Overlay');
+  document.getElementById(k+'Close').addEventListener('click', () => closeModal(k+'Overlay'));
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(k+'Overlay'); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ closeModal('prefsOverlay'); closeModal('tideOverlay'); }
+});
+document.getElementById('prefsBtn').addEventListener('click', () => openModal('prefsOverlay'));
+
+/* ─── Tide lookup ─────────────────────────────────────────────
+   Tide predictions are deterministic harmonics, so an arbitrary window is
+   just as valid as the forecast one — the range is capped at 14 days
+   server-side.
+   ───────────────────────────────────────────────────────────── */
+const isoDay = d => d.toISOString().slice(0,10);
+document.getElementById('tideLookupBtn').addEventListener('click', () => {
+  const from = document.getElementById('tideFrom');
+  const to = document.getElementById('tideTo');
+  if (!from.value){
+    const t = new Date(new Date().toLocaleString('en-US',{timeZone:CFG.tz}));
+    from.value = isoDay(t);
+    to.value = isoDay(new Date(t.getTime() + 13*864e5));
+  }
+  openModal('tideOverlay');
+  if (!document.getElementById('tideResult').innerHTML) runTideLookup();
+});
+document.getElementById('tideGo').addEventListener('click', runTideLookup);
+
+async function runTideLookup(){
+  const el = document.getElementById('tideResult');
+  const from = document.getElementById('tideFrom').value;
+  const to = document.getElementById('tideTo').value;
+  if (!from || !to){ el.innerHTML = '<div class="err">Pick both dates.</div>'; return; }
+  el.innerHTML = '<div class="loading">Loading tides…</div>';
+  try {
+    const r = await fetch(`/api/gland/tides?start=${from}&end=${to}`, {cache:'no-store'});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    const rows = (j.days || []).map(d => {
+      const dt = new Date(d.date + 'T12:00:00Z');
+      const label = dt.toLocaleDateString('en-US',
+        {weekday:'short', day:'numeric', month:'short', timeZone:'UTC'});
+      const evs = d.events.map(e =>
+        `<span class="tev ${e.type}"><b>${e.type==='H'?'High':'Low'}</b> ${
+          hhmmAmPm(e.time)}<span>${e.height_ft>0?'+':''}${e.height_ft} ft</span></span>`).join('');
+      const cell = evs || '<span style="color:var(--text3)">—</span>';
+      return `<tr><td class="d">${label}</td><td>${cell}</td></tr>`;
+    }).join('');
+    // Harmonic prediction has no horizon — report its measured accuracy
+    // instead of a cutoff date.
+    const horiz = `<div class="tide-note">Harmonic prediction fitted to
+      ${'\u007E'}2 years of local sea level — valid for any date. Validated against the
+      live tide field: high/low times within <b>7 min</b> (median), heights
+      within <b>0.2 ft</b> RMS.</div>`;
+    el.innerHTML = rows
+      ? `<table class="tidetbl"><thead><tr><th>Date</th><th>Highs &amp; lows</th></tr></thead>
+         <tbody>${rows}</tbody></table>${horiz}`
+      : '<div class="err">No tide events in that range.</div>';
+  } catch(e){ el.innerHTML = `<div class="err">${e.message}</div>`; }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', load);
+['themeBtn', 'themeBtn2'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const next = cur === 'dark' ? 'light' : cur === 'light' ? '' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('gland-theme', next); } catch(e){}
+    redraw();
+  });
+});
+try {
+  const t = localStorage.getItem('gland-theme');
+  if (t !== null) document.documentElement.setAttribute('data-theme', t);
+} catch(e){}
+
+function tick(){
+  const now = new Date();
+  const stamp = tz => now.toLocaleString('en-US', {timeZone:tz, weekday:'short',
+    day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true})
+    .replace(',', '').replace(' AM',' am').replace(' PM',' pm');
+  // Both clocks live in the header — the trip is planned from one timezone
+  // and surfed in the other.
+  const gl = document.getElementById('clkGland');
+  const ny = document.getElementById('clkNY');
+  if (gl) gl.textContent = stamp(CFG.tz);
+  if (ny) ny.textContent = stamp('America/New_York');
+}
+tick(); setInterval(tick, 1000);
+load();
+</script>
+</body>
+</html>

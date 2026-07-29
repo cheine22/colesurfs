@@ -56,3 +56,9 @@ research_run_*.md
 # ─── Dev-only assets (mockups, tests, icon archive) — kept local, not synced ───
 development-assets/
 _hold/
+
+# Shelved loading-screen work — never synced
+purgatory/
+
+# G-Land rolling ECMWF archive — local only
+.gland_data/

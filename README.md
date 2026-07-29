@@ -1,4 +1,4 @@
-# colesurfs · v1.11.1
+# colesurfs · v1.12.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -199,6 +199,16 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.12.0
+- **New page: `/gland` — G-Land (Grajagan), East Java.** A standalone forecast page for a trip destination that sits outside every assumption the main dashboard makes: there is no NDBC buoy and no CO-OPS tide station within thousands of kilometres, so nothing routes through `regions.yaml` / `buoy.py` / `tide.py`. Lives in `gland.py` + `templates/gland.html`.
+- **Swell is sampled offshore, not at the spot.** Surfline reports deepwater swell, and sampling a global wave model at G-Land's pin returns something else entirely — the Blambangan peninsula shadows the inshore cells. Same hour, GFS-Wave 0.25°: the cell the pin snaps to read 11.3 s from 180°, the next cell south read 15.3 s from 209°. Both models now read the open-ocean node at -9.00, 114.25 (~32 km SSW), which also keeps GFS vs ECMWF like-for-like.
+- **Window-filtered swell selection.** `pick_gland_swell()` ranks partitions by `H²·T` weighted by fit to G-Land's swell window, with a 9 s period floor. The largest partition here is routinely a 7-8 s SE trade windsea that the west-facing point never sees; a raw energy sort renders surf that does not exist.
+- **Harmonic tide model.** Fitted by least squares to ~2 years of the location's own hourly sea level (15 constituents; M2 65 cm, S2 36 cm, K1 25 cm) and datum-anchored to the live field, which removed a constant +0.50 ft offset. Covers any date — the forecast tide field stops ~9 days out — powering a date-range lookup and backfilling the tail of the 10-day table. Validated against the live field: high/low times within 7 min median (max 20), heights 0.18 ft RMS.
+- **WA sentinel buoys + extrapolation.** The nearest in-situ wave measurements to G-Land are 1,600-2,900 km away down the Western Australian coast. Their readings are back-projected along great circles at `cg = gT/4π`, triangulated to the one storm position consistent with every buoy's direction *and* radiation time, then forward-projected to G-Land and compared against both models. **Unvalidated against outcomes** — no backtest exists, and in spot checks direction runs ~20° off the models, wider than the Speedies band. Labelled as such throughout.
+- **Rolling 14-day ECMWF-WAM archive** (`gland_euro_archive.py`, `com.colesurfs.gland-euro`, every 6 h) so history mode covers both models. CMEMS is pinned to the forecast window in the shared fetcher and is rate-capped upstream, so past EURO has to be persisted; processing goes through `waves_cmems.raw_rows_to_hourly_records` so archived rows match the live path exactly.
+- **G-Land-only category scheme.** Adds DREAMY (direction-dependent) and BIG on top of the site ladder, in its own TOML with its own tuner at `/gland/tuner` (LAN-gated like `/tuner`, with a paint-brush matrix). Rebuilt as ordered match rules — the site's period-band × height-threshold table can express neither overlapping period ranges nor a direction condition. Cannot affect the site-wide scheme; verified across a 924-cell height × period sweep.
+- **Reef geography traced from satellite imagery**, validated against Surfline's spot pin to four decimal places. An earlier schematic had the point's orientation backwards.
 
 ### v1.11.1
 - **The swell agreement chip's colour actually reads now.** The "M" chip carried the hidden model's category colour as an 8px glyph on a 13% wash of itself — technically the right colour, but at that size it registered as "a small mark" before it registered as green-vs-blue, so the divergence it exists to show was easy to miss. The chip is now a **solid block** of the hidden model's colour with the letter knocked out in that category's cell background: same size, same position, same gutter, far more colour per pixel. The wind chip ("W") keeps its neutral-white wash and shares the geometry, so the stack stays aligned. Which hours get a chip is unchanged (hidden model WEAK-or-better). Variants weighed in `development-assets/design-demo/agreement-chip.html`.

@@ -1,0 +1,92 @@
+# G-Land Swell Categorization Scheme
+# G-LAND ONLY — auto-written by /api/gland/tuner/save; edit at /gland/tuner.
+# Ordered rules: the FIRST match wins, so order is priority.
+#   period/height/direction are [min, max]; "inf" is unbounded;
+#   min is inclusive, max exclusive. Omit direction to ignore it.
+
+[[rule]]
+category  = "FLAT"
+period    = [20.0, "inf"]
+height    = [1.0, 2.0]
+
+[[rule]]
+category  = "FUN"
+period    = [18.0, "inf"]
+height    = [2.0, 3.0]
+
+[[rule]]
+category  = "SOLID"
+period    = [18.0, "inf"]
+height    = [4.0, 5.0]
+
+[[rule]]
+category  = "SOLID"
+period    = [14.0, 15.0]
+height    = [5.0, 7.0]
+
+[[rule]]
+category  = "FIRING"
+period    = [18.0, "inf"]
+height    = [5.0, 7.0]
+
+[[rule]]
+category  = "FIRING"
+period    = [16.5, 18.0]
+height    = [6.0, 8.0]
+
+[[rule]]
+category  = "BIG"
+period    = [18.0, 20.0]
+height    = [7.0, 10.0]
+
+[[rule]]
+category  = "BIG"
+period    = [20.0, "inf"]
+height    = [8.0, 10.0]
+
+[[rule]]
+category  = "BIG"
+period    = [14.0, 16.5]
+height    = [15.0, "inf"]
+
+[[rule]]
+category  = "BIG"
+period    = [16.5, 18.0]
+height    = [18.0, "inf"]
+
+[[rule]]
+category  = "DREAMY"
+period    = [14.5, 16.0]
+height    = [4.0, 8.0]
+direction = [200.0, 210.0]
+
+[[rule]]
+category  = "HECTIC"
+period    = [18.0, "inf"]
+height    = [8.0, "inf"]
+
+[[rule]]
+category  = "BIG"
+period    = [16.5, "inf"]
+height    = [6.0, 18.0]
+
+[[rule]]
+category  = "FIRING"
+period    = [14.0, 16.5]
+height    = [6.0, 14.0]
+
+[[rule]]
+category  = "SOLID"
+period    = [15.0, 18.0]
+height    = [4.0, 6.0]
+
+[[rule]]
+category  = "FUN"
+period    = [11.0, "inf"]
+height    = [2.5, "inf"]
+
+[[rule]]
+category  = "WEAK"
+period    = [9.0, "inf"]
+height    = [1.5, "inf"]
+
