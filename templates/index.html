@@ -446,6 +446,14 @@
 
     /* ─── Regional mode ──────────────────────────────────── */
     .spot-cell.region-active { font-weight: 700; color: var(--text0); }
+    /* G-Land: a link out rather than a region you can drill into. */
+    tr.gland-row td.spot-cell { padding: 0; }
+    tr.gland-row td.spot-cell a {
+      display: flex; align-items: center; height: 100%; padding: 0 10px;
+      color: var(--text1); text-decoration: none; font-weight: 600;
+      letter-spacing: .04em; transition: color .15s, background .15s;
+    }
+    tr.gland-row td.spot-cell a:hover { color: #2ec4b6; background: var(--bg2); }
     .wind-spot-cell { color: var(--text1); }
     /* Strip td padding so the <a> can fill the full cell area */
     td.spot-cell.wind-spot-cell { padding: 0; }
@@ -1547,7 +1555,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.12.0</span>
+    <span class="info-modal-version">v1.12.1</span>
   </div>
 </div>
 
@@ -1565,7 +1573,7 @@
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.12.0</span>
+    <span class="about-version">v1.12.1</span>
   </div>
 </div>
 
@@ -1601,7 +1609,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.12.0</span>
+    <span class="footer-version">v1.12.1</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -3134,10 +3142,51 @@ function buildTable() {
     }
   });
 
+  html += _glandRow(times.length, histCount, moDividerCls);
+
   document.getElementById('table-body').innerHTML =
     html || '<tr><td colspan="99" style="padding:32px;text-align:center;color:var(--text2)">No data</td></tr>';
   attachHoverListeners();
   _afterBuildTable();
+}
+
+// ── G-Land row ──────────────────────────────────────────────
+// A link out to /gland, carrying only its Fun+ Days figure. The rest of the
+// row is intentionally blank: G-Land has no NDBC buoy, no CO-OPS tide station
+// and its own category scheme, so its hourly cells are not comparable with the
+// East Coast columns and would read as false precision here.
+let GLAND_SUMMARY = null;
+
+function _glandRow(timeCount, histCount, moDividerCls) {
+  const g = GLAND_SUMMARY;
+  if (!g) return '';
+  const dark = _isDark();
+  const bg  = dark ? g.colors.dark_bg   : g.colors.light_bg;
+  const fg  = dark ? g.colors.dark_text : g.colors.light_text;
+  const blanks = n => Array.from({length: n},
+    () => '<td class="cell" style="background:var(--bg1)"></td>').join('');
+  return `<tr class="spot-sep"><td colspan="${3 + histCount + timeCount}"></td></tr>
+    <tr class="gland-row">
+      <td class="spot-cell">
+        <a href="/gland" title="G-Land (Grajagan), East Java — full forecast">♣ G-LAND</a>
+      </td>
+      ${blanks(histCount)}
+      <td class="cell model-overview${moDividerCls}" style="background:${bg};color:${fg}">
+        <div class="cell-inner"><div class="comp-line p1"><span>${g.count}<span
+          style="opacity:.55;font-weight:600;">/${g.window_days || '?'}</span></span></div></div>
+      </td>
+      <td class="cell" style="background:var(--bg1)"></td>
+      ${blanks(timeCount)}
+    </tr>`;
+}
+
+async function loadGlandSummary() {
+  try {
+    const r = await fetch('/api/gland/summary', {cache: 'no-store'});
+    if (!r.ok) return;
+    GLAND_SUMMARY = await r.json();
+    buildTable();
+  } catch (e) { /* the row simply doesn't appear */ }
 }
 
 function buildRegionTable() {
@@ -5157,7 +5206,10 @@ function setShowHistory(val) {
 // Post-build hook: preload historical data and reset slider to the
 // "history boundary" (buoy cell column) when history is on.
 let _historyPreloaded = false;
+let _glandLoaded = false;
 function _afterBuildTable() {
+  // G-Land's summary is one small call; fetch it once, after the first paint.
+  if (!_glandLoaded) { _glandLoaded = true; setTimeout(loadGlandSummary, 600); }
   const historyOn = localStorage['cs_show_history'] === '1';
   // Trigger preload (idempotent). Immediate when history just flipped on and
   // cache is empty; otherwise idle-callback so initial paint isn't blocked.
@@ -6252,9 +6304,13 @@ function buoyUpdateHtml(buoyRecord) {
 
 // Resolve theme: saved preference wins; fall back to system preference.
 (function() {
+  // Dev hosts default to light so the theme being worked on is the one on
+  // screen; deployed behaviour is unchanged (saved preference, then system).
+  const _devHost = ['localhost','127.0.0.1','::1'].includes(location.hostname)
+                || location.hostname.endsWith('.local');
   const saved   = localStorage.getItem('wave-theme');
   const sysPref = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  const theme   = saved || sysPref;
+  const theme   = saved || (_devHost ? 'light' : sysPref);
   document.documentElement.setAttribute('data-theme', theme);
   const label = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
   const btn = document.getElementById('theme-btn');
@@ -6266,6 +6322,8 @@ function buoyUpdateHtml(buoyRecord) {
 // Track system preference changes at runtime (only when no saved override).
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
   if (localStorage.getItem('wave-theme')) return;
+  if (['localhost','127.0.0.1','::1'].includes(location.hostname)
+      || location.hostname.endsWith('.local')) return;   // dev stays on light
   const theme = e.matches ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', theme);
   const label = theme === 'light' ? '◑ DARK' : '◑ LIGHT';

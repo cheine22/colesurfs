@@ -74,23 +74,23 @@
     .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:5px; }
     .header-right { display:flex; align-items:center; gap:18px; min-width:0; }
     .header-left { min-width:0; }
-    /* Mobile: two dated clocks + PREFERENCES don't fit beside the logo. */
-    @media (max-width:760px) {
-      .app-header { padding:0 12px; }
-      .header-right { gap:9px; }
-      .zone-clock { font-size:9px; gap:4px; }
-      .zone-clock b { font-size:8px; }
-      .live-dot { display:none; }
-    }
-    @media (max-width:560px) {
-      .zone-clock.ny { display:none; }
-      .zone-clock b { display:none; }
-      .header-logo { font-size:12px; letter-spacing:.08em; }
-      .icon-btn { font-size:7.5px; padding:2px 6px; }
-    }
+
     .zone-clock { display:inline-flex; align-items:baseline; gap:6px; font-size:10px;
                   color:var(--gl); font-variant-numeric:tabular-nums; white-space:nowrap; }
     .zone-clock b { color:var(--text2); font-weight:600; letter-spacing:.1em; font-size:9px; }
+    /* Mobile header: logo, LIVE, and G-Land's clock. New York drops — the
+       trip clock is the one that matters on a phone. */
+    @media (max-width:600px) {
+      .app-header { height:38px; padding:0 14px; }
+      .header-logo { font-size:15px; letter-spacing:.08em; }
+      .header-logo .wave-glyph { font-size:1.3em; top:-1px; }
+      .header-right { gap:10px; }
+      .live-dot { font-size:7.5px; }
+      .zone-clock { font-size:8px; gap:4px; }
+      .zone-clock b { font-size:7.5px; }
+      .zone-clock.ny { display:none; }
+    }
+
 
     /* ─── Modals — same shape as the main dashboard's preferences ─── */
     .modal-overlay { position:fixed; inset:0; z-index:900; display:none;
@@ -173,12 +173,31 @@
       font-family:var(--font); font-size:10px; letter-spacing:.1em;
       cursor:pointer; transition:color .15s, border-color .15s; }
     .footer-btn:hover { color:var(--gl); border-color:var(--gl); }
-    @media (max-width:560px) {
-      .app-footer { padding:0 12px; height:34px; }
-      .footer-sig { font-size:8px; letter-spacing:.1em; }
-      .footer-btn { font-size:8.5px; padding:2px 8px; letter-spacing:.06em; }
-      .footer-center { display:none; }
+    /* Mobile: mirrors the main dashboard's split bottom — a 46 px bar of
+       controls, with the signature as its own centred 21 px strip beneath it.
+       Same heights, padding, fonts and z-indices as .mobile-bottom-bar /
+       .mobile-sig there, so the signature clears the phone's rounded corners
+       and home indicator the same way. */
+    @media (max-width:600px) {
+      .app-footer {
+        bottom:21px; height:46px; padding:0 14px; gap:6px;
+        border-top:1px solid var(--border0); z-index:200;
+      }
+      .footer-sig {
+        position:fixed; left:0; right:0; bottom:0; z-index:201;
+        height:21px; display:flex; align-items:flex-start;
+        justify-content:center; padding-top:1px; background:var(--bg1);
+        font-size:8px; letter-spacing:.08em; color:var(--text3);
+      }
+      .footer-center { order:1; }
+      .footer-btns { order:2; gap:6px; }
+      .footer-version { font-size:8px; }
+      .footer-btn { padding:4px 10px; font-size:9px; letter-spacing:.06em; }
+      .footer-divider { display:none; }
+      /* Clear the 46 px bar + 21 px strip. */
+      .wrap { padding-bottom:88px; }
     }
+
 
     /* ─── Section shell ─── */
     .panel { background:var(--bg1); border:1px solid var(--border0);
@@ -761,7 +780,7 @@
 
 <footer class="app-footer">
   <span class="footer-sig">made by cole and claude &copy; 2026</span>
-  <div class="footer-center"><span class="footer-version">v1.12.0</span></div>
+  <div class="footer-center"><span class="footer-version">v1.12.1</span></div>
   <div class="footer-btns">
     <button class="footer-btn" id="themeBtn2" title="Toggle light/dark mode">◑ THEME</button>
     <span class="footer-divider">·</span>

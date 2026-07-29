@@ -536,9 +536,13 @@ deterministic     = True</div>
 <script>
 // Theme toggle — same contract as csc.html: localStorage 'wave-theme', data-theme attr.
 (function _initTheme() {
+  // Dev hosts default to light so the theme being worked on is the one on
+  // screen; deployed behaviour is unchanged (saved preference, then system).
+  const _devHost = ['localhost','127.0.0.1','::1'].includes(location.hostname)
+                || location.hostname.endsWith('.local');
   const saved = localStorage.getItem('wave-theme');
   const sysLight = window.matchMedia('(prefers-color-scheme: light)').matches;
-  const theme = saved || (sysLight ? 'light' : 'dark');
+  const theme = saved || (_devHost ? 'light' : (sysLight ? 'light' : 'dark'));
   document.documentElement.setAttribute('data-theme', theme);
   const btn = document.getElementById('theme-btn');
   if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';

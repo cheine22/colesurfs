@@ -1464,6 +1464,78 @@ def tide_state_for(height_ft, lo_ft, hi_ft):
     return "high"
 
 
+@ttl_cache(ttl_seconds=1800, skip_none=True)
+def fun_plus_summary():
+    """G-Land's Fun+ Days figure for the main dashboard's overview column.
+
+    Mirrors index.html's computeModelOverview criteria exactly: sample both
+    models on a 3 h stride from now, skip night, take min(EURO, GFS) category,
+    count a window when that minimum is FUN or better AND the wind is
+    surfable, then count days holding >= 2 such windows. Denominator is the
+    span of sampled times in days.
+
+    Two things are G-Land's rather than the site's, because they are what the
+    /gland page itself uses: the category scheme (its own TOML) and the wind
+    gate (the point's own offshore bearing, not a region of spots).
+    """
+    data = fetch_all()
+    timeline = data.get("timeline") or []
+    sun = data.get("sun") or {}
+    if not timeline:
+        return None
+
+    now_key = time.strftime("%Y-%m-%dT%H",
+                            time.gmtime(time.time() + _tz_offset_seconds()))
+    rows = [r for r in timeline if r["time"] >= now_key]
+    if len(rows) < 2:
+        return None
+    base = int(rows[0]["time"][11:13])
+    sampled = [r for r in rows if (int(r["time"][11:13]) - base) % 3 == 0]
+
+    order = {c: i for i, c in enumerate(GLAND_CATEGORIES)}
+    fun_i = order.get("FUN", 2)
+    surfable = {"GLASSY", "GROOMED", "CLEAN", "TEXTURED", "STRONG OFFSHORE"}
+
+    per_day, best_i, best = {}, -1, None
+    for r in sampled:
+        day, hh = r["time"][:10], int(r["time"][11:13])
+        # Daylight from the location's own sunrise/sunset rather than a fixed
+        # window — G-Land is 8.7°S and its day is ~11.7 h year-round.
+        s = sun.get(day)
+        if s:
+            if not (int(s["sunrise"][11:13]) <= hh < int(s["sunset"][11:13])):
+                continue
+        elif hh < 6 or hh >= 18:
+            continue
+
+        g, e = r.get("gfs"), r.get("euro")
+        if not g or not e:
+            continue
+        gc = categorize_gland(g["height_ft"], g["period_s"], g.get("direction_deg"))
+        ec = categorize_gland(e["height_ft"], e["period_s"], e.get("direction_deg"))
+        gi, ei = order.get(gc, -1), order.get(ec, -1)
+        if gi < 0 or ei < 0:
+            continue
+        m = min(gi, ei)
+        if m > best_i:
+            best_i, best = m, (gc if gi <= ei else ec)
+        if m < fun_i:
+            continue
+        if r.get("wind_rating") and r["wind_rating"] not in surfable:
+            continue
+        per_day[day] = per_day.get(day, 0) + 1
+
+    count = sum(1 for v in per_day.values() if v >= 2)
+    import datetime as _dt
+    d0 = _dt.datetime.fromisoformat(sampled[0]["time"] + ":00")
+    d1 = _dt.datetime.fromisoformat(sampled[-1]["time"] + ":00")
+    window_days = round((d1 - d0).total_seconds() / 86400)
+    cat = best or "FLAT"
+    col = GLAND_COLORS.get(cat, GLAND_COLORS["FLAT"])
+    return {"count": count, "window_days": window_days, "category": cat,
+            "colors": col, "url": "/gland", "name": "G-LAND"}
+
+
 HISTORY_DAYS = 14
 
 

@@ -1,4 +1,4 @@
-# colesurfs · v1.12.0
+# colesurfs · v1.12.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -199,6 +199,10 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.12.1
+- **G-Land reachable from the main table.** A `♣ G-LAND` row now sits below the East Coast spots, carrying only its **Fun+ Days** figure and linking through to `/gland`. The count uses the dashboard's own criteria — both models sampled on a 3 h stride, night skipped, `min(EURO, GFS)` at FUN or better, wind-gated, days with ≥2 windows — but against G-Land's category scheme and its own offshore wind, since those are what the page itself uses. The rest of the row is deliberately blank: with no NDBC buoy, no CO-OPS station and a different category scheme, its hourly cells are not comparable with the East Coast columns and would read as false precision.
+- **`/gland` footer and mobile header.** The footer now matches the main dashboard's three-group layout (signature / version / buttons) and stays visible on mobile, with type scaled to fit a phone. The header keeps the logo, the LIVE indicator and G-Land's own clock; New York drops below 600 px.
 
 ### v1.12.0
 - **New page: `/gland` — G-Land (Grajagan), East Java.** A standalone forecast page for a trip destination that sits outside every assumption the main dashboard makes: there is no NDBC buoy and no CO-OPS tide station within thousands of kilometres, so nothing routes through `regions.yaml` / `buoy.py` / `tide.py`. Lives in `gland.py` + `templates/gland.html`.

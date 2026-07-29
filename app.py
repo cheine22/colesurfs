@@ -614,6 +614,16 @@ def api_gland_tides():
     return jsonify(data)
 
 
+@app.route("/api/gland/summary")
+def api_gland_summary():
+    """Fun+ Days for G-Land, for the main dashboard's overview row."""
+    import gland as _gland
+    data = _gland.fun_plus_summary()
+    if not data:
+        return jsonify({"error": "summary unavailable"}), 503
+    return jsonify(data)
+
+
 @app.route("/api/gland/history")
 def api_gland_history():
     """Past 14 days at G-Land. Fetched on demand from Open-Meteo's own past
