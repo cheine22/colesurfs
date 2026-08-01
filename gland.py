@@ -554,7 +554,7 @@ def fetch_gfs_waves():
         }
         try:
             r = requests.get(MARINE_API, params=params, timeout=30)
-            record_api_calls(1)
+            record_api_calls("gland_waves", 1)
             if r.status_code != 200:
                 continue
             return _parse_marine(r.json(), "GFS")
@@ -644,7 +644,7 @@ def fetch_gland_tide():
     }
     try:
         r = requests.get(MARINE_API, params=params, timeout=30)
-        record_api_calls(1)
+        record_api_calls("gland_tide", 1)
         if r.status_code != 200:
             return None
         h = (r.json().get("hourly") or {})
@@ -732,7 +732,7 @@ def fit_tide_harmonics():
             "hourly": "sea_level_height_msl",
             "start_date": start.isoformat(), "end_date": end.isoformat(),
             "timezone": GLAND_TZ}, timeout=90)
-        record_api_calls(1)
+        record_api_calls("gland_tide_harmonic", 1)
         if r.status_code != 200:
             print(f"[gland] harmonic fit HTTP {r.status_code}: {r.text[:160]}")
             return None
@@ -871,7 +871,7 @@ def fetch_gland_wind():
     }
     try:
         r = requests.get(FORECAST_API, params=params, timeout=30)
-        record_api_calls(1)
+        record_api_calls("gland_wind", 1)
         if r.status_code != 200:
             return None
         h = (r.json().get("hourly") or {})
@@ -911,7 +911,7 @@ def fetch_upstream_buoys():
     }
     try:
         r = requests.get(AODN_WFS, params=params, timeout=45)
-        record_api_calls(1)
+        record_api_calls("gland_aodn_buoys", 1)
         if r.status_code != 200:
             return None
         feats = (r.json() or {}).get("features") or []
@@ -1606,7 +1606,7 @@ def _fetch_marine_past(days: int):
                 "hourly": ",".join(_WAVE_VARS), "models": model_id,
                 "past_days": days, "forecast_days": 1, "timezone": GLAND_TZ,
             }, timeout=45)
-            record_api_calls(1)
+            record_api_calls("gland_waves_history", 1)
             if r.status_code != 200:
                 continue
             rows = _parse_marine(r.json(), "GFS")
@@ -1629,7 +1629,7 @@ def _fetch_wind_past(days: int):
             "past_days": days, "forecast_days": 1, "timezone": GLAND_TZ,
             "wind_speed_unit": "kn",
         }, timeout=45)
-        record_api_calls(1)
+        record_api_calls("gland_wind_history", 1)
         if r.status_code != 200:
             return None
         h = r.json().get("hourly") or {}
@@ -1874,7 +1874,7 @@ def fetch_upstream_model_swell():
                 "hourly": "wave_height,wave_period,wave_direction",
                 "models": model, "forecast_days": 1, "timezone": "UTC",
             }, timeout=30)
-            record_api_calls(1)
+            record_api_calls("gland_upstream_models", 1)
             if r.status_code != 200:
                 continue
             payload = r.json()

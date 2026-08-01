@@ -149,11 +149,13 @@ def record_api_calls(label: str, n_points: int = 1):
     """Increment the daily API call counter for a given label."""
     global _api_day, _api_counts
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = str(label)   # a non-str label mixes key types and breaks jsonify's
+                       # sort_keys in /api/status — 500s the whole endpoint
     with _api_lock:
         if today != _api_day:
             _api_day = today
             _api_counts = {}
-        _api_counts[label] = _api_counts.get(label, 0) + n_points
+        _api_counts[key] = _api_counts.get(key, 0) + n_points
 
 
 def get_api_usage() -> dict:

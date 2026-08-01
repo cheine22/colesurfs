@@ -1,4 +1,4 @@
-# colesurfs · v1.12.1
+# colesurfs · v1.12.2
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -199,6 +199,11 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.12.2
+- **Fix: `/api/status` returned 500 for four days.** The eight G-Land fetchers called `record_api_calls(1)`, passing an int where the function takes a *label* first, so the daily counter picked up an integer key alongside its string ones. `/api/status` is the only route that serialises that counter, and Flask's JSON provider sorts keys — sorting mixed `int`/`str` raises `TypeError`, which surfaced as a bare 500. The eight sites now pass real labels (`gland_waves`, `gland_tide`, `gland_wind`, …), so G-Land usage is also attributed per source instead of bucketed under `1`.
+- **Counter hardened.** `record_api_calls` coerces its label with `str()`, so a bad caller can no longer take the endpoint down.
+- **Side effect of the fix.** The header model-run indicators read `EURO —` / `GFS —` while this was broken, and the "no new model data" short-circuit in `refreshAll()` could never fire — every manual REFRESH MODEL NOW did a full cache-bust and upstream refetch. Both are restored. Forecast data was never affected.
 
 ### v1.12.1
 - **G-Land reachable from the main table.** A `♣ G-LAND` row now sits below the East Coast spots, carrying only its **Fun+ Days** figure and linking through to `/gland`. The count uses the dashboard's own criteria — both models sampled on a 3 h stride, night skipped, `min(EURO, GFS)` at FUN or better, wind-gated, days with ≥2 windows — but against G-Land's category scheme and its own offshore wind, since those are what the page itself uses. The rest of the row is deliberately blank: with no NDBC buoy, no CO-OPS station and a different category scheme, its hourly cells are not comparable with the East Coast columns and would read as false precision.
