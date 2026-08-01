@@ -1,4 +1,4 @@
-# colesurfs · v1.12.2
+# colesurfs · v1.12.3
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -199,6 +199,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.12.3
+- **G-Land glyph is now a plane (`✈︎ G-LAND`).** Replaces the club `♣` on the main table row and the mobile info-modal link. Written as `U+2708` + `U+FE0E` (variation selector-15): WebKit resolves a bare `U+2708` through Apple Color Emoji, which would ignore `currentColor` and clash with the monospace type — VS15 pins it to monochrome text so it themes like every other glyph in that row.
 
 ### v1.12.2
 - **Fix: `/api/status` returned 500 for four days.** The eight G-Land fetchers called `record_api_calls(1)`, passing an int where the function takes a *label* first, so the daily counter picked up an integer key alongside its string ones. `/api/status` is the only route that serialises that counter, and Flask's JSON provider sorts keys — sorting mixed `int`/`str` raises `TypeError`, which surfaced as a bare 500. The eight sites now pass real labels (`gland_waves`, `gland_tide`, `gland_wind`, …), so G-Land usage is also attributed per source instead of bucketed under `1`.

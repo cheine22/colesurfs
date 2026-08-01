@@ -1555,7 +1555,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.12.2</span>
+    <span class="info-modal-version">v1.12.3</span>
   </div>
 </div>
 
@@ -1568,12 +1568,12 @@
     <a class="info-modal-refresh" href="/csc" style="text-decoration:none;text-align:center">∿ CSC (BETA)</a>
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="/tuner" style="text-decoration:none;text-align:center">⇞ TUNER</a>
-    <a class="info-modal-refresh" href="/gland" style="text-decoration:none;text-align:center">♣ G-LAND</a>
+    <a class="info-modal-refresh" href="/gland" style="text-decoration:none;text-align:center">✈︎ G-LAND</a>
     <label class="toggle-row toggle-history">
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.12.2</span>
+    <span class="about-version">v1.12.3</span>
   </div>
 </div>
 
@@ -1609,7 +1609,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.12.2</span>
+    <span class="footer-version">v1.12.3</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -3168,7 +3168,7 @@ function _glandRow(timeCount, histCount, moDividerCls) {
   return `<tr class="spot-sep"><td colspan="${3 + histCount + timeCount}"></td></tr>
     <tr class="gland-row">
       <td class="spot-cell">
-        <a href="/gland" title="G-Land (Grajagan), East Java — full forecast">♣ G-LAND</a>
+        <a href="/gland" title="G-Land (Grajagan), East Java — full forecast">✈︎ G-LAND</a>
       </td>
       ${blanks(histCount)}
       <td class="cell model-overview${moDividerCls}" style="background:${bg};color:${fg}">
