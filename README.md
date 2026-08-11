@@ -1,4 +1,4 @@
-# colesurfs · v1.12.3
+# colesurfs · v1.12.4
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -199,6 +199,11 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.12.4
+- **`/gland` tide panel shows the day's turn times.** The Tide card in the now-grid gains a line of today's high/low events with their minute-refined clock times (`H 10:33am · L 4:50pm`), sourced from the same parabola-refined `tide_events` the forecast table uses — the chart marks alone only carried heights.
+- **`/gland` mobile: tide card leads.** Below 720 px the Tide card orders first and spans the full grid width, so the curve keeps its size and the remaining four cards fall into a clean 2×2.
+- **`/gland` table: Tide row above Wind.**
 
 ### v1.12.3
 - **G-Land glyph is now a plane (`✈︎ G-LAND`).** Replaces the club `♣` on the main table row and the mobile info-modal link. Written as `U+2708` + `U+FE0E` (variation selector-15): WebKit resolves a bare `U+2708` through Apple Color Emoji, which would ignore `currentColor` and clash with the monospace type — VS15 pins it to monochrome text so it themes like every other glyph in that row.

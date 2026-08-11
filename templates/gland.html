@@ -230,7 +230,10 @@
     .now-grid { display:grid; gap:10px;
                 grid-template-columns:.8fr .8fr 1.25fr .9fr 1.45fr; }
     @media (max-width:1240px){ .now-grid{ grid-template-columns:repeat(3,1fr); } }
-    @media (max-width:720px){ .now-grid{ grid-template-columns:repeat(2,1fr); } }
+    /* Mobile: tide leads. Full-span at 2-col so the chart keeps its width and
+       the remaining four cells fall into a clean 2×2. */
+    @media (max-width:720px){ .now-grid{ grid-template-columns:repeat(2,1fr); }
+      .now-cell.tide-now{ order:-1; grid-column:1 / -1; } }
     @media (max-width:460px){ .now-grid{ grid-template-columns:1fr; } }
     .now-cell { background:var(--bg2); border:1px solid var(--border0);
       border-radius:8px; padding:10px 11px; display:flex; flex-direction:column; }
@@ -250,6 +253,9 @@
     .tide-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
     .tide-meta { font-size:9.5px; color:var(--text2); line-height:1.4;
                  flex:1 1 auto; min-width:0; }
+    .tide-events { font-size:10px; color:var(--text1); margin-top:3px;
+                   font-variant-numeric:tabular-nums; letter-spacing:.02em; }
+    .tide-events .sep { color:var(--text3); }
     .band-key { display:flex; flex-direction:column; gap:1px; margin-top:5px; }
     .band-key div { font-size:8.5px; color:var(--text2); display:flex;
                     align-items:center; gap:4px; }
@@ -780,7 +786,7 @@
 
 <footer class="app-footer">
   <span class="footer-sig">made by cole and claude &copy; 2026</span>
-  <div class="footer-center"><span class="footer-version">v1.12.3</span></div>
+  <div class="footer-center"><span class="footer-version">v1.12.4</span></div>
   <div class="footer-btns">
     <button class="footer-btn" id="themeBtn2" title="Toggle light/dark mode">◑ THEME</button>
     <span class="footer-divider">·</span>
@@ -983,6 +989,12 @@ function renderNow(rows){
                              && x.tide_ft != null).map(x => x.tide_ft);
   const rangeFt = dayFt.length
     ? (Math.max(...dayFt) - Math.min(...dayFt)).toFixed(1) : null;
+  // Today's turning points with their refined clock times — the chart marks
+  // only carry heights, so this line is where the times live.
+  const dayEvents = (DATA.tide_events || [])
+    .filter(e => e.date === r.time.slice(0,10))
+    .map(e => `<b style="color:${e.type==='H'?'var(--gl)':'var(--amber)'}">${e.type}</b> ${
+      hhmmAmPm(e.time)}`).join('<span class="sep"> · </span>');
 
   const bandKey = CFG.swell_bands.map(b => {
     const on = active.some(a => a.lo === b.lo && a.hi === b.hi);
@@ -1025,7 +1037,7 @@ function renderNow(rows){
       <div class="now-sub" style="color:var(--gl)">${mtWind.rating||''}</div>
     </div>
 
-    <div class="now-cell">
+    <div class="now-cell tide-now">
       <div class="now-label">Tide</div>
       <div class="tide-head">
         <div class="now-val">${r.tide_ft != null
@@ -1035,6 +1047,7 @@ function renderNow(rows){
           moon.label ? ` · ${moon.label}` : ''}${
           moon.spring ? ' <b style="color:var(--gl)">SPRING</b>' : ''}</div>
       </div>
+      ${dayEvents ? `<div class="tide-events">${dayEvents}</div>` : ''}
       ${tideDayChart(rows, r.time)}
     </div>`;
 }
@@ -1502,24 +1515,7 @@ function renderTable(rows){
            + energyRow('euro','ECMWF energy')
            + `<tr class="spot-sep"><td colspan="${use.length+1}"></td></tr>`;
 
-  // ── Wind + tide, the environment rows ──
-  body += '<tr><td class="row-lbl">Wind</td>';
-  use.forEach(r => {
-    const night = isNight(r.time) ? ' night-col' : '';
-    const w = r.wind;
-    if (!w || w.speed_kt == null){ body += `<td class="cell${night}">·</td>`; return; }
-    const rate = r.wind_rating;
-    const good = ['GLASSY','GROOMED','CLEAN'].includes(rate);
-    const mid  = ['STRONG OFFSHORE','TEXTURED'].includes(rate);
-    const [bg, ink] = good ? catColors('FUN') : mid ? catColors('WEAK') : catColors('FLAT');
-    body += `<td class="cell${night}" style="background:${bg};color:${ink}"
-      title="${Math.round(w.speed_kt)} kt ${compassPt(w.direction_deg)} — ${rate}">
-      <div class="cell-inner"><div class="comp-line p1"><span class="c-ht">${
-        Math.round(w.speed_kt)}</span><span>${arrowFor(w.direction_deg)}${
-        compassPt(w.direction_deg)}</span></div></div></td>`;
-  });
-  body += '</tr>';
-
+  // ── Tide + wind, the environment rows ──
   // Map each tide turning point and each sunrise/sunset to the displayed
   // column nearest in time, so their real clock time survives the 3 h stride.
   const colMin = use.map(r => +r.time.slice(0,10).replace(/-/g,'')*1440 + (+r.time.slice(11,13))*60);
@@ -1559,6 +1555,23 @@ function renderTable(rows){
       <div class="tide-when">${ev
         ? `<b style="color:${ev.type==='H'?'var(--gl)':'var(--amber)'}">${ev.type}</b> ${
             hhmmAmPm(ev.time)}` : ''}</div></div></td>`;
+  });
+  body += '</tr>';
+
+  body += '<tr><td class="row-lbl">Wind</td>';
+  use.forEach(r => {
+    const night = isNight(r.time) ? ' night-col' : '';
+    const w = r.wind;
+    if (!w || w.speed_kt == null){ body += `<td class="cell${night}">·</td>`; return; }
+    const rate = r.wind_rating;
+    const good = ['GLASSY','GROOMED','CLEAN'].includes(rate);
+    const mid  = ['STRONG OFFSHORE','TEXTURED'].includes(rate);
+    const [bg, ink] = good ? catColors('FUN') : mid ? catColors('WEAK') : catColors('FLAT');
+    body += `<td class="cell${night}" style="background:${bg};color:${ink}"
+      title="${Math.round(w.speed_kt)} kt ${compassPt(w.direction_deg)} — ${rate}">
+      <div class="cell-inner"><div class="comp-line p1"><span class="c-ht">${
+        Math.round(w.speed_kt)}</span><span>${arrowFor(w.direction_deg)}${
+        compassPt(w.direction_deg)}</span></div></div></td>`;
   });
   body += '</tr>';
 
