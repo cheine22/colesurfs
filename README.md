@@ -1,4 +1,4 @@
-# colesurfs · v1.12.4
+# colesurfs · v1.12.5
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -199,6 +199,9 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.12.5
+- **G-Land off the main table.** The `✈︎ G-LAND` row (and its `/api/gland/summary` fetch) is gone from the dashboard: G-Land is a trip destination, not part of the NY/NJ/New England forecast, and a row with one populated cell competed for attention with the spots the table exists to compare. The page is unchanged and still reachable from **Preferences → ✈︎ G-LAND**.
 
 ### v1.12.4
 - **`/gland` tide panel shows the day's turn times.** The Tide card in the now-grid gains a line of today's high/low events with their minute-refined clock times (`H 10:33am · L 4:50pm`), sourced from the same parabola-refined `tide_events` the forecast table uses — the chart marks alone only carried heights.
