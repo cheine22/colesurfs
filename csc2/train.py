@@ -617,6 +617,10 @@ def main() -> None:
     ap.add_argument("--lead-smoothing", default=2, type=int,
                     help="Baseline: half-width of count-weighted lead-hour bias "
                          "smoothing window (0 = legacy per-lead bins, v1-v4)")
+    # 2026-09-01: accept --force (passed by com.colesurfs.csc2-retrain) as a
+    # no-op — outputs already overwrite via exist_ok=True. The Jun 1 and Sep 1
+    # quarterly retrains both died on argparse: unrecognized arguments: --force.
+    ap.add_argument("--force", action="store_true")
     args = ap.parse_args()
 
     date_str = args.date or _format_today_yymmdd()
