@@ -333,6 +333,24 @@
     td.cell.model-overview .cell-inner,
     td.cell.model-overview .comp-line { justify-content: center; align-items: center; }
     td.cell.model-overview .comp-line.p1 { font-size: 18px; font-weight: 800; letter-spacing: .02em; }
+    td.cell.model-overview .comp-line.fun-since {
+      font-size: 8.5px; font-weight: 600; letter-spacing: .03em; opacity: .7;
+      white-space: nowrap; margin-top: 1px; min-height: 10px; }
+    /* Regional-view year tally. The td spans every column, so the inner block
+       sticks to the scroller's left edge; its max-width is set from JS to the
+       scroller's width (_applyFunDays) so it can't run under the overflow. */
+    tr.fun-year-row td { padding: 0; background: var(--bg1); border-top: 1px solid var(--border1); }
+    .fun-year-inner { position: sticky; left: 0; display: flex; flex-wrap: wrap;
+      align-items: center; gap: 5px 10px; padding: 8px 10px; box-sizing: border-box;
+      font-size: 10.5px; color: var(--text1); line-height: 1.3; }
+    .fun-year-inner b { color: var(--text0); font-weight: 800; }
+    .fun-year-cats { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+    .fun-year-cat { padding: 1px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 700;
+      letter-spacing: .03em; }
+    .fun-year-muted { color: var(--text2); font-size: 9.5px; }
+    .fun-year-link { margin-left: auto; color: var(--accent); text-decoration: none;
+      font-size: 9.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+    .fun-year-link:hover { text-decoration: underline; }
     td.cell.model-overview-with-history-divider {
       border-left: 1px solid var(--border0);
     }
@@ -843,6 +861,8 @@
       th.th-buoy { min-width: 64px; }
       td.cell.buoy-col { min-width: 64px; }
       td.cell.model-overview { min-width: 56px; }
+      td.cell.model-overview .comp-line.fun-since { font-size: 7.5px; }
+      .fun-year-inner { font-size: 10px; padding: 7px 8px; }
       td.cell.historical-cell { min-width: 38px; }
 
       /* ── Time slider bar ── */
@@ -1547,7 +1567,7 @@
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
     </dl>
-    <span class="info-modal-version">v1.12.5</span>
+    <span class="info-modal-version">v1.13.0</span>
   </div>
 </div>
 
@@ -1561,11 +1581,12 @@
     <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
     <a class="info-modal-refresh" href="/tuner" style="text-decoration:none;text-align:center">⇞ TUNER</a>
     <a class="info-modal-refresh" href="/gland" style="text-decoration:none;text-align:center">✈︎ G-LAND</a>
+    <a class="info-modal-refresh" href="/review" style="text-decoration:none;text-align:center">▤ CONDITIONS REVIEW</a>
     <label class="toggle-row toggle-history">
       <span>show historical data</span>
       <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
     </label>
-    <span class="about-version">v1.12.5</span>
+    <span class="about-version">v1.13.0</span>
   </div>
 </div>
 
@@ -1601,7 +1622,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.12.5</span>
+    <span class="footer-version">v1.13.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
@@ -2631,6 +2652,7 @@ function buildLegend() {
 // Keyed by station_id → { records: [{timestamp, wave_height_ft, wave_period_s,
 // wave_direction_deg, components, observed_cat, model_agreement}, ...] }.
 let historicalData = {};
+let funDaysData    = {};   // { buoy_id: /api/fun_days summary } — observed fun+ ledger
 
 // Index of a swell category name in CFG.swell_categories; -1 if unknown.
 function _swellCatIdx(catName) {
@@ -2827,6 +2849,82 @@ function preloadHistoricalData() {
       })
       .catch(() => {})
       .finally(() => { _histInflight[id] = false; });
+  });
+}
+
+// ── Observed fun+ ledger ────────────────────────────────────
+// /api/fun_days: per buoy, days since the last observed fun+ day and this
+// calendar year's tally by category — computeModelOverview's rule applied to
+// buoy readings (fun_days.py). Fetched off the loader's critical path; the
+// result is patched into the rendered table in place so its arrival never
+// forces a rebuild (which would jog the scroll anchor).
+let _funDaysInflight = false;
+function loadFunDays() {
+  if (_funDaysInflight) return;
+  _funDaysInflight = true;
+  fetch('/api/fun_days')
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j) { funDaysData = j; _applyFunDays(); } })
+    .catch(() => {})
+    .finally(() => { _funDaysInflight = false; });
+}
+function _funSince(buoyId) {
+  const fd = funDaysData[buoyId];
+  if (!fd) return { text: '', title: '' };
+  if (fd.days_since_fun == null) {
+    if (!fd.searched_from) return { text: 'no obs', title: 'No buoy observations on record' };
+    const span = Math.round((new Date(fd.today) - new Date(fd.searched_from)) / 86400000);
+    return { text: `-${span}+ days`, title: `No fun+ day observed since at least ${fd.searched_from}` };
+  }
+  const n = fd.days_since_fun;
+  // Today already qualifies → no line at all (never "-0 days").
+  if (n === 0) return { text: '', title: `Fun+ day observed today (${fd.last_fun_cat})` };
+  return {
+    text:  `-${n} day${n === 1 ? '' : 's'}`,
+    title: `Last observed fun+ day: ${fd.last_fun_date} (${fd.last_fun_cat})`,
+  };
+}
+function _funSinceHtml(buoyId) {
+  const s = _funSince(buoyId);
+  return `<div class="comp-line fun-since" data-buoy="${buoyId}" title="${s.title}">${s.text}</div>`;
+}
+function _funYearHtml(buoyId) {
+  const fd = funDaysData[buoyId];
+  const link = `<a class="fun-year-link" href="/review?region=${buoyId}" onclick="event.stopPropagation()">▤ CONDITIONS REVIEW</a>`;
+  if (!fd || !fd.year) {
+    const msg = Object.keys(funDaysData).length ? 'no buoy observations on record' : 'loading…';
+    return `<span>Fun+ days this year: <span class="fun-year-muted">${msg}</span></span>${link}`;
+  }
+  const y = fd.year;
+  if (!y.days_with_data) {
+    return `<span>No buoy observations for ${y.year} at this region yet, so there is no fun+ tally.</span>${link}`;
+  }
+  const dark = _isDark();
+  const n = y.fun_plus;
+  let html = `<span>So far there ${n === 1 ? 'has' : 'have'} been <b>${n}</b> fun+ day${n === 1 ? '' : 's'} in ${y.year}</span>`;
+  // Scheme order, not payload order — Flask's JSON provider sorts keys.
+  html += '<span class="fun-year-cats">' + (CFG.swell_categories || [])
+    .filter(c => c.name in y.by_cat).map(c => {
+      const k  = y.by_cat[c.name];
+      const bg = dark ? c.dark_bg : c.light_bg, fg = dark ? c.dark_text : c.light_text;
+      return `<span class="fun-year-cat" style="background:${bg};color:${fg};opacity:${k ? 1 : .45}">${k} ${c.name}</span>`;
+    }).join('') + '</span>';
+  if (y.days_with_data < y.days_elapsed) {
+    html += `<span class="fun-year-muted">${y.days_with_data} of ${y.days_elapsed} days with buoy data</span>`;
+  }
+  return html + link;
+}
+// Patch rendered cells in place. Also runs after every table build and on
+// resize so the sticky year row's max-width tracks the scroller.
+function _applyFunDays() {
+  document.querySelectorAll('.fun-since[data-buoy]').forEach(el => {
+    const s = _funSince(el.dataset.buoy);
+    el.textContent = s.text; el.title = s.title;
+  });
+  const ts = document.querySelector('.table-scroll');
+  document.querySelectorAll('.fun-year-inner[data-buoy]').forEach(el => {
+    el.innerHTML = _funYearHtml(el.dataset.buoy);
+    el.style.maxWidth = (ts ? ts.clientWidth : window.innerWidth) + 'px';
   });
 }
 
@@ -3120,7 +3218,7 @@ function buildTable() {
       <td class="spot-cell${activeAttr}"${clickAttr}>${spot.name}</td>
       ${_buildHistoricalCellsHtml(spot.buoy_id, resolution)}
       <td class="cell model-overview${moDividerCls}" style="background:${mo.bg};color:${mo.fg}">
-        <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}<span style="opacity:.55; font-weight:600;">/${mo.windowDays || '?'}</span></span></div></div>
+        <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}<span style="opacity:.55; font-weight:600;">/${mo.windowDays || '?'}</span></span></div>${_funSinceHtml(spot.buoy_id)}</div>
       </td>
       ${buildBuoyCell(b, spot.buoy_id, spot.name)}`;
     times.forEach(t => {
@@ -3202,7 +3300,7 @@ function buildRegionTable() {
         onclick="exitRegionMode()">${buoySpot.name}</td>
     ${_buildHistoricalCellsHtml(buoySpot.buoy_id, resolution)}
     <td class="cell model-overview${moDividerCls}" style="background:${mo.bg};color:${mo.fg}">
-      <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}<span style="opacity:.55; font-weight:600;">/${mo.windowDays || '?'}</span></span></div></div>
+      <div class="cell-inner"><div class="comp-line p1"><span>${mo.count}<span style="opacity:.55; font-weight:600;">/${mo.windowDays || '?'}</span></span></div>${_funSinceHtml(buoySpot.buoy_id)}</div>
     </td>
     ${buildBuoyCell(b, buoySpot.buoy_id, buoySpot.name)}`;
   times.forEach(t => {
@@ -3230,6 +3328,7 @@ function buildRegionTable() {
       html += `<tr class="spot-sep"><td colspan="${colCount}"></td></tr>`;
     }
   });
+  html += `<tr class="fun-year-row"><td colspan="${colCount}"><div class="fun-year-inner" data-buoy="${buoySpot.buoy_id}">${_funYearHtml(buoySpot.buoy_id)}</div></td></tr>`;
 
   document.getElementById('table-body').innerHTML = html;
   attachHoverListeners();
@@ -5158,6 +5257,8 @@ function setShowHistory(val) {
 // "history boundary" (buoy cell column) when history is on.
 let _historyPreloaded = false;
 function _afterBuildTable() {
+  _applyFunDays();
+  if (!Object.keys(funDaysData).length) loadFunDays();
   const historyOn = localStorage['cs_show_history'] === '1';
   // Trigger preload (idempotent). Immediate when history just flipped on and
   // cache is empty; otherwise idle-callback so initial paint isn't blocked.
@@ -6071,6 +6172,8 @@ async function refreshAll(opts = {}) {
   historicalData = {};
   _historyPreloaded = false;
   preloadHistoricalData();
+  funDaysData = {};
+  loadFunDays();
 }
 
 // ─── Foreground refresh ──────────────────────────────────────────────
@@ -6176,6 +6279,7 @@ let _resizeTimer = null;
 window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
+    _applyFunDays();
     const want = shouldBeSbs();
     if (want !== sbsMode) {
       _applySbs(want);

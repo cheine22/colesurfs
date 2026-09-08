@@ -45,6 +45,8 @@ from wind  import (fetch_wind_grid, fetch_spot_wind, fetch_all_spot_winds,
                     fetch_region_wind_forecasts, estimate_model_run)
 from tide  import fetch_tide_predictions
 from sun   import compute_sun_data
+from fun_days import (all_summaries as _fun_days_all, review_payload as _review_payload,
+                      season_tables as _season_tables)
 import cache as _cache
 
 app = Flask(__name__)
@@ -457,6 +459,62 @@ def api_buoy_historical_context():
         days = 10
     days = max(1, min(days, 45))
     data = fetch_buoy_historical_context(station_id, days=days)
+    if data is None:
+        return jsonify({"error": "data unavailable"}), 503
+    return jsonify(data)
+
+
+@app.route("/api/fun_days")
+def api_fun_days():
+    """Observed fun+ ledger per buoy: days since the last fun+ day and this
+    calendar year's tally by category (fun_days.py). Keyed by buoy_id."""
+    data = _fun_days_all()
+    if data is None:
+        return jsonify({"error": "data unavailable"}), 503
+    return jsonify(data)
+
+
+@app.route("/review")
+def review_page():
+    """Conditions Review — per-region histograms of observed swell ratings,
+    daily peak energy and primary period over a chosen window (fun_days.py)."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _Zi
+    from config import TIMEZONE as _TZ
+    payload = {
+        "spots":      SPOTS,
+        "categories": swell_rules.CATEGORIES,
+        "colors":     swell_rules.COLORS,
+        "today":      _dt.now(_Zi(_TZ)).date().isoformat(),
+        "first_year": 2021,   # wind archive + NDBC stdmet backfills start here
+    }
+    return render_template("review.html",
+                           inline_config=_json.dumps(payload, separators=(",", ":")))
+
+
+@app.route("/api/review")
+def api_review():
+    """Ledger rows per buoy for [start, end] (ISO dates, end clamped to
+    today). Missing ledger years are built on demand from the obs archive."""
+    from datetime import date as _date
+    try:
+        start = _date.fromisoformat(request.args.get("start", ""))
+        end   = _date.fromisoformat(request.args.get("end", ""))
+    except ValueError:
+        return jsonify({"error": "start/end must be YYYY-MM-DD"}), 400
+    if end < start or start < _date(2000, 1, 1):
+        return jsonify({"error": "bad range"}), 400
+    data = _review_payload(start.isoformat(), end.isoformat())
+    if data is None:
+        return jsonify({"error": "data unavailable"}), 503
+    return jsonify(data)
+
+
+@app.route("/api/review/seasons")
+def api_review_seasons():
+    """Season-by-year fun+/flat/firing+ day counts per buoy, every ledger
+    year on disk from 2019 (fun_days.season_tables, 1 h TTL)."""
+    data = _season_tables()
     if data is None:
         return jsonify({"error": "data unavailable"}), 503
     return jsonify(data)
@@ -1027,6 +1085,9 @@ def _warm_all_caches():
             for _bid in _csc2_buoys_in("east"):
                 _run(f"csc2_forecast/{_bid}", lambda b=_bid: _csc2_forecast_payload(b, "east"))
     _run("csc2_forecast", _warm_csc2)
+    # Observed fun+ ledger — after the wind group so today's gate hours come
+    # from the freshly warmed EURO region-wind entry.
+    _run("fun_days", _fun_days_all)
 
     elapsed = time.monotonic() - t0
     if errors:

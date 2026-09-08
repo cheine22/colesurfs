@@ -33,6 +33,36 @@ defs, metric tables).
   both wave modules. Behavior locked by `development-assets/tests/test_wave_identity.py`
   (golden fixtures); regenerate goldens only for intentional changes via
   `development-assets/tests/regen_golden.py`
+- `fun_days.py` — observed fun+ ledger behind the "days since last fun+"
+  line in the Fun+ Days cell and the regional-view "fun+ days this year"
+  row. Applies `computeModelOverview`'s rule to buoy readings: 3 h windows,
+  night skipped, primary swell (partition 1, stdmet partition 0 fallback)
+  categorized via `swell_rules`, wind-gated per region via `wind_rules`,
+  ≥2 windows per tier; the day's category is the highest tier with ≥2
+  windows. Wind history is the same `ecmwf_ifs` model the wind cells use,
+  pulled from Open-Meteo's historical-forecast API into
+  `.csc_data/wind_archive/year=Y.parquet`; ledgers land in
+  `.csc_data/fun_days/buoy=<id>/year=Y.parquet`. `/api/fun_days` serves
+  `all_summaries()` (10-min TTL, warmed): ledger rows plus a live
+  re-derivation of the trailing 3 days, with today's gate hours taken from
+  the cached EURO region-wind payload. Never seed it from model swell —
+  its whole point is that it is observed. Cape Cod (44018) has no 2026
+  data at NDBC; the UI shows `no obs` rather than a zero tally. Ledger rows
+  also carry the day's peak reading (max H×T² over every obs in the local
+  day, readings < `PEAK_MIN_H_FT` excluded — the proxy otherwise crowns a
+  0.2 ft @ 27 s noise partition) for `/review`.
+- `templates/review.html` — the `/review` Conditions Review page: per
+  region, a days-per-rating histogram, daily peak energy and daily peak
+  period over a review window (calendar year / trailing 365 d / last
+  completed meteorological season / custom or season+year). Reads
+  `/api/review?start&end` → `fun_days.review_payload` (10-min TTL), which
+  builds missing ledger years on demand when the buoy has obs shards for
+  that year, and `/api/review/seasons` → `fun_days.season_tables` (1 h TTL)
+  for the season-history panel (fall 2019 onward — winter 2019 would need
+  Dec 2018, which isn't archived; `SEASONS_FIRST_YEAR`). Ledgers are built
+  2019–2026 for every buoy. Charts are hand-drawn canvas (no chart library — page inlines
+  everything like the rest of the site); theme key is the dashboard's
+  `wave-theme` so the choice follows the user between pages.
 - `wind.py`, `tide.py`, `sun.py` — other data sources. `fetch_all_spot_winds`
   batches all spot current-winds into one Open-Meteo call; per-spot
   `fetch_spot_wind` remains as fallback
@@ -100,7 +130,10 @@ defs, metric tables).
   `.disabled-poisoned-label`.)
 - `csc2/obs_logger.py` — live NDBC observation logger
   (`com.colesurfs.csc2-obs`, every 30 min). Appends to the shared
-  `.csc_data/live_log/observations/` tree with dedup on (valid_utc, partition)
+  `.csc_data/live_log/observations/` tree with dedup on (valid_utc, partition).
+  Also logs the dashboard buoys outside CSC2 scope (`EXTRA_BUOYS`: 44025,
+  44018) for `fun_days.py`; `archive_status` and the trainers still iterate
+  `BUOYS` only
 - `csc2/train.py` — trainer for both architectures. Asserts the time split
   (max train cycle < min test cycle) and records per-target row counts +
   the inclusion rule in meta.json
@@ -142,6 +175,8 @@ Local-only data directories (gitignored):
 - `.csc_data/observations/`, `.csc_data/live_log/observations/` — buoy obs
 - `.csc2_data/forecasts/model={EURO,GFS}/buoy=<id>/year=Y/month=M/cycle=*.parquet` — forecast shards
 - `.csc2_data/live_eval/<model_name>.parquet` — daily live-eval rows
+- `.csc_data/wind_archive/year=Y.parquet` — per-spot hourly ECMWF wind (fun_days gate)
+- `.csc_data/fun_days/buoy=<id>/year=Y.parquet` — observed fun+ ledger, one row per day
 - `.csc2_data/archive_status_cache.json` — cached `/api/csc2/archive_status` payload
 - `.csc2_models/east/`, `.csc2_models/west/` — trained model weights
 
@@ -326,6 +361,14 @@ cells are genuinely empty, not fallback-eligible).
   loaded. Denominator = span of sampled future times in days. Cell
   rendered between `spot-cell` and `buoy-col` with class
   `model-overview`.
+- **Observed fun+ figures** — `funDaysData[buoy_id]` (from `/api/fun_days`,
+  loaded by `loadFunDays()` off the loader's critical path). The Fun+ Days
+  cell's second line is `_funSinceHtml()`; regional view appends a
+  `tr.fun-year-row` whose `.fun-year-inner` (`_funYearHtml()`) is
+  `position: sticky; left: 0` with `max-width` set from the scroller's
+  `clientWidth`. `_applyFunDays()` patches both IN PLACE (called from
+  `_afterBuildTable`, the resize handler, and on fetch) — the data must
+  never trigger a table rebuild, which would jog the scroll anchor.
 - **Interface guide** — `interface-guide.png`, an annotated
   production screenshot (numbered features + legend). Regenerate after
   visible UI changes: headless-Chrome capture of `:5151` at 1440×1026
@@ -507,6 +550,10 @@ full setup/troubleshooting detail in `hosting.md`:
 - `com.colesurfs.csc2-obs` — CSC2 observation logger every 30 min
 - `com.colesurfs.csc2-eval` — daily live-eval pass @ 5 AM ET
 - `com.colesurfs.csc2-retrain` — quarterly retrain (see csc2 section)
+- `com.colesurfs.fun-days` — observed fun+ ledger, daily 04:20 local
+  (`python fun_days.py --topup --rebuild`: 7-day wind-archive top-up, then
+  full recompute of this year + last for every dashboard buoy; older years
+  are static once built — `--rebuild --year YYYY` to redo one)
 
 To reload any service after a code change:
 `launchctl kickstart -k gui/$(id -u)/<label>`.

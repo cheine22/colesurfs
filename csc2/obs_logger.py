@@ -30,6 +30,13 @@ if str(_ROOT) not in sys.path:
 
 from csc2.schema import BUOYS, LOGS_DIR, ensure_dirs  # noqa: E402
 from buoy import fetch_buoy  # noqa: E402
+from config import SPOTS as _DASH_SPOTS  # noqa: E402
+
+# Dashboard buoys outside CSC2 scope (44025, 44018) are logged too so the
+# observed fun+ ledger (fun_days.py) stays current for every table row.
+# archive_status and the trainers iterate BUOYS, so CSC2's scope is unchanged.
+EXTRA_BUOYS = [(s["buoy_id"], s["name"]) for s in _DASH_SPOTS
+               if s["buoy_id"] not in {b[0] for b in BUOYS}]
 
 OBS_DIR = _ROOT / ".csc_data" / "live_log" / "observations"
 
@@ -170,7 +177,7 @@ def run_once() -> dict:
     t0 = time.monotonic()
     per_buoy: dict[str, int] = {}
     errors = 0
-    for buoy_id, label, *_ in BUOYS:
+    for buoy_id, label, *_ in list(BUOYS) + EXTRA_BUOYS:
         rows = _rows_for_buoy(buoy_id, now_utc)
         if not rows:
             errors += 1
