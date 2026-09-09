@@ -246,6 +246,13 @@ Retrain cadence: quarterly via `com.colesurfs.csc2-retrain` (1st of
 Mar/Jun/Sep/Dec at 04:00 local). Wipes the archive-status cache, recomputes
 coverage, then runs `python -m csc2.train --version v1 --force` for both
 architectures; auto-derives YYMMDD + coverage so naming stays correct.
+Off-cycle retrain 2026-09-09 (`--version v6`, east + west) after the EURO
+cycle relabel, the H²·T partition re-ranking and the GFS fallback removal;
+everything trained earlier sits in `.csc2_models/<scope>/_pre-relabel/`
+(`list_models` only reads directories holding a `meta.json`, so the
+archive is invisible to the registry). Note the quarterly job still passes
+`--version v1`; the date in the name is what orders models, so that is
+harmless, but bump the tag by hand whenever the data rules change.
 Consider an off-cycle retrain when: the top performer's live skill drops
 ≥25 % for 3+ consecutive days, east-pool paired-cycle coverage gains
 ≥30 days since last train, or a new buoy-data source is backfilled (new

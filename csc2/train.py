@@ -104,9 +104,10 @@ def _apply_dashboard_fallback_gfs(df: pd.DataFrame) -> pd.DataFrame:
     missing rows are excluded from training. The name and the
     gfs_sw1_source column are kept so downstream readers are unchanged."""
     out = df.copy()
-    for col in ("gfs_sw1_height_ft", "gfs_sw1_period_s", "gfs_sw1_direction_deg",
-                "gfs_combined_height_m", "gfs_combined_period_s",
-                "gfs_combined_direction_deg"):
+    # Coerce every model column up front: a buoy with no EURO coverage
+    # (46268) yields all-None → object dtype, which np.deg2rad rejects.
+    for col in [c for c in out.columns
+                if c.startswith(("euro_sw", "gfs_sw", "gfs_combined", "euro_combined"))]:
         out[col] = pd.to_numeric(out[col], errors="coerce")
     out["gfs_sw1_source"] = np.where(out["gfs_sw1_height_ft"].isna(), "missing", "partition")
     return out

@@ -105,8 +105,13 @@ shows CSC2 vs EURO vs GFS for the selected buoy out to +240 h
 (`/api/csc2/forecast`).
 
 **Training cadence.** First models trained in v1.8 once east-pool paired
-coverage crossed the bar; current top performer is `CSC2+ML_260704_0.84_v5`
-(beats raw EURO on primary-swell height MAE, 0.527 vs 0.668 ft). Retraining
+coverage crossed the bar. Current top performer is `CSC2+baseline_260909_0.85_v6`
+(primary-swell height MAE 0.49 ft vs raw EURO 0.54 ft on its holdout; the
+sibling `CSC2+ML_260909_0.85_v6` wins on period and direction), the first
+models trained after the EURO cycle relabel, the H²·T partition re-ranking and
+the fallback removal — models from before that are parked in
+`.csc2_models/<scope>/_pre-relabel/`, where the registry does not see them,
+because they learned lead hours twelve hours short on their live rows. Retraining
 is quarterly via `com.colesurfs.csc2-retrain` (1st of Mar/Jun/Sep/Dec), with
 a daily live-eval pass (`com.colesurfs.csc2-eval`) appending rolling skill
 per model. Long-term target remains 60 months of coverage so the model can
@@ -212,6 +217,7 @@ Why not Git?
 - **`/review` on a phone: the region rides along.** Scrolling the region selector under the header crossfades the `CONDITIONS REVIEW` crumb into a compact region select beside the logo, so logo and region stay on screen; it mirrors the main selector both ways, and the header picks up a soft shadow while condensed.
 - **Regional view: the ▤ CONDITIONS REVIEW link** in the fun+ summary row now follows the text instead of floating to the cell's right edge.
 - **Fix: the SPOT header cell scrolled away on phones.** Mobile positions the spot column with a counter-translate instead of left-sticky, and the header's SPOT cell had been made `position: relative` along with the body cells — so scrolling the table down pinned every header cell except that one. It is sticky on the vertical axis again (the counter-translate only replaces the lost left anchor).
+- **CSC2 retrained (v6).** East: `CSC2+baseline_260909_0.85_v6` and `CSC2+ML_260909_0.85_v6` on 484 cycles (326,741 rows, holdout from 2026-07-27), coverage 0.85; west trained alongside (a crash on object-typed direction columns for the buoy with no EURO coverage is fixed). Against raw EURO on the holdout the baseline cuts primary-swell height MAE 0.544 → 0.492 ft and the ML model cuts period 1.87 → 1.35 s and direction 17.7° → 13.5°. The eight pre-relabel models were moved to `_pre-relabel/` (kept, not deleted); their live-eval history stays under `.csc2_data/live_eval/`.
 - **GFS combined-sea fallback removed.** When no GFS swell partition survived, the dashboard synthesised a "primary swell" from the combined sea state, on the premise that GFS drops partitions beyond five days. Open-Meteo now serves GFS partitions for all ten days and never provides a peak period for GFS, so the fallback only ever fired on hours where every partition was 0 m — pure wind sea — and drew it as a FUN swell at the mean period (Block Island, Sep 10 02:00: 6.9 ft @ 6.4 s FUN against EURO's 0.7 ft FLAT). Those hours are now empty cells, as they always were for EURO; `csc2.train` tags them "missing" and leaves them out of training instead of learning wind sea as swell.
 - **Archived buoy partitions re-ranked.** The spectral observation shards (2019 → today, 1,288 files) had partition 1 / 2 assigned by the old H·T² proxy; they were re-sorted by H²·T (2.6 % of two-partition hours swapped) and the fun+ ledgers rebuilt on top, so the observed primary swell is the same one the dashboard and CSC2 now pick.
 - **CSC2: EURO cycles labelled from the data, and the archive relabelled.** CMEMS publishes the 00Z run at about 08:30 UTC and the 12Z run at about 20:50 UTC (bulletin file times), so the logger's 07 UTC capture holds the previous day's 12Z run and its 19 UTC capture the same day's 00Z run — the old clock-based tag ("00Z" at 07 UTC, "12Z" at 19 UTC) put every live EURO cycle twelve hours late, understating lead hours on roughly half of the EURO archive and pairing EURO and GFS runs twelve hours apart. `csc2.logger.euro_cycle_id` now derives the run from the series' last valid time (both runs end at D+10 00Z) plus the capture clock; every live EURO shard since 2026-04-21 was relabelled with `lead_hours` recomputed; the dashboard's live CSC2 prediction uses the same anchor, its EURO run badge now reads the true run (`MODEL_UPDATE_HOURS_UTC` 10/21 UTC), and the archive-status cache was reset. Models trained before this learned short lead hours on the live half of their EURO rows — an off-cycle retrain is recommended.
