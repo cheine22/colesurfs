@@ -33,16 +33,12 @@ import traceback
 from datetime import datetime, timezone as dtz
 from pathlib import Path
 
-import pandas as pd
-
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import ee  # noqa: E402
-from csc2.schema import (  # noqa: E402
-    BUOYS, FORECAST_COLUMNS, FORECASTS_DIR, LOGS_DIR, ensure_dirs,
-)
+from csc2.schema import BUOYS, LOGS_DIR, ensure_dirs  # noqa: E402
 from csc2.logger import shard_path, records_to_rows, write_rows  # noqa: E402
 from waves_cmems import CMEMS_VARS, raw_rows_to_hourly_records  # noqa: E402
 

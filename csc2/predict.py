@@ -21,18 +21,16 @@ with the dashboard's record schema so it can drop into a CSC2 column.
 from __future__ import annotations
 
 import json
-import math
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
-from csc2.schema import buoys_in
 from csc2.train import (
     _apply_dashboard_fallback_gfs,
     add_features,
-    _sincos_to_deg,
+    predict_baseline,
+    predict_ml,
 )
 
 OUTPUT_DASHBOARD_VARS = (
@@ -130,27 +128,8 @@ def _load_baseline(model_dir: Path) -> dict:
     return bias
 
 
-def _baseline_predict(df: pd.DataFrame, bias: dict) -> pd.DataFrame:
-    out = pd.DataFrame(index=df.index)
-    for var in ("sw1_height_ft", "sw1_period_s", "sw2_height_ft", "sw2_period_s"):
-        floor = (df[f"euro_{var}"] + df[f"gfs_{var}"]) / 2.0
-        b_map = bias["scalar"].get(var, {})
-        keys = list(zip(df["buoy_id"].astype(str), df["lead_hours"].astype(int)))
-        b = np.array([b_map.get(k, 0.0) for k in keys], dtype=float)
-        out[f"pred_{var}"] = floor.to_numpy() + b
-    for sw in ("sw1", "sw2"):
-        s_pred = (np.sin(np.deg2rad(df[f"euro_{sw}_direction_deg"]))
-                  + np.sin(np.deg2rad(df[f"gfs_{sw}_direction_deg"]))) / 2.0
-        c_pred = (np.cos(np.deg2rad(df[f"euro_{sw}_direction_deg"]))
-                  + np.cos(np.deg2rad(df[f"gfs_{sw}_direction_deg"]))) / 2.0
-        b_map = bias["dp"].get(sw, {})
-        keys = list(zip(df["buoy_id"].astype(str), df["lead_hours"].astype(int)))
-        s_b = np.array([b_map.get(k, (0.0, 1.0))[0] for k in keys], dtype=float)
-        c_b = np.array([b_map.get(k, (0.0, 1.0))[1] for k in keys], dtype=float)
-        bias_deg = (np.rad2deg(np.arctan2(s_b, c_b)) + 360.0) % 360.0
-        pred_dp_floor = (np.rad2deg(np.arctan2(s_pred, c_pred)) + 360.0) % 360.0
-        out[f"pred_{sw}_direction_deg"] = (pred_dp_floor + bias_deg) % 360.0
-    return out
+# Inference itself is csc2.train.predict_baseline / predict_ml — the trainer's
+# holdout scoring and live prediction run the identical code path.
 
 
 # ---------------------------------------------------------------------------
@@ -174,22 +153,6 @@ def _load_ml(model_dir: Path) -> dict:
                 f"first diff at {next((i for i, (a, b) in enumerate(zip(bf, feat_cols)) if a != b), 'length')})")
         boosters[target] = booster
     return {"feature_cols": feat_cols, "models": boosters}
-
-
-def _ml_predict(df: pd.DataFrame, boosters: dict) -> pd.DataFrame:
-    feat_cols = boosters["feature_cols"]
-    X = df[feat_cols].astype(float).to_numpy()
-    out = pd.DataFrame(index=df.index)
-    for name, model in boosters["models"].items():
-        out[f"pred_{name}"] = model.predict(X)
-    for sw in ("sw1", "sw2"):
-        s_col = f"pred_{sw}_dp_sin"
-        c_col = f"pred_{sw}_dp_cos"
-        if s_col in out and c_col in out:
-            out[f"pred_{sw}_direction_deg"] = _sincos_to_deg(
-                out[s_col].to_numpy(), out[c_col].to_numpy()
-            )
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -228,9 +191,9 @@ def predict_for_cycle(model_dir: Path, *, buoy_id: str,
 
     arch = detect_arch(Path(model_dir))
     if arch == "baseline":
-        pred = _baseline_predict(df, _load_baseline(Path(model_dir)))
+        pred = predict_baseline(df, _load_baseline(Path(model_dir)))
     else:
-        pred = _ml_predict(df, _load_ml(Path(model_dir)))
+        pred = predict_ml(df, _load_ml(Path(model_dir)))
 
     rows = []
     for i in df.index:

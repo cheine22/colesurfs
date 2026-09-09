@@ -25,7 +25,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import time
 import traceback
@@ -35,7 +34,6 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import boto3
-import pandas as pd
 from botocore import UNSIGNED
 from botocore.config import Config
 
@@ -43,9 +41,8 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from csc2.schema import BUOYS, FORECASTS_DIR, LOGS_DIR, ensure_dirs  # noqa: E402
+from csc2.schema import BUOYS, LOGS_DIR, ensure_dirs  # noqa: E402
 from csc2.logger import shard_path, records_to_rows, write_rows  # noqa: E402
-from config import m_to_ft  # noqa: E402
 
 
 S3_BUCKET = "noaa-gfs-bdp-pds"
@@ -76,7 +73,7 @@ def _grib_key(cycle_dt: datetime, lead_h: int) -> str:
     ymd = cycle_dt.strftime("%Y%m%d")
     hh = cycle_dt.strftime("%H")
     nnn = f"{lead_h:03d}"
-    return f"gfs.{ymd}/{hh}/wave/{('gridded' if True else '')}/gfswave.t{hh}z.{GRID}.f{nnn}.grib2"
+    return f"gfs.{ymd}/{hh}/wave/gridded/gfswave.t{hh}z.{GRID}.f{nnn}.grib2"
 
 
 def _fetch_idx(s3, key: str) -> list[tuple[int, int, str, str]]:
@@ -187,7 +184,7 @@ def _raw_row(utc: datetime, extracted: dict[tuple[str, str], float | None]) -> d
 def _raw_rows_to_records(rows: list[dict]) -> list[dict]:
     """Apply the same post-processing as waves._build_components so the
     stored partition pair is identical to the live-logger output."""
-    from waves import _build_components, _safe  # noqa: E402
+    from waves import _build_components  # noqa: E402
 
     out = []
     for r in rows:
@@ -195,7 +192,6 @@ def _raw_rows_to_records(rows: list[dict]) -> list[dict]:
             r.get("sw1_h_m"), r.get("sw1_p_s"), r.get("sw1_d"),
             r.get("sw2_h_m"), r.get("sw2_p_s"), r.get("sw2_d"),
             r.get("sw3_h_m"), r.get("sw3_p_s"), r.get("sw3_d"),
-            None, None, None,
         )
         primary = comps[0] if comps else None
         out.append({
@@ -214,9 +210,9 @@ def _raw_rows_to_records(rows: list[dict]) -> list[dict]:
 
 
 def _lead_steps(lead_max: int, lead_step: int) -> list[int]:
-    """Lead hours we'll pull per cycle. Capped at lead_max; stepped every
-    `lead_step` hours. Also always includes the pre-240 h quirks of GFS-Wave
-    (hourly 0-120, 3-hourly 120-384)."""
+    """Lead hours we'll pull per cycle: 0..lead_max every `lead_step` hours
+    (GFS-Wave publishes hourly to 120 h and 3-hourly beyond, so a 3 h step
+    lands on a real file everywhere)."""
     if lead_step < 1:
         lead_step = 3
     return list(range(0, lead_max + 1, lead_step))

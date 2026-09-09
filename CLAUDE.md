@@ -48,13 +48,23 @@ defs, metric tables).
   the cached EURO region-wind payload. Never seed it from model swell —
   its whole point is that it is observed. Cape Cod (44018) has no 2026
   data at NDBC; the UI shows `no obs` rather than a zero tally. Ledger rows
-  also carry the day's peak reading (max H×T² over every obs in the local
+  also carry the day's peak reading (max H²×T over every obs in the local
   day, readings < `PEAK_MIN_H_FT` excluded — the proxy otherwise crowns a
-  0.2 ft @ 27 s noise partition) for `/review`.
+  0.2 ft @ 27 s noise partition) for `/review`. **Energy is H²·T everywhere**
+  (buoy.py, wave_common, fun_days peak, buoy modal, /review, /gland) — the
+  wave-power convention Surfline uses; the buoy side was H·T² until v1.13.1. `droughts(fun_dates)` is the shared
+  drought rule (non-fun+ days between consecutive runs of fun+ days):
+  `summary()` reports the trailing-365-day longest gap vs the open gap
+  since the last fun+ day (`drought`, `current_is_longest`), and
+  `season_tables()` adds `median_drought` per season-year. `review.html`
+  re-implements it as `droughtsOf` for the gap histogram — keep the two
+  in step.
 - `templates/review.html` — the `/review` Conditions Review page: per
   region, a days-per-rating histogram, daily peak energy and daily peak
-  period over a review window (calendar year / trailing 365 d / last
-  completed meteorological season / custom or season+year). Reads
+  period over a review period (calendar year / trailing 365 d / last
+  completed season / custom or season+year; seasons run equinox to
+  solstice on fixed dates — Mar/Jun/Sep/Dec 21 — via `fun_days.season_of`
+  and `seasonRange()`, not calendar months). Reads
   `/api/review?start&end` → `fun_days.review_payload` (10-min TTL), which
   builds missing ledger years on demand when the buoy has obs shards for
   that year, and `/api/review/seasons` → `fun_days.season_tables` (1 h TTL)
@@ -62,7 +72,26 @@ defs, metric tables).
   Dec 2018, which isn't archived; `SEASONS_FIRST_YEAR`). Ledgers are built
   2019–2026 for every buoy. Charts are hand-drawn canvas (no chart library — page inlines
   everything like the rest of the site); theme key is the dashboard's
-  `wave-theme` so the choice follows the user between pages.
+  `wave-theme` so the choice follows the user between pages. Layout runs on
+  one `--gap` custom property (18 px / 12 px phone) shared by the wrap
+  padding, panel margins and the empty-collapsing `.status` line; footer
+  is `← DASHBOARD · MORE` inside safe-area insets, version lives in the
+  More modal. `renderFunDef` writes the fun+ threshold sentence from
+  `CFG.swell_bands` and the surfable-wind sentence from `CFG.wind_rating`
+  (the route inlines `swell_rules.load_bands()` / `wind_rules.load_config()`),
+  so the page never hard-codes either scheme. On phones the region selector condenses into the sticky
+  header (`initCondensedHeader`, `body.condensed`) — note `overflow-x`
+  must stay on `html` only; on `body` it breaks the sticky header.
+- `bathy.py` — self-rendered basemap tiles. Per tile, raw float32 elevation
+  from NOAA NCEI `DEM_global_mosaic` (exportImage, no key — NOT `DEM_all`,
+  which is coastal-only and sparse/wrong at zoom ≤ 6; hand-rolled TIFF reader
+  and PNG writer, Pillow is not a dependency), land flat + sea shaded by
+  depth in the theme palette, rendered 2× and box-filtered. PNGs persist
+  under `.cache/bathy_tiles/<STYLE>/`; one fetch renders both themes;
+  zooms 5–13 inside a NY/NE envelope (`_in_envelope`, so the route is not
+  an open proxy). `prewarm_async()` at startup renders the ~160 tiles under
+  the default view. Bump `STYLE` for any palette/ramp change — the route
+  sends immutable cache headers.
 - `wind.py`, `tide.py`, `sun.py` — other data sources. `fetch_all_spot_winds`
   batches all spot current-winds into one Open-Meteo call; per-spot
   `fetch_spot_wind` remains as fallback
@@ -93,6 +122,11 @@ defs, metric tables).
   verified by a 924-cell height×period sweep. Only the category *names* and
   *colours* are shared. `/gland/tuner` and `/api/gland/tuner/save` are behind
   the same LAN-only `_restrict_tuner` gate as `/tuner`.
+- `gland_euro_archive.py` — rolling 14-day CMEMS EURO archive at G-Land's
+  offshore node (`.gland_data/euro_archive.json`, `com.colesurfs.gland-euro`
+  every 6 h) so `/gland` history mode has EURO alongside GFS. Pulls its own
+  explicit UTC window (not `fetch_cmems_point`, which is pinned to the
+  forecast window) but processes through `waves_cmems.raw_rows_to_hourly_records`
 - `development-assets/docs/gland-cheatsheet.md` — the researched forecasting
   notes behind the page's cheat-sheet panel, with sources
 - `csc2/` — CSC2 package (see below)
@@ -123,7 +157,27 @@ defs, metric tables).
   columns. Every csc2 module imports `BUOYS` / paths from here
 - `csc2/logger.py` — live forecast logger (`com.colesurfs.csc2-logger`,
   3 AM + 3 PM ET). Pulls CMEMS + GFS via `waves_cmems.fetch_cmems_point` /
-  `waves.fetch_wave_forecast` and writes per-cycle parquet shards.
+  `waves.fetch_wave_forecast` and writes per-cycle parquet shards. **Cycle
+  ids:** GFS is tagged by the clock (`_cycle_id`, 00Z at the 07Z capture,
+  12Z at 19Z — correct, Open-Meteo has each run within ~5 h). EURO is
+  tagged from the data (`euro_cycle_id`): CMEMS ANFC ships two bulletins a
+  day, the 00Z run at ~08:30Z (reaches D+10 00Z, 240 h) and the 12Z run at
+  ~20:50Z (also reaches D+10 00Z, 228 h), so the 07Z capture holds the
+  PREVIOUS day's 12Z run and the 19Z capture the same day's 00Z run. Run
+  day = last valid − 10 d; run hour = 12 once past ~20:40Z on that day.
+  The logger fetches EURO fresh (`fetch_cmems_point.__wrapped__`, not the
+  dashboard's TTL cache, which can hand it a series that predates the newest
+  bulletin), asks the CMEMS file listing for the newest bulletin
+  (`latest_euro_bulletin`, 120 s cap, clock rule on failure) to settle the
+  run hour, and skips a series identical to the buoy's latest shard
+  (`_same_series`) instead of logging one bulletin twice. Shards from a
+  morning capture may start with negative `lead_hours` (analysis hours of
+  a 12Z run when the series window began at local midnight) — that is
+  correct, not a label error.
+  Until 2026-09-09 the clock rule stamped every live EURO cycle 12 h late;
+  all live EURO shards (from `20260421T12Z`) were relabelled and their
+  `lead_hours` recomputed, so any model trained before then learned lead
+  hours 12 h short on the live half of its EURO rows — retrain.
   (Label renamed from `csc2-log` 2026-07-05: the old label's launchd state
   became unspawnable — persistent EX_CONFIG even after re-bootstrap — while
   identical plist content ran fine under a new label. Old plist kept as
@@ -133,7 +187,13 @@ defs, metric tables).
   `.csc_data/live_log/observations/` tree with dedup on (valid_utc, partition).
   Also logs the dashboard buoys outside CSC2 scope (`EXTRA_BUOYS`: 44025,
   44018) for `fun_days.py`; `archive_status` and the trainers still iterate
-  `BUOYS` only
+  `BUOYS` only. **Known data defect:** until 2026-09-08 the logger
+  stamped `valid_utc` with its own wall clock (it read a key `fetch_buoy`
+  never returned), so live-log rows from 2026-04-24 to 2026-09-08 are
+  ingest-stamped — up to ~40 min late, half of them snapping to the wrong
+  hour in `train._snap_to_hour_iso`, and each observation appears under two
+  timestamps. Those months need re-deriving from NDBC archives before the
+  next retrain; the realtime spectral files only reach back ~45 days
 - `csc2/train.py` — trainer for both architectures. Asserts the time split
   (max train cycle < min test cycle) and records per-target row counts +
   the inclusion rule in meta.json
@@ -178,6 +238,8 @@ Local-only data directories (gitignored):
 - `.csc_data/wind_archive/year=Y.parquet` — per-spot hourly ECMWF wind (fun_days gate)
 - `.csc_data/fun_days/buoy=<id>/year=Y.parquet` — observed fun+ ledger, one row per day
 - `.csc2_data/archive_status_cache.json` — cached `/api/csc2/archive_status` payload
+- `.cache/bathy_tiles/<STYLE>/<theme>/z/x/y.png` — rendered basemap tiles
+- `.gland_data/euro_archive.json` — /gland rolling EURO archive
 - `.csc2_models/east/`, `.csc2_models/west/` — trained model weights
 
 Retrain cadence: quarterly via `com.colesurfs.csc2-retrain` (1st of
@@ -221,26 +283,20 @@ Consider an off-cycle retrain when: the top performer's live skill drops
   the identical convention under `.csc2_models/west/<full-name>/` and never
   surfaces on the dashboard until explicitly promoted.
 
-### GFS combined-sea fallback
+### GFS combined-sea fallback — removed (v1.13.1)
 
-GFS drops swell partitions beyond ~5 days. The dashboard's
-`waves.py:_parse_response` synthesizes a primary swell from combined
-Hs/Tp_peak/Dp when partitions are absent. The forecast logger writes raw
-partition data (sw1=null when partitions absent) PLUS the combined_*
-columns alongside, so the dashboard quantity can always be reconstituted
-from disk.
-
-The CSC2 trainer mirrors this fallback at read time in
-`csc2.train._apply_dashboard_fallback_gfs`: when `gfs_sw1_height_ft` is
-null and `gfs_combined_height_m` is populated, sw1 is filled from the
-combined fields (m→ft for height) and tagged with
-`gfs_sw1_source = "combined_fallback"`. Rows where both are null are
-tagged "missing" and excluded from training. This keeps on-disk shards
-raw (preserving the partition-vs-fallback distinction) while making
-training inputs byte-identical to dashboard rendering.
-
-EURO has no equivalent fallback (honest-empty policy: CMEMS partition-null
-cells are genuinely empty, not fallback-eligible).
+`waves.py:_parse_response` used to synthesize a primary swell from the
+combined Hs/Tp when no partition survived, on the premise that GFS drops
+partitions beyond ~5 days. Two facts killed it: Open-Meteo serves GFS-Wave
+partitions for the full 10 days (the archive's null-sw1 share is a flat
+4–5 % at every lead), and it never provides `wave_peak_period` for GFS, so
+the synthesized period was always the mean period. The only rows it ever
+touched were hours where every partition was 0 m — pure wind sea — which it
+rendered as a FUN "primary swell". Both models are now honest-empty: an
+empty component list is an empty cell. `csc2.train._apply_dashboard_fallback_gfs`
+keeps its name and the `gfs_sw1_source` column but only tags rows
+("partition" / "missing"); missing rows are excluded from training. The
+logger still writes the combined_* columns alongside the raw partitions.
 
 ## gland.py landmarks
 
@@ -379,7 +435,8 @@ cells are genuinely empty, not fallback-eligible).
   visible UI change lands.
 - **Region clean-wind** — `_regionCleanWind(region, data=regionWindData)`
   computes, per region per hour, whether ≥1 spot rates Glassy/Groomed/Clean
-  for whichever wind model's data is passed. `_windHatchState(region, t, data)`
+  (`clean`) or Textured-or-better (`surfable`, the Fun+ Days gate) for
+  whichever wind model's data is passed. `_windHatchState(region, t, data)`
   returns tri-state `'solid'` (≥1 clean) / `'hatched'` (known, none clean) /
   `null` (no wind record — fetch gap or hour outside the wind window). Drives
   the white wind agreement chip (see Agreement chips), evaluated against BOTH
@@ -428,12 +485,25 @@ cells are genuinely empty, not fallback-eligible).
   *agreement* (both must be clean), which is why the alt-model region-wind
   fetch (`regionWindAlt`) is loaded alongside `regionWindData` everywhere the
   latter is (re)loaded.
+- **Basemap** — `_tileUrl()` points at our own `/tiles/bathy/v1/<theme>/`
+  route (`bathy.py`). CARTO watermarks key-less raster tiles since 2026-08
+  ("API KEY REQUIRED"); Esri's gray canvas and terrain base were tried and
+  rejected (state names, land relief baked in). Leaflet attribution is
+  hidden site-wide; NOAA NCEI is credited in the info modal's provenance
+  list.
+- **More modal** — `#about-modal-overlay`, opened by the `MORE` button
+  (footer on desktop, bottom bar on mobile). Two `.more-group`
+  blocks: pages (review, gland, csc) above settings (refresh,
+  `#theme-btn`, `#sbs-btn` desktop-only, `#pref-show-history` button
+  mobile-only, tuner). Labels are actions: theme reads "switch to <other>
+  mode" (`_themeLabel`), history reads show/hide (`_syncHistoryBtn`). The
+  footer carries no theme/side-by-side buttons — those live here only.
 - **Historical strip** — `_buildHistoricalCellsHtml(stationId, resolutionHours)`
   + `buildHistoricalCell(obs, cellTime)`. Cells carry `data-time` so the
   mobile slider's `_sliderTimes` array picks them up alongside forecast
   cells. Toggle state lives in `localStorage['cs_show_history']`.
   `setShowHistory(val)` syncs the desktop toolbar pill-switch
-  (`#desktop-history-switch`) and the Preferences modal checkbox
+  (`#desktop-history-switch`) and the More modal's history button
   (`#pref-show-history`), then anchors the rebuild on the model-overview
   column to keep its viewport-x stable across toggles.
 - **Background preload** — `preloadHistoricalData()` fires
@@ -447,6 +517,12 @@ cells are genuinely empty, not fallback-eligible).
   pct=0 lands on the oldest historical cell. `_sliderResetToNow()` is
   the canonical "snap to now" action (called by double-tap and on the
   first build via the `_sliderResetDone` one-shot).
+- **Mobile spot column** — `.swell-table` is translated by `--table-tx`
+  (the slider) and `td.spot-cell` counter-translated with
+  `position: relative`; `th.th-spot` must stay `position: sticky; top: 0`
+  with the same counter-translate — vertical sticky survives
+  `overflow-x: hidden`, only the left anchor is lost. Demoting it to
+  relative lets the SPOT header scroll away (v1.13.1 fix).
 - **Touch-action lock** — `.table-scroll *` carries
   `touch-action: pan-y !important` so any descendant cell can't initiate
   a horizontal pan. Combined with `overscroll-behavior: contain`,
@@ -477,8 +553,8 @@ them:
      invalidation on `WIND_UPDATE_HOURS_UTC` (EURO wind 4x/day per
      Open-Meteo's ecmwf_ifs025 cadence)
    - `fetch_cmems_point` (EURO waves): `@model_aware_cache`, 24 h hard TTL,
-     invalidated on `MODEL_UPDATE_HOURS_UTC` (~07/19 UTC when CMEMS ANFC
-     publishes) — new runs land within one 30-min warmer cycle; upstream
+     invalidated on `MODEL_UPDATE_HOURS_UTC` (10/21 UTC; CMEMS ANFC publishes
+     the 00Z run ~08:30Z and the 12Z run ~20:50Z) — new runs land within one 30-min warmer cycle; upstream
      is hard-capped at 2 cycles/day
    - Tides: month-anchored ~4-month window per station, 45-day TTL
      (`tide._fetch_station_window`), sliced locally per request
@@ -554,6 +630,8 @@ full setup/troubleshooting detail in `hosting.md`:
   (`python fun_days.py --topup --rebuild`: 7-day wind-archive top-up, then
   full recompute of this year + last for every dashboard buoy; older years
   are static once built — `--rebuild --year YYYY` to redo one)
+- `com.colesurfs.gland-euro` — /gland EURO archive top-up every 6 h
+  (`python -m gland_euro_archive`)
 
 To reload any service after a code change:
 `launchctl kickstart -k gui/$(id -u)/<label>`.

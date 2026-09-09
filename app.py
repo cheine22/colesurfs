@@ -3,6 +3,7 @@ colesurfs — Flask Application
 
 Routes:
   /                              Dashboard UI (single-page app)
+  /review, /csc, /csc-model, /gland, /tuner, /gland/tuner, /palette-preview
   /api/buoys                     Live NOAA buoy readings for all regions
   /api/forecast/<EURO|GFS>       10-day hourly wave forecast per buoy
   /api/wind?model=               Current wind snapshot for map init
@@ -16,25 +17,31 @@ Routes:
   /api/debug/spectral/<id>       Diagnostic: raw spectral parse (COLESURFS_DEBUG=1 only)
   /api/buoy_history/<station_id>  10-day historical buoy data with spectral components (?days= override)
   /api/buoy_historical_context    Historical obs + per-hour model_agreement vs CSC2 archives
+  /api/fun_days                  Observed fun+ ledger per buoy (fun_days.py)
+  /api/review, /api/review/seasons   Ledger rows + season tables for /review
   /api/refresh (POST)            Clear caches + reload swell rules
+  /api/tuner/save, /api/gland/tuner/save (POST)   Write the TOML schemes
+  /api/gland/*                   G-Land page data (gland.py)
+  /api/csc2/*                    CSC2 archive status, model registry, live correction
+  /tiles/bathy/<style>/<theme>/z/x/y.png   Self-rendered basemap (bathy.py)
 
-v1.5: EURO wave forecast migrated from Open-Meteo ECMWF-WAM to Copernicus Marine
-      (CMEMS) ECMWF-WAM ANFC. Open-Meteo EURO waves were removed from the site
-      entirely — OM returns null swell partitions, so switching to CMEMS gives
-      us real SW1/SW2 spectral partitions. GFS continues via Open-Meteo.
+EURO waves come from Copernicus Marine (CMEMS) ECMWF-WAM ANFC since v1.5;
+GFS waves from Open-Meteo.
 """
+import ipaddress as _ipaddress
 import json as _json
 import os
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, Response, abort, jsonify, render_template, request, send_from_directory
 from flask_compress import Compress
 from waitress import serve
 
 from config import SPOTS, WIND_SPOTS, MODEL_COLORS, WIND_BANDS, REGION_VIEWS
 import swell_rules
+import wind_rules
 from buoy  import (fetch_buoy, fetch_buoy_history, fetch_buoy_historical_context,
                     _parse_spectral_file, _spectral_components)
 import requests as _req_buoy
@@ -48,6 +55,7 @@ from sun   import compute_sun_data
 from fun_days import (all_summaries as _fun_days_all, review_payload as _review_payload,
                       season_tables as _season_tables)
 import cache as _cache
+import bathy
 
 app = Flask(__name__)
 Compress(app)   # gzip/brotli compression for all responses > 500 bytes
@@ -107,9 +115,6 @@ def _check_api_rate_limit():
             resp = jsonify({"error": "rate limit exceeded"})
             resp.headers["Retry-After"] = "30"
             return resp, 429
-
-
-import ipaddress as _ipaddress
 
 
 @app.before_request
@@ -345,7 +350,6 @@ def api_sun():
 def _config_payload() -> dict:
     """Single source for the config object served by /api/config and inlined
     into index.html. Rebuilt per call so /tuner saves are picked up live."""
-    import wind_rules  # lazy: keeps import cost off cold startup
     bands = swell_rules.load_bands()
     return {
         "spots": SPOTS,
@@ -377,6 +381,23 @@ def _config_payload() -> dict:
 @app.route("/api/config")
 def api_config():
     return jsonify(_config_payload())
+
+
+@app.route("/tiles/bathy/<style>/<theme>/<int:z>/<int:x>/<int:y>.png")
+def bathy_tile(style, theme, z, x, y):
+    """Self-rendered basemap (see bathy.py). Immutable per style version."""
+    if style != bathy.STYLE:
+        abort(404)
+    try:
+        png = bathy.tile_png(theme, z, x, y)
+    except Exception as e:
+        print(f"[bathy] {z}/{x}/{y} failed: {e}", flush=True)
+        abort(502)
+    if png is None:
+        abort(404)
+    resp = Response(png, mimetype="image/png")
+    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return resp
 
 
 @app.route("/api/debug/spectral/<station_id>")
@@ -422,7 +443,6 @@ def api_refresh():
         return jsonify({"error": "rate limit exceeded, try again in 30s"}), 429
     _cache.clear_all()
     swell_rules.reload()
-    import wind_rules
     wind_rules.reload()
     return jsonify({"status": "cache cleared, swell + wind rules reloaded"})
 
@@ -485,8 +505,11 @@ def review_page():
         "spots":      SPOTS,
         "categories": swell_rules.CATEGORIES,
         "colors":     swell_rules.COLORS,
+        "swell_bands": [{"period_ub": b["period_ub"], "rules": b["rules"]}
+                        for b in swell_rules.load_bands()],   # fun+ definition text
+        "wind_rating": wind_rules.load_config(),                 # surfable-wind text
         "today":      _dt.now(_Zi(_TZ)).date().isoformat(),
-        "first_year": 2021,   # wind archive + NDBC stdmet backfills start here
+        "first_year": 2019,   # floor of the custom season/year picker (ledgers + wind archive reach 2019)
     }
     return render_template("review.html",
                            inline_config=_json.dumps(payload, separators=(",", ":")))
@@ -528,7 +551,7 @@ def index():
 
 @app.route("/csc")
 def csc_page():
-    """CSC2 evaluation page. Under construction — data collection in progress."""
+    """CSC2 evaluation page: archive coverage, model registry, metric tables."""
     from csc2.schema import BUOYS as _CSC2_BUOYS
     buoys = [
         {"buoy_id": b[0], "label": b[1], "lat": b[2], "lon": b[3], "scope": b[4]}
@@ -684,8 +707,9 @@ def api_gland_summary():
 
 @app.route("/api/gland/history")
 def api_gland_history():
-    """Past 14 days at G-Land. Fetched on demand from Open-Meteo's own past
-    analysis plus the harmonic tide — nothing is archived locally."""
+    """Past 14 days at G-Land. GFS + wind come from Open-Meteo's own past
+    analysis and tide from the harmonic fit; EURO is the only locally
+    archived piece (gland_euro_archive.py)."""
     import gland as _gland
     try:
         days = int(request.args.get("days", _gland.HISTORY_DAYS))
@@ -731,16 +755,17 @@ def api_csc2_models():
 def _csc2_forecast_payload(buoy_id: str, scope: str) -> dict | None:
     """Compute /api/csc2/forecast and cache for 30 min.
 
-    The cycle anchor only changes every 12 h (CMEMS publish cadence) so
-    response-level caching is safe. The cache warmer pre-fills this for
+    The EURO cycle is derived from the fetched series (csc2.logger.euro_cycle_id)
+    and only changes twice a day, so response-level caching is safe. The cache warmer pre-fills this for
     every east buoy on startup, so users essentially never pay the cold
     cost (~7 s for CMEMS + ~600 ms for the 3 model predictions)."""
     from csc2.registry import selection_payload
     from csc2.predict import predict_for_cycle
     from csc2.schema import buoy_meta, CSC2_MODELS_DIR
-    from datetime import datetime, timezone as _tz
+    from csc2.logger import euro_cycle_from_records
+    from cache import age_of
+    from datetime import datetime, timedelta, timezone as _tz
     from waves_cmems import fetch_cmems_point
-    from waves import fetch_wave_forecast
 
     try:
         meta = buoy_meta(buoy_id)
@@ -748,15 +773,19 @@ def _csc2_forecast_payload(buoy_id: str, scope: str) -> dict | None:
         return None
 
     now = datetime.now(_tz.utc)
-    cyc_h = 0 if now.hour < 12 else 12
-    cycle_utc = now.replace(hour=cyc_h, minute=0, second=0, microsecond=0
-                            ).strftime("%Y%m%dT%HZ")
 
     try:
         euro_recs = fetch_cmems_point(meta["lat"], meta["lon"]) or []
         euro_err = None
     except Exception as e:
         euro_recs, euro_err = [], f"{type(e).__name__}: {e}"
+    # Lead hours are measured from the EURO run (the quantity being corrected);
+    # GFS at the same wall clock may be one run fresher, as in training. The
+    # series came from the TTL cache, so judge the run by when it was fetched.
+    age = age_of(fetch_cmems_point, meta["lat"], meta["lon"])
+    fetched_at = now - timedelta(seconds=age) if age else now
+    cycle_utc = euro_cycle_from_records(fetched_at, euro_recs) or now.replace(
+        hour=0 if now.hour < 12 else 12, minute=0, second=0, microsecond=0).strftime("%Y%m%dT%HZ")
     try:
         gfs_recs = fetch_wave_forecast(meta["lat"], meta["lon"], "GFS") or []
         gfs_err = None
@@ -835,7 +864,6 @@ def tuner_page():
     """Interactive slider-driven tuner for swell + wind category thresholds.
     Changes write back to the TOML files and trigger the same reload hook
     /api/refresh uses, so every downstream consumer picks them up live."""
-    import wind_rules
     bands = swell_rules.load_bands()
     # Build a JSON-friendly copy of the swell bands — preserve 'always'/'never'
     # markers so the UI knows which cells are non-tunable.
@@ -891,7 +919,6 @@ def api_tuner_save():
         _write_swell_toml(payload.get("swell", {}))
         _write_wind_toml(payload.get("wind", {}))
         swell_rules.reload()
-        import wind_rules
         wind_rules.reload()
         # Bust per-fetcher caches so any stale category labels get rebuilt
         _cache.clear_all()
@@ -1127,7 +1154,7 @@ if __name__ == "__main__":
     _local_ip = _get_local_ip()
     mode = "development" if DEBUG_MODE else "production"
     print(f"\n  ◈ colesurfs ({mode})")
-    print(f"  ─────────────────────────────────")
+    print("  ─────────────────────────────────")
     print(f"  Host    → {HOST}:{PORT}")
     if HOST == "0.0.0.0":
         print(f"  Local   → http://127.0.0.1:{PORT}")
@@ -1136,10 +1163,11 @@ if __name__ == "__main__":
         print(f"  Local   → http://{HOST}:{PORT}")
     print(f"  Debug   → {'on' if DEBUG_MODE else 'off'}")
     print(f"  Warmer  → every {_WARM_INTERVAL}s")
-    print(f"  Press Ctrl+C to stop.\n")
+    print("  Press Ctrl+C to stop.\n")
 
     # Start background cache warmer
     _warmer = threading.Thread(target=_cache_warmer_loop, daemon=True)
     _warmer.start()
+    bathy.prewarm_async()   # default-view basemap tiles; no-op once rendered
 
     serve(app, host=HOST, port=PORT, threads=8)

@@ -21,19 +21,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from csc2.archive_status import _obs_valid_utcs as _archive_obs_valid_utcs  # noqa: F401  # used indirectly
-from csc2.schema import BUOYS, CSC2_MODELS_DIR, FORECASTS_DIR, buoys_in
+from csc2.schema import CSC2_MODELS_DIR, FORECASTS_DIR, buoys_in
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OBS_HIST_DIR = PROJECT_ROOT / ".csc_data" / "observations"
 OBS_LIVE_DIR = PROJECT_ROOT / ".csc_data" / "live_log" / "observations"
-
-OUTPUT_VARS = [
-    "sw1_height_ft", "sw1_period_s", "sw1_dp_sin", "sw1_dp_cos",
-    "sw2_height_ft", "sw2_period_s", "sw2_dp_sin", "sw2_dp_cos",
-]
-SCALAR_VARS = ["sw1_height_ft", "sw1_period_s", "sw2_height_ft", "sw2_period_s"]
-DIRECTIONAL_VARS = ["sw1_direction_deg", "sw2_direction_deg"]
 
 
 # ---------------------------------------------------------------------------
@@ -104,49 +96,19 @@ def _read_obs_buoy(buoy_id: str) -> pd.DataFrame:
 
 
 def _apply_dashboard_fallback_gfs(df: pd.DataFrame) -> pd.DataFrame:
-    """Mirror waves.py:_parse_response — when GFS swell partitions are
-    absent (typical beyond ~5 day lead), synthesize sw1 from combined-sea
-    fields. The dashboard does this at render time per v1.7.1; the
-    trainer does it at read time so on-disk shards stay raw and the
-    distinction (real partition vs. fallback) is preserved via
-    combined_* and the new gfs_sw1_source tag.
-
-    EURO (CMEMS) has no such fallback per the v1.5 honest-empty policy,
-    so this only applies to GFS.
-    """
+    """Tag GFS sw1 provenance to match the dashboard. Since v1.13.1 the
+    dashboard has NO combined-sea fallback (Open-Meteo serves GFS partitions
+    for all 10 days; a null sw1 means every partition was 0 m — wind sea —
+    which the old fallback rendered as a FUN primary swell at the mean
+    period). So sw1 is "partition" when present and "missing" otherwise;
+    missing rows are excluded from training. The name and the
+    gfs_sw1_source column are kept so downstream readers are unchanged."""
     out = df.copy()
-    # Coerce target columns to float64 up-front — some shards may have
-    # written sw1_*_period_s/direction_deg as object dtype (mixed None +
-    # numeric on rows where the GFS API returned a sparse partition).
     for col in ("gfs_sw1_height_ft", "gfs_sw1_period_s", "gfs_sw1_direction_deg",
                 "gfs_combined_height_m", "gfs_combined_period_s",
                 "gfs_combined_direction_deg"):
         out[col] = pd.to_numeric(out[col], errors="coerce")
-
-    sw1 = out["gfs_sw1_height_ft"].to_numpy()
-    cmb_h = out["gfs_combined_height_m"].to_numpy()
-    cmb_p = out["gfs_combined_period_s"].to_numpy()
-    cmb_d = out["gfs_combined_direction_deg"].to_numpy()
-
-    import numpy as _np
-    null_sw1 = _np.isnan(sw1)
-    has_combined = ~_np.isnan(cmb_h) & (cmb_h > 0)
-    fb = null_sw1 & has_combined
-
-    sw1_p = out["gfs_sw1_period_s"].to_numpy().copy()
-    sw1_d = out["gfs_sw1_direction_deg"].to_numpy().copy()
-    sw1_h = sw1.copy()
-    sw1_h[fb] = cmb_h[fb] * 3.28084
-    sw1_p[fb] = cmb_p[fb]
-    sw1_d[fb] = cmb_d[fb]
-    out["gfs_sw1_height_ft"] = sw1_h
-    out["gfs_sw1_period_s"] = sw1_p
-    out["gfs_sw1_direction_deg"] = sw1_d
-
-    src = _np.array(["partition"] * len(out), dtype=object)
-    src[fb] = "combined_fallback"
-    src[null_sw1 & ~has_combined] = "missing"
-    out["gfs_sw1_source"] = src
+    out["gfs_sw1_source"] = np.where(out["gfs_sw1_height_ft"].isna(), "missing", "partition")
     return out
 
 
@@ -466,11 +428,7 @@ def predict_ml(df: pd.DataFrame, boosters: dict) -> pd.DataFrame:
     X = df[feat_cols].astype(float).to_numpy()
     out = pd.DataFrame(index=df.index)
     for name, model in boosters["models"].items():
-        pred = model.predict(X)
-        if name in ("sw1_height_ft", "sw1_period_s", "sw2_height_ft", "sw2_period_s"):
-            out[f"pred_{name}"] = pred
-        else:
-            out[f"pred_{name}"] = pred  # sin/cos pred
+        out[f"pred_{name}"] = model.predict(X)   # scalars and dp sin/cos alike
     # Recombine sin/cos predictions into degrees per swell.
     for sw in ("sw1", "sw2"):
         s_col = f"pred_{sw}_dp_sin"
@@ -635,7 +593,7 @@ def main() -> None:
 
     cov_str = f"{cov_frac:.2f}"
 
-    print(f"[load] building paired east-pool dataset…")
+    print("[load] building paired east-pool dataset…")
     raw = build_paired_dataset(args.scope)
     if raw.empty:
         raise SystemExit("no paired data found")

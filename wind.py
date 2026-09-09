@@ -19,7 +19,7 @@ when the underlying model data hasn't changed.
 import time
 import requests
 from datetime import datetime, timezone, timedelta
-from cache import ttl_cache, model_aware_cache, record_api_calls, get_cache_age
+from cache import ttl_cache, model_aware_cache, record_api_calls
 from config import (
     GRID_LATS, GRID_LONS, GRID_NY, GRID_NX,
     GRID_LA1, GRID_LO1, GRID_DX, GRID_DY,
@@ -74,13 +74,12 @@ def estimate_model_run(model_key: str = "EURO") -> dict:
             available_at = check_day.replace(hour=h, minute=0, second=0, microsecond=0)
             if available_at <= now:
                 # This update hour is in the past — this is the current run.
-                # The model init time is ~6-8h before the availability time.
-                # GFS: available ~4h after init. EURO: available ~7-8h after init.
+                # GFS: available ~4h after init. EURO (CMEMS): the 00Z run
+                # lands ~08:30Z and the 12Z run ~20:50Z, so 10Z → 00Z, 21Z → 12Z.
                 if model_key == "GFS":
-                    init_offset = 4
+                    init_time = available_at - timedelta(hours=4)
                 else:
-                    init_offset = 7
-                init_time = available_at - timedelta(hours=init_offset)
+                    init_time = available_at.replace(hour=0 if available_at.hour < 12 else 12)
                 run_label = f"{init_time.hour:02d}Z"
                 run_date  = init_time.strftime("%Y-%m-%d")
 
@@ -189,7 +188,7 @@ def fetch_wind_grid(model_key: str = "EURO") -> dict | None:
     """
     neg_key = f"wind_grid:{model_key}"
     if _is_negative_cached(neg_key):
-        print(f"[wind_grid] skipping — negative cached (rate limit cooldown)")
+        print("[wind_grid] skipping — negative cached (rate limit cooldown)")
         return None
 
     model_id = WIND_MODELS.get(model_key)
@@ -261,7 +260,7 @@ def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
     Single Open-Meteo call for all grid points (≤100 points).
     model_key selects the atmospheric model.
     Uses smart caching: skips fetch if no new model run is available.
-    Negative caching: on failure, waits 10 min before retrying.
+    Negative caching: on failure, waits _NEGATIVE_CACHE_SEC before retrying.
 
     Returns:
       {
@@ -273,7 +272,7 @@ def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
     """
     neg_key = f"wind_forecast:{model_key}"
     if _is_negative_cached(neg_key):
-        print(f"[wind_forecast] skipping — negative cached (rate limit cooldown)")
+        print("[wind_forecast] skipping — negative cached (rate limit cooldown)")
         return None
 
     model_id = WIND_MODELS.get(model_key)
@@ -493,7 +492,7 @@ def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> 
 
     neg_key = f"region_wind:{model_key}"
     if _is_negative_cached(neg_key):
-        print(f"[region_wind] skipping — negative cached (rate limited recently)")
+        print("[region_wind] skipping — negative cached (rate limited recently)")
         return None
 
     # ── Deduplicate by lat/lon ──────────────────────────────────────────────

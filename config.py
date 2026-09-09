@@ -53,7 +53,7 @@ for _region_name, _region in _REGIONS_RAW.items():
             "surfline_url": _spot["surfline_url"],
         })
 
-# ─── Hue Mac Palette (exact from style.css) ───────────────────────────────────
+# ─── Hue Mac Palette (mirrors the :root tokens in index.html) ───────────────────────────────────
 HUE = {
     "bg0":        "#0d0d0f",
     "bg1":        "#131316",
@@ -77,10 +77,9 @@ HUE = {
 }
 
 # ─── Wind Speed Scale ─────────────────────────────────────────────────────────
-# Labels shown below the wind map. Units: mph.
-# Colors should match the leaflet-velocity colorScale (7 bands).
-# The velocity layer maps 0 → 20 m/s = 0 → 45 mph linearly across
-# the 7-color scale: calm → light → moderate → fresh → strong → near-gale → gale+
+# Labels shown below the wind map. Units: mph. The particle renderer's own
+# 7-stop colour ramp (index.html _colorScale) spans 0 → 20 m/s ≈ 0 → 45 mph;
+# these five bands are the legend, not the ramp.
 #
 # Format: (min_mph, max_mph_or_None, bg_color, text_color)
 # Use None for the last band's max to display "45+".
@@ -93,15 +92,8 @@ WIND_BANDS = [
 ]
 
 # ─── Swell Categorization ─────────────────────────────────────────────────────
-# Thresholds: edit swell-categorization-scheme.toml → Refresh in app (or restart).
+# Thresholds: edit swell-categorization-scheme.toml (or /tuner) → Refresh in app.
 # Colors:     edit COLORS dict in swell_rules.py → restart.
-# See also: Accessory Pages/swell-categorization-scheme.html for a visual reference.
-
-# ─── Open-Meteo Model Identifiers ─────────────────────────────────────────────
-MODELS = {
-    "EURO": "ecmwf_wam",
-    "GFS":  "ncep_gfswave",
-}
 
 MODEL_COLORS = {
     "EURO": HUE["accent"],   # purple
@@ -128,14 +120,6 @@ def degrees_to_cardinal(deg):
         return "?"
     return _CARDINALS_16[round(float(deg) / 22.5) % 16]
 
-def degrees_to_travel_arrow(deg):
-    """Arrow showing where waves are TRAVELING TO (opposite of 'from' direction)."""
-    if deg is None:
-        return "·"
-    travel = (float(deg) + 180) % 360
-    arrows = ["↑", "↗", "→", "↘", "↓", "↙", "←", "↖"]
-    return arrows[round(travel / 45) % 8]
-
 def wind_to_uv(speed_ms, direction_deg):
     """Met-convention direction → U (east) / V (north) components."""
     if speed_ms is None or direction_deg is None:
@@ -158,9 +142,6 @@ def ms_to_kts(ms):
 # Covers 5°N–49°N × 83°W–39°W (East Coast + NW Atlantic + Caribbean edge).
 # 4° spacing provides smooth wind particle animation while staying within
 # free API limits.
-WIND_MAP_CENTER = [41.2, -71.5]
-WIND_MAP_ZOOM   = 8
-
 GRID_LATS = [5.0 + i * 4.0 for i in range(12)]    # 5°N → 49°N, 4° step  (12 rows)
 GRID_LONS = [-83.0 + i * 4.0 for i in range(12)]   # 83°W → 39°W, 4° step (12 cols)
 GRID_NY   = len(GRID_LATS)   # 12
@@ -177,9 +158,12 @@ TIMEZONE      = "America/New_York"
 # Wave-model publication hours (UTC) — drives the dashboard run indicator,
 # smart refresh, and CMEMS cache invalidation. EURO waves are capped at
 # 2 cycles/day upstream: CMEMS ANFC distributes only the 00Z/12Z runs.
+# EURO = CMEMS ANFC bulletins: the 00Z run lands ~08:20–09:10 UTC, the 12Z run
+# ~20:40–20:55 UTC (file mtimes, 2026-09). 10Z / 21Z leave a margin; the
+# warmer refetches within 30 min of these.
 MODEL_UPDATE_HOURS_UTC = {
     "GFS":  [4, 10, 16, 22],
-    "EURO": [7, 19],
+    "EURO": [10, 21],
 }
 
 # Wind-model refresh hours (UTC). Open-Meteo's ecmwf_ifs025 ingests all four

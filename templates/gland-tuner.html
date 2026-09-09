@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>colesurfs — G-Land tuner</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=22"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
     *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
@@ -31,28 +36,60 @@
       --gl:#0f8f84; --gl-dim:#d3f0ec;
     }
     html, body { min-height:100vh; background:var(--bg0); color:var(--text0);
-                 font-family:var(--font); font-size:13px; }
-    .app-header { position:sticky; top:0; z-index:200; background:var(--bg1);
-      border-bottom:1px solid var(--border0); padding:0 20px; height:44px;
-      display:flex; align-items:center; justify-content:space-between; }
+                 font-family:var(--font); font-size:13px; max-width:100%; }
+    html { overflow-x:hidden; }
+    body { overflow-x:clip; }
+    code { font-family:inherit; color:var(--text0); }
+
+    /* ─── Header (matches the dashboard; Save/Revert live on the right) ─── */
+    .app-header { position:sticky; top:0; z-index:800; background:var(--bg1);
+      border-bottom:1px solid var(--border0); padding:0 24px; height:44px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .header-left { display:inline-flex; align-items:center; gap:8px; min-width:0; }
     .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
-      color:var(--gl); display:inline-flex; align-items:center; gap:6px;
-      text-decoration:none; }
-    .header-logo .home { color:var(--text2); font-weight:500; }
-    .header-logo .sep { color:var(--text3); font-weight:400; }
-    .header-right { display:flex; align-items:center; gap:10px; }
+      color:var(--accent); display:inline-flex; align-items:center; gap:3px;
+      text-decoration:none; cursor:pointer; }
+    .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+    .header-crumb { font-size:14px; font-weight:700; letter-spacing:.12em;
+                    color:var(--gl); white-space:nowrap; }
+    .header-crumb .sep { color:var(--text3); font-weight:400; margin:0 5px 0 0; }
+    .header-crumb a { color:inherit; text-decoration:none; }
+    .header-crumb a:hover { color:var(--text0); }
+    .header-right { display:flex; align-items:center; gap:10px; min-width:0; flex:none; }
     .btn { background:var(--bg2); border:1px solid var(--border1); color:var(--text1);
       border-radius:5px; padding:5px 12px; font-family:var(--font); font-size:11px;
-      cursor:pointer; letter-spacing:.05em; }
-    .btn:hover { color:var(--text0); border-color:var(--border2); }
+      cursor:pointer; letter-spacing:.05em; transition:color .15s, border-color .15s; }
+    .btn:hover { color:var(--gl); border-color:var(--gl); }
     .btn.primary { background:var(--gl-dim); border-color:var(--gl); color:var(--gl);
                    font-weight:700; }
     .btn:disabled { opacity:.45; cursor:default; }
+    .btn:disabled:hover { color:var(--gl); border-color:var(--gl); }
+    .status { font-size:10.5px; color:var(--text2); white-space:nowrap;
+              overflow:hidden; text-overflow:ellipsis; }
+    .status.ok { color:var(--green); }
+    .status.err { color:var(--red); }
+    @media (max-width:600px) {
+      .app-header { height:38px; padding:0 14px; }
+      .header-logo { font-size:15px; letter-spacing:.08em; }
+      .header-crumb { font-size:11px; }
+      .header-crumb .mid { display:none; }
+      /* Logo + crumb are fixed; the status line is what gives way (ellipsis)
+         so Revert/Save always fit beside them. */
+      .header-left { flex:none; }
+      .header-right { flex:1 1 auto; min-width:0; justify-content:flex-end; gap:6px; }
+      .btn { padding:4px 9px; font-size:10px; }
+      .status { font-size:9px; flex:0 1 auto; min-width:0; }
+    }
 
-    .wrap { max-width:1400px; margin:0 auto; padding:18px 20px 80px; }
-    .panel { background:var(--bg1); border:1px solid var(--border0);
-             border-radius:10px; margin-bottom:16px; overflow:hidden; }
-    .panel-head { padding:11px 15px; border-bottom:1px solid var(--border0);
+    /* --gap is the page's single vertical rhythm: header→scope note, between
+       panels, and last panel→footer are all exactly this. */
+    :root { --gap:18px; --footer-h:38px; }
+    .wrap { max-width:1400px; margin:0 auto;
+      padding:var(--gap) 20px calc(var(--footer-h) + var(--gap) + env(safe-area-inset-bottom)); }
+    .panel { background:var(--bg1); border:1px solid var(--border1);
+             border-radius:10px; margin-bottom:var(--gap); overflow:hidden; }
+    .wrap > .panel:last-child { margin-bottom:0; }
+    .panel-head { padding:11px 16px; border-bottom:1px solid var(--border0);
       display:flex; align-items:center; justify-content:space-between; gap:12px;
       flex-wrap:wrap; }
     .panel-title { font-size:11px; font-weight:700; letter-spacing:.14em;
@@ -60,39 +97,39 @@
     .panel-title .dot { color:var(--gl); }
     .panel-sub { font-size:10.5px; color:var(--text2); font-weight:400;
                  text-transform:none; letter-spacing:.02em; }
-    .panel-body { padding:15px; }
+    .panel-body { padding:14px 16px; }
+    .dir-in { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--text2); }
+    .dir-in input { width:62px; background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text0); border-radius:4px; padding:3px 5px; font-family:var(--font);
+      font-size:11px; text-align:center; }
+    .dir-in input:focus { outline:none; border-color:var(--gl); }
 
     .scope { background:var(--gl-dim); border-left:3px solid var(--gl);
-      border-radius:0 7px 7px 0; padding:11px 14px; font-size:11.5px;
-      line-height:1.7; color:var(--text1); margin-bottom:16px; }
+      border-radius:0 7px 7px 0; padding:11px 14px; font-size:11px;
+      line-height:1.7; color:var(--text1); margin-bottom:var(--gap); }
     .scope b { color:var(--gl); }
+    .scope a { color:var(--gl); }
+    .scope code { color:var(--text0); }
 
+    .tbl-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
     table.grid { border-collapse:separate; border-spacing:0; width:100%;
                  font-size:11px; }
-    table.grid th { font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
-      color:var(--text2); font-weight:600; padding:7px 8px; text-align:center;
-      border-bottom:1px solid var(--border1); white-space:nowrap; }
+    table.grid th { font-size:8.5px; letter-spacing:.1em; text-transform:uppercase;
+      color:var(--text3); font-weight:600; padding:4px 8px; text-align:center;
+      border-bottom:1px solid var(--border1); white-space:nowrap; vertical-align:bottom; }
     table.grid th.per { text-align:left; min-width:120px; }
     table.grid td { padding:5px 6px; border-bottom:1px solid var(--border0);
-                    text-align:center; }
+                    text-align:center; white-space:nowrap; }
+    table.grid tbody tr:last-child td { border-bottom:0; }
     table.grid td.per { text-align:left; font-size:10.5px; color:var(--text1);
-                        font-weight:600; white-space:nowrap; }
-    table.grid td.per small { display:block; font-size:8.5px; color:var(--text3);
-                              font-weight:400; }
-    .cellwrap { display:flex; align-items:center; justify-content:center; gap:3px; }
-    .op { font-size:9.5px; color:var(--text3); width:10px; text-align:right; }
+                        font-weight:600; }
     input.thr { width:52px; background:var(--bg2); border:1px solid var(--border1);
       color:var(--text0); border-radius:4px; padding:3px 5px; font-family:var(--font);
       font-size:11px; text-align:center; font-variant-numeric:tabular-nums; }
     input.thr:focus { outline:none; border-color:var(--gl); }
     input.thr.dirty { border-color:var(--amber); color:var(--amber); }
-    .chip { font-size:9px; letter-spacing:.06em; text-transform:uppercase;
-      padding:3px 7px; border-radius:4px; border:1px dashed var(--border2);
-      color:var(--text3); cursor:pointer; background:none;
-      font-family:var(--font); }
-    .chip:hover { color:var(--text1); border-color:var(--border2); }
-    .catsel { border:1px solid var(--border1); border-radius:4px; padding:2px 5px; font-family:var(--font); font-size:10px; font-weight:700; letter-spacing:.04em; } .chip.always { border-style:solid; border-color:var(--border1);
-                   color:var(--text2); cursor:default; }
+    .catsel { border:1px solid var(--border1); border-radius:4px; padding:2px 5px;
+      font-family:var(--font); font-size:10px; font-weight:700; letter-spacing:.04em; }
     .del { background:none; border:0; color:var(--text3); cursor:pointer;
            font-size:11px; padding:0 2px; }
     .del:hover { color:var(--red); }
@@ -104,13 +141,13 @@
 
     /* Preview heatmap */
     table.hm { border-collapse:collapse; font-size:10px; margin-top:4px; }
-    table.hm th { font-size:9px; color:var(--text2); font-weight:600;
-                  padding:3px 5px; white-space:nowrap; }
+    table.hm th { font-size:8.5px; color:var(--text3); font-weight:600;
+                  padding:3px 5px; white-space:nowrap; letter-spacing:.06em; }
     table.hm th.axis { text-align:right; }
     table.hm td { width:44px; height:24px; text-align:center; font-size:9.5px;
       font-weight:700; font-variant-numeric:tabular-nums;
       border:1px solid var(--bg0); }
-    .hm-wrap { overflow-x:auto; user-select:none; }
+    .hm-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; user-select:none; }
     table.hm td.paintable { cursor:crosshair; }
     table.hm td.painted { outline:1.5px solid var(--gl); outline-offset:-2px; }
     .brush { display:flex; gap:3px; flex-wrap:wrap; align-items:center; }
@@ -119,18 +156,69 @@
       cursor:pointer; font-weight:700; }
     .brush button.on { outline:2px solid var(--gl); outline-offset:1px; }
     .brush .lbl { font-size:9px; color:var(--text2); margin-right:3px; }
-    .hint { font-size:10px; color:var(--text3); line-height:1.7; margin-top:10px; }
-    .status { font-size:10.5px; color:var(--text2); }
-    .status.ok { color:var(--green); }
-    .status.err { color:var(--red); }
+    .hint { font-size:10px; color:var(--text2); line-height:1.6; margin-top:10px; }
+    .hint b { color:var(--text1); }
+    .hint code { color:var(--text1); }
+
+    /* ─── Modal + footer (same shape as the dashboard's More modal) ─── */
+    .modal-overlay { position:fixed; inset:0; z-index:900; display:none;
+      align-items:center; justify-content:center; background:rgba(0,0,0,.62);
+      backdrop-filter:blur(2px); padding:20px; }
+    .modal-overlay.open { display:flex; }
+    @media (max-width:600px) { .modal-overlay {
+      padding:18vh 12px calc(12px + env(safe-area-inset-bottom)); } }
+    .modal { position:relative; background:var(--bg1); border:1px solid var(--border1);
+      border-radius:12px; padding:22px 24px; min-width:260px;
+      display:flex; flex-direction:column; gap:9px;
+      box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    .modal-title { font-size:13px; font-weight:700; letter-spacing:.1em;
+      color:var(--accent); display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .modal-title .wave-glyph { font-size:1.4em; line-height:1; }
+    .modal-close { position:absolute; top:10px; right:12px; background:none;
+      border:0; color:var(--text3); font-size:13px; cursor:pointer; }
+    .modal-close:hover { color:var(--text0); }
+    .modal-btn { background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text1); border-radius:6px; padding:8px 14px; font-size:11px;
+      font-family:var(--font); letter-spacing:.08em; cursor:pointer;
+      text-decoration:none; text-align:center; transition:color .15s, border-color .15s; }
+    .modal-btn:hover { color:var(--gl); border-color:var(--gl); }
+    .modal-version { font-size:8.5px; letter-spacing:.08em; color:var(--text3); margin-top:4px; }
+
+    .app-footer { position:fixed; bottom:0; left:0; right:0; z-index:800;
+      background:var(--bg1); border-top:1px solid var(--border0);
+      padding:0 24px env(safe-area-inset-bottom); height:calc(var(--footer-h) + env(safe-area-inset-bottom));
+      display:flex; align-items:center; justify-content:space-between; user-select:none; }
+    .footer-sig { font-size:10px; letter-spacing:.18em; color:var(--text3); }
+    .footer-btns { display:flex; align-items:center; gap:10px; }
+    .footer-divider { color:var(--text3); font-size:12px; }
+    .footer-btn { padding:3px 11px; border:1px solid var(--border1); border-radius:5px;
+      background:transparent; color:var(--text3); font-family:var(--font); font-size:10px;
+      letter-spacing:.1em; cursor:pointer; text-decoration:none; display:inline-flex;
+      align-items:center; transition:color .15s, border-color .15s; }
+    .footer-btn:hover { color:var(--gl); border-color:var(--gl); }
+    .footer-btn:focus-visible, .modal-btn:focus-visible, .modal-close:focus-visible,
+    .btn:focus-visible, .brush button:focus-visible, .del:focus-visible {
+      outline:1px solid var(--gl); outline-offset:2px; }
+    @media (max-width:600px) {
+      :root { --gap:12px; --footer-h:46px; }
+      .wrap { padding-left:10px; padding-right:10px; }
+      .panel-head { padding:10px 12px; }
+      .panel-body { padding:12px; }
+      .scope { padding:10px 12px; }
+      /* Buttons centred and inset from the phone's curved corners. */
+      .app-footer { justify-content:center;
+        padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)); }
+      .footer-sig { display:none; }
+    }
   </style>
 </head>
 <body>
 
 <header class="app-header">
-  <a class="header-logo" href="/gland">
-    <span class="home">colesurfs</span><span class="sep">/</span>G-LAND<span class="sep">/</span>TUNER
-  </a>
+  <div class="header-left">
+    <a class="header-logo" href="/"><span class="wave-glyph">∿</span>colesurfs</a>
+    <span class="header-crumb"><span class="mid"><span class="sep">/</span><a href="/gland">G-LAND</a><span class="sep"> /</span></span>TUNER</span>
+  </div>
   <div class="header-right">
     <span class="status" id="status"></span>
     <button class="btn" id="revertBtn">Revert</button>
@@ -141,7 +229,7 @@
 <div class="wrap">
   <div class="scope">
     <b>G-Land only.</b> These thresholds live in <code>gland-swell-categorization.toml</code>
-    and are read only by <a href="/gland" style="color:var(--gl)">/gland</a>. The rest of
+    and are read only by <a href="/gland">/gland</a>. The rest of
     the site keeps using <code>swell-categorization-scheme.toml</code>, edited at
     <code>/tuner</code> — nothing you change here touches it.
   </div>
@@ -152,7 +240,7 @@
         <span class="panel-sub">— rows are peak-period bands, columns are categories</span></span>
     </div>
     <div class="panel-body">
-      <div style="overflow-x:auto"><table class="grid" id="grid"></table></div>
+      <div class="tbl-x"><table class="grid" id="grid"></table></div>
       <button class="btn" id="addRule" style="margin-top:10px">+ Add rule</button>
       <div class="hint">
         Rules are matched <b>top to bottom and the first hit wins</b>, so order is
@@ -169,13 +257,9 @@
       <span class="panel-title"><span class="dot">◆</span> Live preview
         <span class="panel-sub">— height (ft) × period (s)</span></span>
       <div class="brush" id="brush"></div>
-      <label style="font-size:10px;color:var(--text2);display:flex;align-items:center;gap:6px">
-        swell direction
-        <input type="number" id="previewDir" value="205" min="0" max="359" step="5"
-               style="width:62px;background:var(--bg2);border:1px solid var(--border1);
-                      color:var(--text0);border-radius:4px;padding:3px 5px;
-                      font-family:var(--font);font-size:11px;text-align:center"/>°
-      </label><span</span>
+      <label class="dir-in">swell direction
+        <input type="number" id="previewDir" value="205" min="0" max="359" step="5"/>°
+      </label>
     </div>
     <div class="panel-body">
       <div class="hm-wrap"><table class="hm" id="heat"></table></div>
@@ -190,6 +274,25 @@
     </div>
   </div>
 </div>
+
+<div class="modal-overlay" id="prefsOverlay">
+  <div class="modal">
+    <button class="modal-close" id="prefsClose">✕</button>
+    <div class="modal-title"><span class="wave-glyph">∿</span>G-Land tuner · more</div>
+    <a class="modal-btn" href="/">∿ MAIN DASHBOARD</a>
+    <button class="modal-btn" id="themeBtn">◑ THEME</button>
+    <span class="modal-version">v1.13.1</span>
+  </div>
+</div>
+
+<footer class="app-footer">
+  <span class="footer-sig">made by cole and claude &copy; 2026</span>
+  <div class="footer-btns">
+    <a class="footer-btn" href="/gland" title="Back to G-Land">← G-LAND</a>
+    <span class="footer-divider">·</span>
+    <button class="footer-btn" id="prefsBtn" title="Settings">MORE</button>
+  </div>
+</footer>
 
 <script>
 const CFG = {{ inline_config | safe }};
@@ -414,6 +517,21 @@ document.getElementById('revertBtn').addEventListener('click', () => {
   RULES = JSON.parse(ORIGINAL); PAINT = {}; renderAll(); touched();
   setStatus('reverted to last saved');
 });
+
+/* ── More modal + theme (shares /gland's key so the choice follows the user) ── */
+try {
+  const t = localStorage.getItem('gland-theme');
+  if (t) document.documentElement.setAttribute('data-theme', t);
+} catch(e){}
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const next = isLight() ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('gland-theme', next); } catch(e){}
+  renderAll();
+});
+document.getElementById('prefsBtn').addEventListener('click', () => document.getElementById('prefsOverlay').classList.add('open'));
+document.getElementById('prefsClose').addEventListener('click', () => document.getElementById('prefsOverlay').classList.remove('open'));
+document.getElementById('prefsOverlay').addEventListener('click', e => { if (e.target.id === 'prefsOverlay') e.target.classList.remove('open'); });
 
 renderAll();
 </script>

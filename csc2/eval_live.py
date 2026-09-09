@@ -25,20 +25,19 @@ import traceback
 from datetime import datetime, timezone as dtz
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from csc2.schema import CSC2_DATA_DIR, CSC2_MODELS_DIR, LOGS_DIR  # noqa: E402
+from csc2.schema import CSC2_DATA_DIR, LOGS_DIR  # noqa: E402
 from csc2.registry import list_models  # noqa: E402
 from csc2.train import (  # noqa: E402
     build_paired_dataset, add_features, make_target_columns,
-    metric_set, predict_baseline,
+    metric_set, predict_baseline, predict_ml,
 )
-from csc2.predict import _load_baseline, _load_ml, _ml_predict, detect_arch  # noqa: E402
+from csc2.predict import _load_baseline, _load_ml, detect_arch  # noqa: E402
 
 LIVE_EVAL_DIR = CSC2_DATA_DIR / "live_eval"
 
@@ -89,7 +88,7 @@ def eval_one_model(model_dir: Path, paired: pd.DataFrame,
         pred = predict_baseline(df, bias)
     else:
         boosters = _load_ml(model_dir)
-        pred = _ml_predict(df, boosters)
+        pred = predict_ml(df, boosters)
 
     metrics = metric_set(df, pred, "live_eval")
     flat = _flatten_metrics(metrics)

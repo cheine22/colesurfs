@@ -18,7 +18,8 @@ The algorithm reproduces Surfline's "Individual Swells" processing:
        Hm0 = 4 √(Σ E(f) Δf)                  [significant wave height]
        Tm  = Σ(E(f)Δf · T(f)) / Σ(E(f)Δf)    [energy-weighted mean period]
        dir = circular energy-weighted mean of alpha1(f)
-  5. Filter: Hm0 ≥ 0.2 ft and Tm ≥ 6 s; sort by energy (Hm0²·Tm); return top 2.
+  5. Filter: Hm0 ≥ 0.2 ft and Tm ≥ 6 s; sort by energy Hm0²·Tm (wave power ∝ H²T,
+     the same proxy the wave models and Surfline use); return top 2.
 
 Validation against Surfline buoy 44097 (Block Island) at 0600 UTC 2026-03-25:
   Algorithm → Surfline
@@ -28,10 +29,12 @@ Validation against Surfline buoy 44097 (Block Island) at 0600 UTC 2026-03-25:
 Falls back to .spec summary file if .data_spec/.swdir are unavailable (some buoys
 only report the summary).
 """
+import bisect
 import math
 import requests
-from datetime import datetime, timezone
-from cache import ttl_cache
+from datetime import datetime, timedelta, timezone
+import swell_rules
+from cache import ttl_cache, record_api_calls
 from config import m_to_ft, ms_to_mph, ms_to_kts
 
 NDBC_URL          = "https://www.ndbc.noaa.gov/data/realtime2/{station_id}.txt"
@@ -70,23 +73,56 @@ def _safe_dir(val: str):
     return _CARD.get(str(val).strip().upper())
 
 
-def _parse(text: str) -> dict | None:
-    lines   = [l.rstrip() for l in text.strip().split("\n")]
+def _split_ndbc(text: str) -> tuple[list | None, list[str]]:
+    """(headers, data_lines) for an NDBC text file — the first '#' line is
+    the header, later '#' lines (units) are skipped."""
     headers = None
     data_lines = []
-    for line in lines:
+    for line in text.strip().split("\n"):
+        line = line.rstrip()
         if line.startswith("#"):
             if headers is None:
                 headers = line.lstrip("# ").split()
         elif line.strip():
             data_lines.append(line)
+    return headers, data_lines
 
+
+def _row_ts(row: dict) -> datetime:
+    """UTC timestamp from a stdmet row's YY MM DD hh mm columns."""
+    yr = int(row.get("YY", row.get("#YY", "24")))
+    if yr < 100:
+        yr += 2000
+    return datetime(
+        yr, int(row.get("MM", 1)), int(row.get("DD", 1)),
+        int(row.get("hh", 0)), int(row.get("mm", 0)),
+        tzinfo=timezone.utc,
+    )
+
+
+def _parse_bins(parts: list[str], offset: int) -> list[tuple[float, float]]:
+    """`val (freq)` pairs from a spectral-file row, from column `offset` on."""
+    bins: list[tuple[float, float]] = []
+    i = offset
+    while i + 1 < len(parts):
+        try:
+            val  = float(parts[i])
+            freq = float(parts[i + 1].strip("()"))
+            bins.append((freq, val))
+        except ValueError:
+            pass
+        i += 2
+    return bins
+
+
+def _parse(text: str) -> dict | None:
+    headers, data_lines = _split_ndbc(text)
     if not headers or not data_lines:
         return None
 
     # Find the most recent row that has valid WVHT *and* DPD.  Requiring both
     # keeps "Buoy Now" in sync with the history chart, which filters on
-    # energy != null (energy = wvht_ft × dpd²) — same criterion.
+    # energy != null (energy = wvht_ft² × dpd) — same criterion.
     # Falls back to a WVHT-only row if no row has DPD, and to the top row
     # if the file has no wave data at all.
     row = None
@@ -108,14 +144,7 @@ def _parse(text: str) -> dict | None:
         row = dict(zip(headers, data_lines[0].split()))
 
     try:
-        yr = int(row.get("YY", row.get("#YY", "24")))
-        if yr < 100:
-            yr += 2000
-        ts = datetime(
-            yr, int(row.get("MM", 1)), int(row.get("DD", 1)),
-            int(row.get("hh", 0)), int(row.get("mm", 0)),
-            tzinfo=timezone.utc,
-        )
+        ts = _row_ts(row)
     except Exception:
         ts = None
 
@@ -133,10 +162,10 @@ def _parse(text: str) -> dict | None:
 
     wvht_ft = m_to_ft(wvht_m)
     period  = dpd  # dominant period only; None when DPD=MM
-    # Wave energy proxy = height × period² — favors long-period swells
-    # over short, choppy seas of similar Hs. Matches the same H × T²
-    # formula used in fetch_buoy_history and _spectral_components below.
-    energy  = round(wvht_ft * period ** 2, 1) if (wvht_ft and period) else None
+    # Wave energy proxy = height² × period (deep-water wave power ∝ H²T; the
+    # convention Surfline's energy figure follows). Same formula in
+    # fetch_buoy_history, _spectral_components and wave_common (models).
+    energy  = round(wvht_ft ** 2 * period, 1) if (wvht_ft and period) else None
 
     return {
         "timestamp":          ts.isoformat() if ts else None,
@@ -171,19 +200,7 @@ def _parse_spectral_file(text: str, value_offset: int) -> list[tuple[float, floa
     data_lines = [l for l in lines if l.strip() and not l.startswith("#")]
     if not data_lines:
         return []
-    parts   = data_lines[0].split()
-    offset  = 5 + value_offset          # skip YY MM DD hh mm [sep_freq]
-    bins: list[tuple[float, float]] = []
-    i = offset
-    while i + 1 < len(parts):
-        try:
-            val  = float(parts[i])
-            freq = float(parts[i + 1].strip("()"))
-            bins.append((freq, val))
-        except ValueError:
-            pass
-        i += 2
-    return bins
+    return _parse_bins(data_lines[0].split(), 5 + value_offset)   # skip YY MM DD hh mm [sep_freq]
 
 
 def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
@@ -193,8 +210,9 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
     spec_bins  : [(freq, energy_m2_per_hz), ...]  from .data_spec
     swdir_bins : [(freq, direction_deg),    ...]  from .swdir
 
-    Returns a list of component dicts (same schema as used by models.py) sorted
-    by energy descending.  Only swell-band components (Tm ≥ 6 s, Hm0 ≥ 0.2 ft)
+    Returns a list of component dicts (same schema as the wave-model
+    `components`, see wave_common.build_swell_components) sorted by energy
+    descending.  Only swell-band components (Tm ≥ 6 s, Hm0 ≥ 0.2 ft)
     are returned; at most 2 are kept.
     """
     # Align the two arrays by frequency index (they should match exactly)
@@ -299,11 +317,13 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
         # Energy-weighted mean period — matches Surfline's displayed period
         Tm      = sum(wi * (1.0 / freqs[i]) for wi, i in zip(w, part)) / total_e
         mean_dir = _circular_mean(w, [dirs[i] for i in part])
-        # H × T² — partition energy proxy. Used both for component sort
+        # H² × T — partition energy proxy. Used both for component sort
         # below and as `energy` consumed by the buoy modal's max-single-
         # swell callout, the modal's energy-history chart, and the
-        # spectrum chart. Same convention as _parse / fetch_buoy_history.
-        e_score  = round(hm0_ft * Tm ** 2, 1)
+        # spectrum chart. Same convention as _parse / fetch_buoy_history
+        # and the wave models (wave_common), so partition #1 is picked the
+        # same way on both sides of the CSC2 comparison.
+        e_score  = round(hm0_ft ** 2 * Tm, 1)
 
         if hm0_ft < MIN_HM0_FT or Tm < 6.0:
             continue
@@ -328,19 +348,11 @@ def _parse_spec(text: str) -> list:
       - Primary swell:  SwH (m), SwP (s), SwD (deg)
       - Wind sea:       WWH (m), WWP (s), WWD (deg)
 
-    Returns a list (0–2 items) sorted by period descending, after filtering
-    components below 6 s (consistent with the noise floor in models.py).
+    Returns 0–1 items — the primary swell only (wind sea is intentionally
+    excluded), dropped when its period is under 6 s (same swell-band floor
+    as _spectral_components).
     """
-    lines = [l.rstrip() for l in text.strip().split("\n")]
-    headers = None
-    data_lines = []
-    for line in lines:
-        if line.startswith("#"):
-            if headers is None:
-                headers = line.lstrip("# ").split()
-        elif line.strip():
-            data_lines.append(line)
-
+    headers, data_lines = _split_ndbc(text)
     if not headers or not data_lines:
         return []
 
@@ -371,7 +383,7 @@ def _parse_spec(text: str) -> list:
         if not p or p < 6.0:          # < 6 s → FLAT noise, skip
             return
         h_ft   = m_to_ft(h_m)
-        energy = round(h_ft * p ** 2, 1) if (h_ft and p) else None  # H × T² convention
+        energy = round(h_ft ** 2 * p, 1) if (h_ft and p) else None  # H² × T convention
         components.append({
             "height_ft":     h_ft,
             "period_s":      round(p, 1),
@@ -411,16 +423,7 @@ def _parse_spectral_file_all_rows(text: str, value_offset: int) -> dict:
                           tzinfo=timezone.utc)
         except (ValueError, IndexError):
             continue
-        bins = []
-        i = offset
-        while i + 1 < len(parts):
-            try:
-                val  = float(parts[i])
-                freq = float(parts[i + 1].strip("()"))
-                bins.append((freq, val))
-            except ValueError:
-                pass
-            i += 2
+        bins = _parse_bins(parts, offset)
         if bins:
             result[ts.isoformat()] = bins
     return result
@@ -480,11 +483,9 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
     plus spectral swell components AND raw energy/direction bins for each
     timestamp where spectral data exists.
 
-    Energy is computed as height_ft * period_s**2 (wave energy proxy specified
-    for the historical chart — intentionally differs from the height**2 * period
-    scoring used elsewhere in the app).
+    Energy is height_ft² × period_s — the energy proxy shared with _parse,
+    _spectral_components and the wave models (wave_common).
     """
-    from datetime import timedelta
     url = NDBC_URL.format(station_id=station_id)
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent": "ColeSurfs/1.0"})
@@ -493,16 +494,7 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
         print(f"[buoy_history] {station_id}: fetch failed — {type(e).__name__}: {e}")
         return None
 
-    lines = [l.rstrip() for l in r.text.strip().split("\n")]
-    headers = None
-    data_lines = []
-    for line in lines:
-        if line.startswith("#"):
-            if headers is None:
-                headers = line.lstrip("# ").split()
-        elif line.strip():
-            data_lines.append(line)
-
+    headers, data_lines = _split_ndbc(r.text)
     if not headers or not data_lines:
         return None
 
@@ -512,12 +504,7 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
         parts = line.split()
         row = dict(zip(headers, parts))
         try:
-            yr = int(row.get("YY", row.get("#YY", "24")))
-            if yr < 100:
-                yr += 2000
-            ts = datetime(yr, int(row.get("MM", 1)), int(row.get("DD", 1)),
-                          int(row.get("hh", 0)), int(row.get("mm", 0)),
-                          tzinfo=timezone.utc)
+            ts = _row_ts(row)
         except Exception:
             continue
         if ts < cutoff:
@@ -528,7 +515,7 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
         mwd    = _safe_dir(row.get("MWD"))
         wvht_ft = m_to_ft(wvht_m)
 
-        energy = round(wvht_ft * dpd ** 2, 1) if (wvht_ft and dpd) else None
+        energy = round(wvht_ft ** 2 * dpd, 1) if (wvht_ft and dpd) else None
 
         records.append({
             "timestamp":     ts.isoformat(),
@@ -555,7 +542,6 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
         tol = timedelta(minutes=30)  # inclusive: buoys logging stdmet every 10 min
                                      # but spectra every 30 min leave the newest
                                      # obs exactly 30 min past the last spectrum
-        import bisect
         for rec in records:
             if not spec_times:
                 break
@@ -577,7 +563,6 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
     except Exception as e:
         print(f"[buoy_history] {station_id}: spectral merge error — {type(e).__name__}: {e}")
 
-    from cache import record_api_calls
     record_api_calls("NOAA_buoy_history", 1)
 
     return {"station_id": station_id, "records": records}
@@ -604,7 +589,6 @@ def fetch_buoy(station_id: str) -> dict | None:
             continue  # try next URL
 
         wvht = result.get("wave_height_ft")
-        wspd = result.get("wind_speed_kts")
         if wvht is None:
             # Entire file had no valid WVHT — try the other URL
             print(f"[buoy] {station_id} ({src}): all rows MM for wave height, trying next URL")
@@ -662,7 +646,6 @@ def _hour_iso_z(ts_iso: str) -> str | None:
     """Snap an observation timestamp to the nearest top-of-hour and return
     the forecast-parquet `valid_utc` string form. NDBC obs land every 10 min;
     forecasts are hourly, so we nearest-hour round for the lookup."""
-    from datetime import timedelta
     if not ts_iso:
         return None
     try:
@@ -759,7 +742,6 @@ def fetch_buoy_historical_context(station_id: str, days: int = 10) -> dict | Non
         from csc2.schema import BUOY_IDS
     except Exception:
         BUOY_IDS = []  # csc2 unavailable → all records get model_agreement=null
-    import swell_rules
 
     base = fetch_buoy_history(station_id, days=days)
     if base is None:

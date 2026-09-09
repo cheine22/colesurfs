@@ -8,7 +8,7 @@ Backs /api/csc2/archive_status. For each buoy reports:
     (valid_utc appears in at least one EURO shard AND one GFS shard — these
     are the only obs that can be used as training targets)
   - earliest / latest dates
-  - progress toward the 3-month soft floor and 24-month target
+  - progress toward the 24-month target
 
 The paired-obs count is cached to `.csc2_data/archive_status_cache.json`
 because it requires scanning every forecast shard. Cache is regenerated
@@ -19,7 +19,6 @@ older than 30 minutes.
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,8 +33,7 @@ from csc2.schema import BUOYS, CSC2_DATA_DIR, FORECASTS_DIR
 # effective rate rises to ~1.5 cycles/day, which the progress bars can be
 # re-tuned against if we want to represent sample density rather than
 # calendar coverage. For now they represent calendar coverage.
-SOFT_FLOOR_CYCLES = 90    # ~3 months at 1 cycle/day
-TARGET_CYCLES     = 730   # ~24 months at 1 cycle/day
+TARGET_CYCLES = 730   # ~24 months at 1 cycle/day
 
 # Minimum fraction of the shared EURO∩GFS forecast window that must have a
 # matching buoy observation for the cycle to count as paired. 1.00 requires
@@ -65,31 +63,6 @@ OBS_LIVE_DIR = PROJECT_ROOT / ".csc_data" / "live_log" / "observations"
 def _cycle_shards(model: str, buoy_id: str) -> list[Path]:
     root = FORECASTS_DIR / f"model={model}" / f"buoy={buoy_id}"
     return list(root.rglob("cycle=*.parquet")) if root.exists() else []
-
-
-def _cycle_ids(shards: list[Path]) -> list[str]:
-    out = []
-    for s in shards:
-        n = s.name
-        if n.startswith("cycle=") and n.endswith(".parquet"):
-            out.append(n[len("cycle="):-len(".parquet")])
-    out.sort()
-    return out
-
-
-def _forecast_valid_utcs(model: str, buoy_id: str) -> set[str]:
-    """Return the set of valid_utc strings this buoy has in any shard."""
-    shards = _cycle_shards(model, buoy_id)
-    if not shards:
-        return set()
-    acc: set[str] = set()
-    for s in shards:
-        try:
-            df = pd.read_parquet(s, columns=["valid_utc"])
-            acc.update(df["valid_utc"].dropna().astype(str).tolist())
-        except Exception:
-            continue
-    return acc
 
 
 def _per_cycle_valid_utcs(model: str, buoy_id: str) -> dict[str, set[str]]:
@@ -223,12 +196,17 @@ def _cache_is_stale() -> bool:
     return False
 
 
-def _doy_hist(cycle_ids: set[str], years_seen: set[str]) -> dict[str, int]:
-    out: dict[str, int] = {}
+def _bump_doy(dest: dict[str, int], cycle_ids, years_seen: set[str]) -> None:
+    """Accumulate one count per cycle into its MM-DD bucket."""
     for cyc in cycle_ids:
         key = f"{cyc[4:6]}-{cyc[6:8]}"
-        out[key] = out.get(key, 0) + 1
+        dest[key] = dest.get(key, 0) + 1
         years_seen.add(cyc[:4])
+
+
+def _doy_hist(cycle_ids, years_seen: set[str]) -> dict[str, int]:
+    out: dict[str, int] = {}
+    _bump_doy(out, cycle_ids, years_seen)
     return out
 
 
@@ -246,12 +224,6 @@ def _compute() -> dict:
     east_euro_hist:   dict[str, int] = {}
     east_gfs_hist:    dict[str, int] = {}
     east_paired_hist: dict[str, int] = {}
-
-    def _bump(dest: dict[str, int], cycle_ids) -> None:
-        for cyc in cycle_ids:
-            key = f"{cyc[4:6]}-{cyc[6:8]}"
-            dest[key] = dest.get(key, 0) + 1
-            years_seen.add(cyc[:4])
 
     for buoy_id, label, _lat, _lon, scope in BUOYS:
         euro_per_cycle = _per_cycle_valid_utcs("EURO", buoy_id)
@@ -298,9 +270,9 @@ def _compute() -> dict:
         # East-coast combined view: each east buoy's cycles stack on top of
         # the others. If all five have a run on 2025-06-15, the bar = 5.
         if scope == "east":
-            _bump(east_euro_hist,   euro_ids)
-            _bump(east_gfs_hist,    gfs_ids)
-            _bump(east_paired_hist, buoy_paired)
+            _bump_doy(east_euro_hist,   euro_ids,    years_seen)
+            _bump_doy(east_gfs_hist,    gfs_ids,     years_seen)
+            _bump_doy(east_paired_hist, buoy_paired, years_seen)
 
     total_paired = sum(v["paired_cycles"] for v in by_buoy.values()) / max(1, len(by_buoy))
 

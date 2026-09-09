@@ -1,299 +1,345 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="en" data-theme="">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CSC2 · colesurfs</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<style>
-  :root {
-    --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f; --bg3:#222228;
-    --bd0:#1e1e24; --bd1:#2e2e38; --bd2:#3e3e4e;
-    --fg0:#e8e8f0; --fg1:#a0a0b8; --fg2:#606075; --fg3:#404055;
-    --accent:#7c6af7; --accent-glow:#7c6af733;
-    --green:#3fb950; --amber:#d29922; --red:#f85149;
-    /* Per-line colors for the energy chart — match the active-models slot
-       order: TOP, recent 1, recent 2. EURO/GFS reuse their dashboard hues. */
-    --chart-euro:   #7c6af7;  /* purple — matches archive histogram EURO accent */
-    --chart-gfs:    #d29922;  /* amber — matches archive histogram GFS accent */
-    --chart-top:    #3fb950;  /* green — best-performing CSC2 model */
-    --chart-rec1:   #6a6a78;  /* dark grey — second selected model */
-    --chart-rec2:   #b0b0bc;  /* light grey — third selected model */
-  }
-  /* Light mode — system preference (only when user hasn't forced a theme). */
-  @media (prefers-color-scheme: light) {
-    html:not([data-theme="dark"]) {
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>colesurfs — CSC2</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=22"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="CSC2"/>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <style>
+    /* ═══════════════════════════════════════════════════
+       CSC2 eval — colesurfs palette (same tokens as the dashboard)
+    ════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f; --bg3:#222228;
+      --border0:#1e1e24; --border1:#2e2e38; --border2:#3e3e4e;
+      --text0:#e8e8f0; --text1:#a0a0b8; --text2:#606075; --text3:#404055;
+      --accent:#7c6af7; --accent-glow:#7c6af733;
+      --green:#3fb950; --amber:#d29922; --red:#f85149;
+      --font:'JetBrains Mono','Fira Code',monospace;
+      /* Short aliases: the render code's inline styles and SVG fills use these. */
+      --bd0:var(--border0); --bd1:var(--border1); --bd2:var(--border2);
+      --fg0:var(--text0); --fg1:var(--text1); --fg2:var(--text2); --fg3:var(--text3);
+      /* Per-line colors for the energy chart — match the active-models slot
+         order: TOP, recent 1, recent 2. EURO/GFS reuse their dashboard hues. */
+      --chart-euro:#7c6af7; --chart-gfs:#d29922; --chart-top:#3fb950;
+      --chart-rec1:#6a6a78; --chart-rec2:#b0b0bc;
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) {
+        --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+        --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+        --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+        --accent-glow:#7c6af718;
+      }
+    }
+    html[data-theme="light"] {
       --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
-      --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
-      --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
+      --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+      --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
       --accent-glow:#7c6af718;
     }
-  }
-  /* Light mode — forced via theme toggle (mirrors index.html data-theme). */
-  html[data-theme="light"] {
-    --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
-    --bd0:#e5e5e8; --bd1:#d0d0d6; --bd2:#b0b0bc;
-    --fg0:#1e1e21; --fg1:#484860; --fg2:#72728a; --fg3:#a0a0ae;
-    --accent-glow:#7c6af718;
-  }
-  * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background:var(--bg0); color:var(--fg0);
-    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  a { color:var(--accent); text-decoration:none; }
-  a:hover { text-decoration:underline; }
 
-  /* ─── Sticky header — mirrors index.html .app-header (44px, sticky, padding 0 24px) ─── */
-  .app-header {
-    position: sticky; top: 0; z-index: 200;
-    background: var(--bg1); border-bottom: 1px solid var(--bd0);
-    padding: 0 24px; height: 44px;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
-                  color: var(--accent); display:inline-flex; align-items:center; gap:3px; }
-  .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
-  .header-right { display:flex; align-items:center; gap: 14px; }
+    html, body { min-height:100vh; background:var(--bg0); color:var(--text0);
+                 font-family:var(--font); font-size:13px; max-width:100%; }
+    /* overflow-x on <html> propagates to the viewport; on <body> it would make
+       body its own scroll container and silently break the sticky header. */
+    html { overflow-x:hidden; }
+    body { overflow-x:clip; }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    code { font-family:inherit; color:var(--text0); }
+    svg text { font-family:var(--font); }
 
-  .page { max-width: 1100px; margin: 0 auto; padding: 22px 24px 100px; }
-  .header { padding:0 0 10px; }
-  .title { font-size:18px; color:var(--accent); }
-  .subtitle { color:var(--fg1); font-size:12px; margin-top:4px; }
-
-  /* ─── Sticky footer — buoy picker + made-by line ─── */
-  .app-footer {
-    position: sticky; bottom: 0; z-index: 199;
-    background: var(--bg1); border-top: 1px solid var(--bd0);
-    padding: 8px 24px; display: flex; align-items: center;
-    gap: 14px; min-height: 44px; flex-wrap: wrap;
-  }
-  .footer-credit { color: var(--fg2); font-size: 10.5px;
-                    letter-spacing: .04em; margin-left: auto; }
-  .footer-credit a { color: var(--fg1); }
-  .footer-credit a:hover { color: var(--accent); text-decoration: underline; }
-  select { background:var(--bg2); color:var(--fg0); border:1px solid var(--bd2);
-    padding:5px 10px; font:inherit; border-radius:4px; min-width: 260px; }
-  select:hover { border-color:var(--accent); }
-
-  section { margin: 24px 0; }
-  h2 { font-size:14px; color:var(--fg1); margin: 0 0 10px; padding-bottom:5px;
-    border-bottom: 1px dashed var(--bd1); letter-spacing:0.06em;
-    text-transform: uppercase; font-weight:500; }
-  .muted { color:var(--fg2); }
-
-  .notice { background:var(--bg2); border:1px solid var(--bd1); border-radius:6px;
-    padding: 14px 16px; margin: 14px 0; line-height: 1.6; }
-  .notice b { color: var(--fg0); }
-  .notice-kicker { color: var(--amber); font-size: 10.5px; letter-spacing: .08em;
-    text-transform: uppercase; margin-bottom: 6px; }
-
-  table { width:100%; border-collapse:collapse; margin: 4px 0; }
-  /* Uniform cell borders on every side — both tables share the same style. */
-  th, td { border: 1px solid var(--bd0); padding:7px 10px; text-align:left;
-    vertical-align: top; }
-  th { color:var(--fg1); font-weight:500; text-transform:uppercase;
-    letter-spacing: .05em; font-size: 10.5px; background: var(--bg2); }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .dash { color:var(--fg3); }
-
-  .progress-outer { background:var(--bg2); border:1px solid var(--bd1);
-    border-radius:4px; height: 10px; width:100%; overflow:hidden; }
-  .progress-inner { background: var(--accent); height: 100%; width: 0%; }
-  .progress-label { color: var(--fg2); font-size: 10.5px; letter-spacing: .04em; }
-
-  /* Color-coded metric cells. Per-row rank-based for traditional MAE/RMSE.
-     Backgrounds carry the gradient; text always stays at the page foreground
-     color so the values read uniformly regardless of cell color. */
-  td.best     { background: rgba(63,185,80,0.32);  color: var(--fg0); font-weight: 700; }
-  td.good     { background: rgba(63,185,80,0.16);  color: var(--fg0); }
-  td.mid      { background: rgba(210,153,34,0.18); color: var(--fg0); }
-  td.weak     { background: rgba(248,81,73,0.16);  color: var(--fg0); }
-  td.worst    { background: rgba(248,81,73,0.34);  color: var(--fg0); }
-  /* Absolute 0–1 gradient for surfer metrics. */
-  td.abs-bin5 { background: rgba(63,185,80,0.40);  color: var(--fg0); }
-  td.abs-bin4 { background: rgba(63,185,80,0.22);  color: var(--fg0); }
-  td.abs-bin3 { background: rgba(210,153,34,0.20); color: var(--fg0); }
-  td.abs-bin2 { background: rgba(248,81,73,0.22);  color: var(--fg0); }
-  td.abs-bin1 { background: rgba(248,81,73,0.40);  color: var(--fg0); }
-  /* Best-of-row marker: bold text only — the colored background already
-     conveys ranking, so the cell border stays uniform with all others. */
-  td.row-best { font-weight: 700; }
-  td.num { font-variant-numeric: tabular-nums; }
-
-  h3 { font-size: 12px; color: var(--fg0); margin: 18px 0 6px 0;
-       letter-spacing: .04em; }
-  .cat-chip { display:inline-block; padding:1px 7px; border-radius:3px;
-              border:1px solid var(--bd1); font-size:10.5px; color:var(--fg1);
-              margin-right: 6px; letter-spacing:.04em; }
-
-  /* Theme toggle in top bar — mirrors index.html's button styling. */
-  .btn-theme { padding:5px 11px; border:1px solid var(--bd2); border-radius:5px;
-    color:var(--fg1); background:var(--bg1); font:inherit; cursor:pointer;
-    letter-spacing:.04em; }
-  .btn-theme:hover { border-color:var(--accent); color:var(--fg0); }
-
-  /* Energy chart panel. */
-  .chart-panel { border:1px solid var(--bd1); border-radius:6px;
-                 background:var(--bg1); padding: 12px 14px; margin: 8px 0 14px; }
-  .chart-legend { display:flex; flex-wrap:wrap; gap: 12px;
-                  font-size:11px; color: var(--fg1);
-                  margin-bottom: 6px; }
-  .chart-legend .dot { display:inline-block; width:10px; height:10px;
-                       border-radius:50%; margin-right:5px; vertical-align:-1px; }
-  /* Mobile slider — scrubber for the energy chart. Hidden on desktop
-     (mouse hover handles the same role); shown ≤600px wide. Mirrors the
-     buoy-modal scrubber pattern from index.html. */
-  .energy-scrubber { display: none; }
-  @media (max-width: 600px) {
-    .energy-scrubber {
-      display: flex; align-items: center; gap: 6px; height: 28px;
-      touch-action: none; user-select: none; -webkit-user-select: none;
-      padding: 4px 12px 0;
+    /* ─── Header (matches the dashboard) ─── */
+    .app-header { position:sticky; top:0; z-index:800; background:var(--bg1);
+      border-bottom:1px solid var(--border0); padding:0 24px; height:44px;
+      display:flex; align-items:center; justify-content:space-between;
+      transition:box-shadow .22s ease; }
+    .header-left { display:inline-flex; align-items:center; gap:8px; min-width:0; }
+    .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
+      color:var(--accent); display:inline-flex; align-items:center; gap:3px;
+      text-decoration:none; cursor:pointer; }
+    .header-logo:hover { text-decoration:none; }
+    .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+    .header-crumb { font-size:14px; font-weight:700; letter-spacing:.12em; color:var(--text1); }
+    .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:5px; }
+    /* Condensed header: once the buoy selector scrolls under the header
+       (mobile), the crumb crossfades into a compact buoy select so logo +
+       buoy stay on screen. body.condensed is set by an IntersectionObserver. */
+    .header-swap { position:relative; display:inline-flex; align-items:center; min-width:0; }
+    .header-crumb, .header-region { transition:opacity .22s ease, transform .22s ease; }
+    .header-region { position:absolute; left:0; top:50%; transform:translateY(calc(-50% + 7px));
+      opacity:0; pointer-events:none; display:inline-flex; align-items:center; white-space:nowrap; }
+    .header-region .sep { color:var(--text3); margin-right:5px; font-size:11px; }
+    .header-region select { appearance:none; -webkit-appearance:none; background:transparent; border:0;
+      color:var(--text0); font-family:var(--font); font-size:11px; font-weight:800; letter-spacing:.06em;
+      padding:0 12px 0 0; cursor:pointer; max-width:210px; text-overflow:ellipsis;
+      border-bottom:2px solid var(--accent); border-radius:0; }
+    .header-region select:focus { outline:none; border-bottom-color:var(--text0); }
+    .header-region .caret { margin-left:-10px; font-size:9px; color:var(--accent); pointer-events:none; }
+    .header-right { display:flex; align-items:center; gap:14px; min-width:0;
+      font-size:10px; color:var(--text2); letter-spacing:.06em; white-space:nowrap; }
+    @media (max-width:600px) {
+      .app-header { height:38px; padding:0 14px; }
+      .header-logo { font-size:15px; letter-spacing:.08em; }
+      .header-crumb { font-size:11px; }
+      .header-right { display:none; }
+      body.condensed .header-crumb { opacity:0; transform:translateY(-7px); pointer-events:none; }
+      body.condensed .header-region { opacity:1; transform:translateY(-50%); pointer-events:auto; }
+      body.condensed .app-header { box-shadow:0 8px 20px -12px rgba(0,0,0,.7); }
     }
-    .energy-scrub-track-wrap {
-      flex: 1; height: 100%; position: relative;
-      display: flex; align-items: center;
+
+    /* --gap is the page's single vertical rhythm: header→controls, between
+       panels, and last panel→footer are all exactly this. */
+    :root { --gap:18px; --footer-h:38px; }
+    .wrap { max-width:1500px; margin:0 auto;
+      padding:var(--gap) 20px calc(var(--footer-h) + var(--gap) + env(safe-area-inset-bottom)); }
+
+    /* ─── Buoy control (the page's title row) ─── */
+    .controls { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end;
+      background:var(--bg1); border:1px solid var(--border1); border-radius:10px;
+      padding:14px 16px; margin-bottom:var(--gap); }
+    .controls label { display:flex; flex-direction:column; gap:4px;
+      font-size:9px; color:var(--text2); letter-spacing:.08em; text-transform:uppercase; }
+    .controls label.primary select {
+      font-size:17px; font-weight:800; letter-spacing:.06em; padding:6px 12px 6px 4px;
+      background:transparent; border:0; border-bottom:2px solid var(--accent); border-radius:0;
+      color:var(--text0); cursor:pointer; font-family:var(--font); max-width:100%; }
+    .controls label.primary select:focus { outline:none; border-bottom-color:var(--text0); }
+    @media (max-width:600px) { .controls label.primary select { font-size:14px; } }
+    .window-summary { flex-basis:100%; font-size:10.5px; color:var(--text1); line-height:1.5; }
+    .window-summary b { color:var(--text0); }
+    .window-summary .muted { color:var(--text3); }
+
+    /* ─── Section cards ─── */
+    .region { background:var(--bg1); border:1px solid var(--border1); border-radius:10px;
+      padding:14px 16px 12px; margin-bottom:var(--gap); }
+    .region-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+    .region-head h2 { font-size:13px; font-weight:700; letter-spacing:.1em; color:var(--text0); }
+    .region-head h2 .by { font-weight:500; color:var(--text2); letter-spacing:.08em; }
+    .region-head .meta { font-size:9.5px; color:var(--text3); letter-spacing:.06em; }
+    .caption { font-size:10px; color:var(--text2); line-height:1.5; margin:0 0 8px; max-width:980px; }
+    .caption b { color:var(--text1); }
+    .caption code { color:var(--text1); }
+    .muted { color:var(--text2); }
+    .dash { color:var(--text3); }
+    h3.sub { font-size:9.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+      color:var(--text2); margin:16px 0 4px; display:flex; justify-content:space-between; gap:8px;
+      align-items:baseline; flex-wrap:wrap; }
+    h3.sub:first-child { margin-top:0; }
+    h3.sub .unit { font-weight:400; letter-spacing:.04em; text-transform:none; color:var(--text3); }
+    h3.sub.euro { color:var(--chart-euro); }
+    h3.sub.gfs  { color:var(--chart-gfs); }
+    .charts { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    @media (max-width:900px) { .charts { grid-template-columns:1fr; } }
+    .chart { min-width:0; }
+    .chart h3.sub { margin-top:0; }
+
+    .notice { background:var(--bg2); border:1px solid var(--border0); border-radius:6px;
+      padding:12px 14px; font-size:11px; line-height:1.6; color:var(--text1); }
+    .notice b { color:var(--text0); }
+    .notice.defs { border-left:3px solid var(--accent); }
+    .notice-kicker { color:var(--amber); font-size:9.5px; letter-spacing:.1em;
+      text-transform:uppercase; margin-bottom:6px; font-weight:600; }
+    .notice + .caption { margin-top:8px; }
+    .empty-box { background:var(--bg2); border:1px solid var(--border0); border-radius:6px;
+      padding:16px; text-align:center; font-size:11px; color:var(--text2); }
+
+    /* ─── Tables (same metrics as the review page's .stbl) ─── */
+    .tbl-x { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    table { width:100%; border-collapse:collapse; font-size:10.5px;
+      font-variant-numeric:tabular-nums; }
+    th { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+      color:var(--text3); text-align:left; padding:4px 7px; vertical-align:bottom;
+      border-bottom:1px solid var(--border1); }
+    td { padding:4px 7px; text-align:left; color:var(--text1); vertical-align:top;
+      border-bottom:1px solid var(--border0); }
+    tbody tr:last-child td { border-bottom:0; }
+    td:first-child { color:var(--text0); font-weight:600; }
+    td.muted { color:var(--text2); font-weight:400; }
+    th.num, td.num { text-align:right; }
+    .wrap > .region:last-child { margin-bottom:0; }
+    th .muted { letter-spacing:0; text-transform:none; }
+    /* Color-coded metric cells. Per-row rank-based for traditional MAE/RMSE.
+       Backgrounds carry the gradient; text always stays at the page foreground
+       color so the values read uniformly regardless of cell color. */
+    td.best     { background: rgba(63,185,80,0.32);  color: var(--text0); font-weight: 700; }
+    td.good     { background: rgba(63,185,80,0.16);  color: var(--text0); }
+    td.mid      { background: rgba(210,153,34,0.18); color: var(--text0); }
+    td.weak     { background: rgba(248,81,73,0.16);  color: var(--text0); }
+    td.worst    { background: rgba(248,81,73,0.34);  color: var(--text0); }
+    /* Absolute 0–1 gradient for surfer metrics. */
+    td.abs-bin5 { background: rgba(63,185,80,0.40);  color: var(--text0); }
+    td.abs-bin4 { background: rgba(63,185,80,0.22);  color: var(--text0); }
+    td.abs-bin3 { background: rgba(210,153,34,0.20); color: var(--text0); }
+    td.abs-bin2 { background: rgba(248,81,73,0.22);  color: var(--text0); }
+    td.abs-bin1 { background: rgba(248,81,73,0.40);  color: var(--text0); }
+    /* Best-of-row marker: bold text only — the colored background already
+       conveys ranking. */
+    td.row-best { font-weight: 700; }
+
+    .progress-outer { background:var(--bg3); border:1px solid var(--border1);
+      border-radius:4px; height:8px; width:100%; min-width:90px; overflow:hidden; }
+    .progress-inner { background:var(--accent); height:100%; width:0%; }
+    .progress-label { color:var(--text2); font-size:9.5px; letter-spacing:.04em; margin-top:2px; }
+
+    .cat-chip { display:inline-block; padding:1px 7px; border-radius:3px;
+      border:1px solid var(--border1); font-size:9.5px; color:var(--text1);
+      letter-spacing:.06em; }
+    h3.sub .cat-chip { text-transform:none; letter-spacing:.06em; }
+
+    /* ─── Chart boxes ─── */
+    .chart-box { background:var(--bg2); border:1px solid var(--border0); border-radius:6px;
+      padding:12px 14px 10px; }
+    .chart-box svg { display:block; }
+    .axis { font-size:9.5px; color:var(--text3); display:flex; justify-content:space-between;
+      padding-top:5px; }
+    .chart-legend { display:flex; flex-wrap:wrap; gap:12px; font-size:10.5px;
+      color:var(--text1); margin-bottom:6px; }
+    .chart-legend .dot { display:inline-block; width:9px; height:9px;
+      border-radius:50%; margin-right:5px; vertical-align:-1px; }
+    /* Mobile slider — scrubber for the energy chart. Hidden on desktop
+       (mouse hover handles the same role); shown ≤600px wide. Mirrors the
+       buoy-modal scrubber pattern from index.html. */
+    .energy-scrubber { display:none; }
+    @media (max-width:600px) {
+      .energy-scrubber { display:flex; align-items:center; gap:6px; height:28px;
+        touch-action:none; user-select:none; -webkit-user-select:none; padding:4px 12px 0; }
+      .energy-scrub-track-wrap { flex:1; height:100%; position:relative;
+        display:flex; align-items:center; }
+      .energy-scrub-track { width:100%; height:2px; background:var(--border1);
+        border-radius:1px; position:relative; }
+      .energy-scrub-fill { position:absolute; left:0; top:0; bottom:0;
+        background:var(--accent); border-radius:1px; width:0%; pointer-events:none; opacity:.5; }
+      .energy-scrub-handle { position:absolute; top:50%; width:16px; height:16px;
+        border-radius:50%; background:var(--accent); border:2px solid var(--bg1);
+        transform:translate(-50%,-50%); cursor:grab;
+        box-shadow:0 1px 4px rgba(0,0,0,.3); z-index:2; }
+      .energy-scrub-handle:active { cursor:grabbing; transform:translate(-50%,-50%) scale(1.15); }
     }
-    .energy-scrub-track {
-      width: 100%; height: 2px; background: var(--bd1);
-      border-radius: 1px; position: relative;
+
+    /* Disclosure toggle for the hour-by-hour table. */
+    details.live-table { border:1px solid var(--border0); border-radius:6px;
+      padding:8px 12px; background:var(--bg2); margin-top:10px; }
+    details.live-table > summary { cursor:pointer; color:var(--text1); font-size:10.5px;
+      letter-spacing:.06em; padding:2px 0; user-select:none; list-style:none; }
+    details.live-table > summary::-webkit-details-marker { display:none; }
+    details.live-table > summary::marker { content:''; }
+    details.live-table > summary:hover { color:var(--accent); }
+    details.live-table[open] > summary { color:var(--text0); }
+    #live-forecast-shell { padding-top:8px; }
+
+    /* ─── Modal + footer (same shape as the dashboard's More modal) ─── */
+    .modal-overlay { position:fixed; inset:0; z-index:900; display:none;
+      align-items:center; justify-content:center; background:rgba(0,0,0,.62);
+      backdrop-filter:blur(2px); padding:20px; }
+    .modal-overlay.open { display:flex; }
+    @media (max-width:600px) { .modal-overlay {
+      padding:18vh 12px calc(12px + env(safe-area-inset-bottom)); } }
+    .modal { position:relative; background:var(--bg1); border:1px solid var(--border1);
+      border-radius:12px; padding:22px 24px; min-width:260px;
+      display:flex; flex-direction:column; gap:9px;
+      box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    .modal-title { font-size:13px; font-weight:700; letter-spacing:.1em;
+      color:var(--accent); display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .modal-title .wave-glyph { font-size:1.4em; line-height:1; }
+    .modal-close { position:absolute; top:10px; right:12px; background:none;
+      border:0; color:var(--text3); font-size:13px; cursor:pointer; }
+    .modal-close:hover { color:var(--text0); }
+    .modal-btn { background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text1); border-radius:6px; padding:8px 14px; font-size:11px;
+      font-family:var(--font); letter-spacing:.08em; cursor:pointer;
+      text-decoration:none; text-align:center; transition:color .15s, border-color .15s; }
+    .modal-btn:hover { color:var(--accent); border-color:var(--accent); text-decoration:none; }
+    .modal-version { font-size:8.5px; letter-spacing:.08em; color:var(--text3); margin-top:4px; }
+
+    .app-footer { position:fixed; bottom:0; left:0; right:0; z-index:800;
+      background:var(--bg1); border-top:1px solid var(--border0);
+      padding:0 24px env(safe-area-inset-bottom); height:calc(var(--footer-h) + env(safe-area-inset-bottom));
+      display:flex; align-items:center; justify-content:space-between; user-select:none; }
+    .footer-sig { font-size:10px; letter-spacing:.18em; color:var(--text3); }
+    .footer-btns { display:flex; align-items:center; gap:10px; }
+    .footer-divider { color:var(--text3); font-size:12px; }
+    .footer-btn { padding:3px 11px; border:1px solid var(--border1); border-radius:5px;
+      background:transparent; color:var(--text3); font-family:var(--font); font-size:10px;
+      letter-spacing:.1em; cursor:pointer; text-decoration:none; display:inline-flex;
+      align-items:center; transition:color .15s, border-color .15s; }
+    .footer-btn:hover { color:var(--accent); border-color:var(--accent); text-decoration:none; }
+    .footer-btn:focus-visible, .modal-btn:focus-visible, .modal-close:focus-visible,
+    details.live-table > summary:focus-visible { outline:1px solid var(--accent); outline-offset:2px; }
+
+    @media (max-width:600px) {
+      :root { --gap:12px; --footer-h:46px; }
+      .wrap { padding-left:10px; padding-right:10px; }
+      .region { padding:12px 12px 10px; }
+      .controls { padding:12px; }
+      /* Buttons centred and inset from the phone's curved corners. */
+      .app-footer { justify-content:center;
+        padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)); }
+      .footer-sig { display:none; }
+      /* Every comparison table is wider than a phone: it scrolls inside its
+         own .tbl-x, one line per cell, so the card and page never widen. */
+      th, td { white-space:nowrap; padding:3px 5px; }
+      th { font-size:8px; letter-spacing:.05em; }
+      .chart-legend { gap:4px; }
+      .chart-legend .legend-row { min-width:100% !important; }
+      .chart-legend .legend-readout { min-width:0 !important; }
+      .chart-box { padding:10px 10px 8px; }
     }
-    .energy-scrub-fill {
-      position: absolute; left: 0; top: 0; bottom: 0;
-      background: var(--accent); border-radius: 1px;
-      width: 0%; pointer-events: none; opacity: 0.5;
-    }
-    .energy-scrub-handle {
-      position: absolute; top: 50%; width: 16px; height: 16px;
-      border-radius: 50%; background: var(--accent);
-      border: 2px solid var(--bg1);
-      transform: translate(-50%, -50%); cursor: grab;
-      box-shadow: 0 1px 4px rgba(0,0,0,.3); z-index: 2;
-    }
-    .energy-scrub-handle:active { cursor: grabbing; transform: translate(-50%, -50%) scale(1.15); }
-  }
-
-  /* ─── Mobile cleanup (≤600px) ────────────────────────────────────────────
-     The CSC2 page has multiple wide comparison tables (active models w/ 7
-     cols; Table 1 + Table 2 with up to 6 cols of float values + a target
-     label that itself can be ~30 chars). At 375 px width all of those
-     overflow the viewport, so we make each table its own horizontal-
-     scroll container, tighten paddings, and make sure the header doesn't
-     wrap into two lines. */
-  @media (max-width: 600px) {
-    .page { padding: 14px 14px 100px; }
-    .header { padding: 0 0 6px; }
-    .title { font-size: 15px; }
-    .subtitle { font-size: 11px; }
-    h2 { font-size: 12px; }
-    .notice { padding: 10px 12px; font-size: 11.5px; }
-
-    /* Header — keep the logo + buttons on one row even on narrow widths. */
-    .app-header { padding: 0 12px; gap: 6px; }
-    .header-logo { font-size: 12px; letter-spacing: .08em; }
-    .header-right { gap: 6px; }
-    .btn-theme { padding: 4px 8px; font-size: 11px; letter-spacing: .03em; }
-
-    /* Footer — buoy picker shrinks, made-by stays right. */
-    .app-footer { padding: 6px 12px; gap: 8px; min-height: 38px; }
-    .app-footer select { min-width: 0; flex: 1; padding: 4px 8px; font-size: 11.5px; }
-    .footer-credit { font-size: 10px; }
-
-    /* Tables — every comparison table becomes its own horizontal-scroll
-       container. The TR widths stay at their natural content width
-       (white-space:nowrap on every cell), and only the table itself
-       scrolls — sections + headings stay tight to the viewport. */
-    .page table {
-      display: block;
-      width: 100%;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .page table > thead,
-    .page table > tbody { display: table; width: 100%; min-width: max-content; }
-    .page th, .page td {
-      padding: 5px 7px;
-      font-size: 11px;
-      white-space: nowrap;
-    }
-    .page th { font-size: 9.5px; }
-
-    /* Forecast hour-by-hour table inside the <details> already lives in
-       its own overflow-x wrapper (set inline). Keep it readable. */
-    details.live-table > div table { font-size: 10.5px; }
-
-    /* Energy chart legend — let it wrap into stacked rows cleanly without
-       the readout slot overflowing. */
-    .chart-legend { gap: 4px; }
-    .chart-legend .legend-row { min-width: 100% !important; }
-    .chart-legend .legend-readout { min-width: 0 !important; }
-
-    /* Surfer metrics: each per-category table also gets the scroll-x
-       treatment via the .page table rule above; just trim the heading
-       margins so the 6 categories stack tighter. */
-    h3 { font-size: 11px; margin: 10px 0 4px; }
-    .cat-chip { font-size: 10px; padding: 1px 6px; }
-
-    /* Live-forecast meta line — stay readable but not overflow. */
-    #live-forecast-meta { font-size: 10.5px; line-height: 1.5; }
-
-    /* Archive histograms scale fine; just trim the side-by-side EURO/GFS
-       grid into a single column so neither bar chart shrinks below ~150px. */
-    section > div[style*="grid-template-columns: 1fr 1fr"] {
-      grid-template-columns: 1fr !important;
-    }
-  }
-
-  /* Disclosure toggle for live table. */
-  details.live-table { border:1px dashed var(--bd1); border-radius:6px;
-                       padding: 8px 12px; background:var(--bg1); }
-  details.live-table > summary { cursor:pointer; color:var(--fg1);
-                                 font-size:12px; letter-spacing:.04em;
-                                 padding: 4px 0; user-select:none;
-                                 list-style: none; }
-  details.live-table > summary::-webkit-details-marker { display: none; }
-  details.live-table > summary::marker { content: ''; }
-  details.live-table > summary:hover { color: var(--accent); }
-  details.live-table[open] > summary { color: var(--fg0); }
-</style>
+  </style>
 </head>
 <body>
 
 <header class="app-header">
-  <div class="header-logo"><span class="wave-glyph">∿</span>colesurfs · CSC2</div>
-  <div class="header-right">
-    <button id="theme-btn" class="btn-theme" type="button">◑ LIGHT</button>
-    <a class="btn-theme" href="/">← BACK TO DASHBOARD</a>
+  <div class="header-left">
+    <a class="header-logo" href="/"><span class="wave-glyph">∿</span>colesurfs</a>
+    <span class="header-swap">
+      <span class="header-crumb"><span class="sep">/</span>CSC2</span>
+      <span class="header-region"><span class="sep">/</span><select id="hdrBuoySel" aria-label="Buoy"></select><span class="caret">▾</span></span>
+    </span>
   </div>
+  <div class="header-right"><span>forecast-correction model · eval</span></div>
 </header>
 
-<div class="page">
-
-<div class="header">
-  <div class="title">CSC2 · forecast-correction model <span class="muted" style="font-size:12px">(continued data collection in progress)</span></div>
-  <div class="subtitle">
-    Correction model that ingests EURO and GFS swell forecasts against buoy observations.
-    Model retraining ongoing as more data is collected. Full information on the model
-    <a href="/csc-model">linked here</a>.
+<div class="wrap">
+  <div class="controls">
+    <label class="primary">Buoy
+      <select id="buoy-picker"></select>
+    </label>
+    <div class="window-summary">
+      <b>CSC2</b> is a correction model that ingests EURO and GFS swell forecasts against buoy
+      observations. Retraining is ongoing as more data is collected — full information on the model
+      <a href="/csc-model">linked here</a>. <span class="muted">Continued data collection in progress.</span>
+      The buoy picker drives the live forecast and the archive histograms; "Combined" defaults to
+      NY Harbor Entrance (44065).
+    </div>
   </div>
-</div>
 
-
-<section>
-  <h2>CSC2 live forecast · <span class="muted" style="font-size:12px; font-weight:normal">vs. EURO &amp; GFS</span></h2>
-  <div class="muted" style="font-size:11px; margin: 6px 0 10px;">
+<section class="region">
+  <div class="region-head"><h2>Live forecast <span class="by">· vs EURO &amp; GFS</span></h2></div>
+  <div class="caption">
     10-day primary-swell forecast from the latest CMEMS 00Z/12Z cycle.
     Y axis = <b>energy</b> = h<sup>2</sup>·p (ft<sup>2</sup>·s, surfable
     potential proxy) — <em>not</em> wave height in feet. Hover any line
-    to see the underlying height &amp; period values. Buoy picker drives
-    the display; "Combined" defaults to NY Harbor Entrance (44065).
+    to see the underlying height &amp; period values.
   </div>
-  <div id="live-forecast-meta" class="muted" style="font-size:11px; margin-bottom: 6px;"></div>
-  <div id="energy-chart-panel" class="chart-panel" style="display:none;">
+  <div id="live-forecast-meta" class="caption"></div>
+  <div id="energy-chart-panel" class="chart-box" style="display:none;">
     <div id="energy-chart-legend" class="chart-legend"></div>
     <svg id="energy-chart-svg" width="100%" height="280" preserveAspectRatio="none"></svg>
-    <div id="energy-chart-axis" class="muted"
-         style="font-size:10.5px; display:flex; justify-content:space-between;
-                padding-top:4px;"></div>
+    <div id="energy-chart-axis" class="axis"></div>
     <div class="energy-scrubber">
       <div class="energy-scrub-track-wrap" id="energy-chart-scrub-track-wrap">
         <div class="energy-scrub-track">
@@ -304,22 +350,16 @@
       </div>
     </div>
   </div>
-  <div id="energy-chart-empty" class="muted"
-       style="padding:16px; border:1px dashed var(--bd1); border-radius:6px;
-              text-align:center;">
-    Loading…
-  </div>
-  <details class="live-table" id="live-table-details" style="margin-top: 10px;">
+  <div id="energy-chart-empty" class="empty-box">Loading…</div>
+  <details class="live-table" id="live-table-details">
     <summary>▸ Show hour-by-hour table (240 rows)</summary>
-    <div id="live-forecast-shell" class="muted" style="padding-top: 8px;">
-      Loading…
-    </div>
+    <div id="live-forecast-shell" class="muted">Loading…</div>
   </details>
 </section>
 
-<section>
-  <h2>Active models <span class="muted" style="font-size:11px; text-transform:none; letter-spacing:0;">(top performer + 2 most recent additional)</span></h2>
-  <div class="muted" style="font-size:11px; margin-bottom: 8px;">
+<section class="region">
+  <div class="region-head"><h2>Active models <span class="by">· top performer + 2 most recent</span></h2></div>
+  <div class="caption">
     Composite skill = weighted sum of per-variable skills vs. raw EURO,
     where each MAE-based skill is <code>1 − model_MAE / raw_EURO_MAE</code>
     and surfer-F1 skill is <code>(model_F1 − raw_EURO_F1) / (1 − raw_EURO_F1)</code>
@@ -329,6 +369,7 @@
     models trained on a holdout of ≥1000 rows — small-holdout skill
     scores are too noisy to rank against year-scale evaluations.
   </div>
+  <div class="tbl-x">
   <table id="active-models-table">
     <thead><tr>
       <th>Slot</th>
@@ -341,11 +382,12 @@
     </tr></thead>
     <tbody><tr><td colspan="7" class="muted" style="text-align:center; padding:18px;">Loading…</td></tr></tbody>
   </table>
+  </div>
 </section>
 
-<section>
-  <h2>Model definitions</h2>
-  <div class="notice" style="border-left: 3px solid var(--accent); padding-left: 14px;">
+<section class="region">
+  <div class="region-head"><h2>Model definitions</h2></div>
+  <div class="notice defs">
     <b>CSC2+baseline</b> — deliberately simple, non-ML correction. Per-[buoy × lead-hour × variable]
     additive bias on top of the EURO/GFS arithmetic mean (circular mean for direction). No learned
     interactions, no time-of-year, no EURO–GFS delta. This is the floor the ML model must beat.<br><br>
@@ -360,41 +402,44 @@
   </div>
 </section>
 
-<section>
-  <h2>Table 1 · Traditional metrics
-    <span class="muted" id="t1-test-meta" style="font-size:11px; text-transform:none; letter-spacing:0;"></span></h2>
-  <div class="muted" style="font-size:11px; margin-bottom: 6px;">
+<section class="region">
+  <div class="region-head"><h2>Table 1 <span class="by">· traditional metrics</span></h2>
+    <span class="meta" id="t1-test-meta"></span></div>
+  <div class="caption">
     Each model's holdout MAE/RMSE/bias on its own training-time holdout. Best across all columns
     is highlighted green per row, worst red. Models with non-comparable holdouts (different
     time-aware splits) display as-is — the composite skill in the active-models table is the
     apples-to-apples comparison.
   </div>
+  <div class="tbl-x">
   <table id="table-traditional">
     <thead id="table-traditional-head">
       <tr><th colspan="6" class="muted" style="text-align:center;">Loading…</th></tr>
     </thead>
     <tbody id="table-traditional-body"></tbody>
   </table>
+  </div>
 </section>
 
-<section>
-  <h2>Table 2 · Surfer metrics <span class="muted" id="t2-test-meta" style="font-size:11px; text-transform:none; letter-spacing:0;"></span></h2>
-  <div class="muted" style="font-size:11px; margin-bottom: 8px;">
+<section class="region">
+  <div class="region-head"><h2>Table 2 <span class="by">· surfer metrics</span></h2>
+    <span class="meta" id="t2-test-meta"></span></div>
+  <div class="caption">
     Sensitivity / specificity / PPV / NPV for the dashboard's swell categorizer
-    applied to <b style="color:var(--fg0);">primary swell</b> predictions vs. observations.
+    applied to <b>primary swell</b> predictions vs. observations.
     Categorization uses the same <code>swell_rules.categorize</code> function the
     dashboard uses for cell coloring. <span class="cat-chip">FUN-OR-BETTER</span>
     is the combined positive class; the others stratify by individual category.
     Coloring uses an absolute 0–1 gradient (≥0.80 green, ≥0.60 light-green,
     ≥0.40 amber, ≥0.20 light-red, &lt;0.20 red), so a cell's color reflects
     its standalone value rather than its row rank. The best cell in each
-    row is bolded with a green outline.
+    row is bolded.
   </div>
   <div id="surfer-metrics-blocks"></div>
 </section>
 
-<section>
-  <h2>Archive accumulation</h2>
+<section class="region">
+  <div class="region-head"><h2>Archive accumulation</h2></div>
   <div class="notice">
     <div class="notice-kicker">Ongoing collection</div>
     CMEMS (EURO) forecast cycles are not retained by the provider — every new cycle overwrites the previous one.
@@ -403,7 +448,7 @@
     <b>The table below stays live even after training</b> so you can see how much the corpus has grown since the model
     was last trained — retrains happen when the paired-cycle count crosses meaningful thresholds.
   </div>
-  <div class="muted" style="font-size:11px; margin: 2px 0 10px;">
+  <div class="caption">
     A <b>model run</b> is one model initialization tagged by its
     <code>run_time</code> (e.g. a CMEMS EURO 00Z run on 2025-06-15).
     <b>Paired model + buoy data</b> counts init times where EURO has a
@@ -414,6 +459,7 @@
     routine single-hour NDBC dropouts without letting cycles with large
     buoy outages slip into training.
   </div>
+  <div class="tbl-x">
   <table id="archive-table">
     <thead><tr>
       <th>Buoy</th><th>Scope</th>
@@ -424,9 +470,10 @@
     </tr></thead>
     <tbody><tr><td colspan="6" class="muted" style="text-align:center; padding:20px;">Loading…</td></tr></tbody>
   </table>
+  </div>
 
-  <h3 style="margin-top:24px">Paired model + buoy data · seasonal histogram</h3>
-  <div class="muted" style="font-size:11px; margin: 0 0 8px;">
+  <h3 class="sub">Paired model + buoy data · seasonal histogram <span class="unit">distinct model runs per MM-DD</span></h3>
+  <div class="caption">
     Bar height = count of <em>distinct model runs</em> (cycle IDs) on each
     calendar day (MM-DD) that are usable as training cycles for at least
     one functional buoy — i.e. EURO has a run, GFS has a run, and some
@@ -435,54 +482,31 @@
     bar. Year-agnostic: any year's data drops into its MM-DD bucket.
     <span id="years-seen-label"></span>
   </div>
-  <div id="paired-histogram" style="width:100%;
-       border:1px solid var(--bd1); border-radius:6px; background:var(--bg1);
-       padding: 14px 16px 10px;">
-    <svg id="paired-histogram-svg" width="100%" height="180"
-         preserveAspectRatio="none"></svg>
-    <div id="paired-histogram-axis" class="muted"
-         style="font-size:10.5px; display:flex; justify-content:space-between;
-                padding-top:6px;"></div>
+  <div id="paired-histogram" class="chart-box">
+    <svg id="paired-histogram-svg" width="100%" height="180" preserveAspectRatio="none"></svg>
+    <div id="paired-histogram-axis" class="axis"></div>
   </div>
 
-  <h3 style="margin-top:20px">Individual model coverage · unpaired</h3>
-  <div class="muted" style="font-size:11px; margin: 0 0 10px;">
+  <h3 class="sub">Individual model coverage · unpaired <span class="unit">model runs per MM-DD, all years</span></h3>
+  <div class="caption">
     Each bar = count of distinct model runs on that MM-DD, summed across
     every year. No pairing requirement — these reflect raw model-run
     availability, which may outpace paired coverage when one side (e.g.
     the AWS GFS backfill) finishes ahead of the other.
   </div>
-  <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-    <div>
-      <div style="display:flex; align-items:baseline; gap:8px;">
-        <h4 style="margin:0; font-size:12px; color:var(--accent);
-                   letter-spacing:.04em;">EURO (CMEMS) · model runs</h4>
-        <span id="euro-histogram-meta" class="muted" style="font-size:10.5px;"></span>
-      </div>
-      <div id="euro-histogram" style="margin-top:6px;
-           border:1px solid var(--bd1); border-radius:6px; background:var(--bg1);
-           padding: 10px 12px 8px;">
-        <svg id="euro-histogram-svg" width="100%" height="140"
-             preserveAspectRatio="none"></svg>
-        <div id="euro-histogram-axis" class="muted"
-             style="font-size:10px; display:flex; justify-content:space-between;
-                    padding-top:4px;"></div>
+  <div class="charts">
+    <div class="chart">
+      <h3 class="sub euro">EURO (CMEMS) · model runs <span class="unit" id="euro-histogram-meta"></span></h3>
+      <div id="euro-histogram" class="chart-box">
+        <svg id="euro-histogram-svg" width="100%" height="140" preserveAspectRatio="none"></svg>
+        <div id="euro-histogram-axis" class="axis"></div>
       </div>
     </div>
-    <div>
-      <div style="display:flex; align-items:baseline; gap:8px;">
-        <h4 style="margin:0; font-size:12px; color:var(--amber);
-                   letter-spacing:.04em;">GFS (NOAA) · model runs</h4>
-        <span id="gfs-histogram-meta" class="muted" style="font-size:10.5px;"></span>
-      </div>
-      <div id="gfs-histogram" style="margin-top:6px;
-           border:1px solid var(--bd1); border-radius:6px; background:var(--bg1);
-           padding: 10px 12px 8px;">
-        <svg id="gfs-histogram-svg" width="100%" height="140"
-             preserveAspectRatio="none"></svg>
-        <div id="gfs-histogram-axis" class="muted"
-             style="font-size:10px; display:flex; justify-content:space-between;
-                    padding-top:4px;"></div>
+    <div class="chart">
+      <h3 class="sub gfs">GFS (NOAA) · model runs <span class="unit" id="gfs-histogram-meta"></span></h3>
+      <div id="gfs-histogram" class="chart-box">
+        <svg id="gfs-histogram-svg" width="100%" height="140" preserveAspectRatio="none"></svg>
+        <div id="gfs-histogram-axis" class="axis"></div>
       </div>
     </div>
   </div>
@@ -490,10 +514,23 @@
 
 </div>
 
+<div class="modal-overlay" id="prefsOverlay">
+  <div class="modal">
+    <button class="modal-close" id="prefsClose">✕</button>
+    <div class="modal-title"><span class="wave-glyph">∿</span>csc2 · more</div>
+    <a class="modal-btn" href="/csc-model">≡ MODEL NOTES</a>
+    <button class="modal-btn" id="theme-btn" type="button">◑ THEME</button>
+    <span class="modal-version">v1.13.1</span>
+  </div>
+</div>
+
 <footer class="app-footer">
-  <label for="buoy-picker" class="muted" style="font-size:11px; letter-spacing:.06em; text-transform: uppercase;">Buoy</label>
-  <select id="buoy-picker"></select>
-  <span class="footer-credit">made by <a href="https://coleheine.com" target="_blank" rel="noopener">cole</a> &amp; <a href="https://claude.com/claude-code" target="_blank" rel="noopener">claude</a></span>
+  <span class="footer-sig">made by cole and claude &copy; 2026</span>
+  <div class="footer-btns">
+    <a class="footer-btn" href="/" title="Back to the dashboard">← DASHBOARD</a>
+    <span class="footer-divider">·</span>
+    <button class="footer-btn" id="prefsBtn" title="Settings">MORE</button>
+  </div>
 </footer>
 
 <script>
@@ -874,7 +911,7 @@ function _renderSurferTables(sel) {
     });
   })();
   if (!hasAny) {
-    root.innerHTML = '<div class="muted" style="padding:14px; border:1px dashed var(--bd1); border-radius:6px;">Surfer metrics not yet computed for any selected model. Re-train with the latest <code>csc2.train</code> to populate.</div>';
+    root.innerHTML = '<div class="empty-box">Surfer metrics not yet computed for any selected model. Re-train with the latest <code>csc2.train</code> to populate.</div>';
     if (meta) meta.textContent = '';
     return;
   }
@@ -902,8 +939,8 @@ function _renderSurferTables(sel) {
   for (const cat of cats) {
     const chipColor = (cat === 'FUN_OR_BETTER') ? 'border-color:var(--accent); color:var(--accent);' : '';
     const chipLabel = (cat === 'FUN_OR_BETTER') ? 'FUN-OR-BETTER (combined)' : cat;
-    html += `<h3><span class="cat-chip" style="${chipColor}">${chipLabel}</span></h3>`;
-    html += '<table style="font-size:11.5px;"><thead><tr><th>Metric</th>';
+    html += `<h3 class="sub"><span class="cat-chip" style="${chipColor}">${chipLabel}</span></h3>`;
+    html += '<div class="tbl-x"><table><thead><tr><th>Metric</th>';
     for (const c of cols) {
       html += `<th class="num" title="${c.label}">${c.shortLabel || c.label}</th>`;
     }
@@ -932,7 +969,7 @@ function _renderSurferTables(sel) {
       }).join('');
       html += `<tr><td>${statLabel}</td>${cells}</tr>`;
     }
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
   }
   root.innerHTML = html;
 }
@@ -1051,8 +1088,8 @@ async function loadLiveForecast() {
   }).join('');
   shell.classList.remove('muted');
   shell.innerHTML = `
-    <div style="overflow-x:auto;">
-      <table style="font-size:11.5px;">
+    <div class="tbl-x">
+      <table>
         <thead><tr>${headerCols.join('')}</tr></thead>
         <tbody>${trs}</tbody>
       </table>
@@ -1394,6 +1431,28 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e =
   const btn = document.getElementById('theme-btn');
   if (btn) btn.textContent = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
 });
+
+// More modal (same shape as the dashboard's).
+document.getElementById('prefsBtn').addEventListener('click', () => document.getElementById('prefsOverlay').classList.add('open'));
+document.getElementById('prefsClose').addEventListener('click', () => document.getElementById('prefsOverlay').classList.remove('open'));
+document.getElementById('prefsOverlay').addEventListener('click', e => { if (e.target.id === 'prefsOverlay') e.target.classList.remove('open'); });
+
+// Condensed header (mobile): the header's buoy select mirrors #buoy-picker
+// both ways; body.condensed flips once the primary selector is under the
+// header. The picker is filled after the archive-status fetch, so the mirror
+// copies its options whenever they change rather than at boot.
+(function initCondensedHeader() {
+  const ps = document.getElementById('buoy-picker'), hs = document.getElementById('hdrBuoySel');
+  const mirror = () => { hs.innerHTML = ps.innerHTML; hs.value = ps.value; };
+  new MutationObserver(mirror).observe(ps, { childList: true });
+  ps.addEventListener('change', () => { hs.value = ps.value; });
+  hs.addEventListener('change', () => { ps.value = hs.value; ps.dispatchEvent(new Event('change', { bubbles: true })); });
+  const hdr = document.querySelector('.app-header');
+  const io = new IntersectionObserver(([e]) => {
+    document.body.classList.toggle('condensed', !e.isIntersecting && e.boundingClientRect.top < hdr.offsetHeight);
+  }, { rootMargin: `-${hdr.offsetHeight}px 0px 0px 0px`, threshold: 0 });
+  io.observe(document.querySelector('.controls label.primary'));
+})();
 
 // Live-table summary toggles its label to reflect open/closed state.
 document.getElementById('live-table-details')?.addEventListener('toggle', e => {

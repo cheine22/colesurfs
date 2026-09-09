@@ -451,8 +451,11 @@ UPSTREAM_BUOYS = [
 ]
 
 
+_EARTH_R_KM = 6371.0
+
+
 def haversine_km(a_lat, a_lon, b_lat, b_lon):
-    r = 6371.0
+    r = _EARTH_R_KM
     p = math.pi / 180.0
     dlat = (b_lat - a_lat) * p
     dlon = (b_lon - a_lon) * p
@@ -632,6 +635,22 @@ def fetch_euro_waves():
     return out
 
 
+def _hilo_from_series(series):
+    """Local extrema of an hourly series → high/low events, on the hour."""
+    hilo = []
+    for i in range(1, len(series) - 1):
+        a, b, c = series[i - 1]["height_m"], series[i]["height_m"], series[i + 1]["height_m"]
+        if a is None or b is None or c is None:
+            continue
+        if b >= a and b >= c and not (a == b == c):
+            hilo.append({"time": series[i]["time"], "type": "H",
+                         "height_ft": series[i]["height_ft"]})
+        elif b <= a and b <= c and not (a == b == c):
+            hilo.append({"time": series[i]["time"], "type": "L",
+                         "height_ft": series[i]["height_ft"]})
+    return hilo
+
+
 @ttl_cache(ttl_seconds=6 * 3600, skip_none=True)
 def fetch_gland_tide():
     """Hourly tide height at G-Land from Open-Meteo's global tide model,
@@ -660,23 +679,10 @@ def fetch_gland_tide():
         series.append({"time": t, "height_m": v,
                        "height_ft": round(m_to_ft(v), 1) if v is not None else None})
 
-    # Local extrema → high/low events.
-    hilo = []
-    for i in range(1, len(series) - 1):
-        a, b, c = series[i - 1]["height_m"], series[i]["height_m"], series[i + 1]["height_m"]
-        if a is None or b is None or c is None:
-            continue
-        if b >= a and b >= c and not (a == b == c):
-            hilo.append({"time": series[i]["time"], "type": "H",
-                         "height_ft": series[i]["height_ft"]})
-        elif b <= a and b <= c and not (a == b == c):
-            hilo.append({"time": series[i]["time"], "type": "L",
-                         "height_ft": series[i]["height_ft"]})
-
     heights = [s["height_m"] for s in series if s["height_m"] is not None]
     return {
         "series": series,
-        "hilo": hilo,
+        "hilo": _hilo_from_series(series),
         "range_m": round(max(heights) - min(heights), 2) if heights else None,
         "source": "Open-Meteo global tide model (no CO-OPS/IOC gauge at G-Land)",
     }
@@ -704,9 +710,11 @@ _TIDE_EPOCH = "2000-01-01T00:00"      # phase reference; any fixed instant works
 
 def _hours_since_epoch(iso_local):
     import datetime as _dt
-    a = _dt.datetime.fromisoformat(iso_local)
-    b = _dt.datetime.fromisoformat(_TIDE_EPOCH)
-    return (a - b).total_seconds() / 3600.0
+    return (_dt.datetime.fromisoformat(iso_local) - _TIDE_EPOCH_DT).total_seconds() / 3600.0
+
+
+import datetime as _dt_mod
+_TIDE_EPOCH_DT = _dt_mod.datetime.fromisoformat(_TIDE_EPOCH)
 
 
 @ttl_cache(ttl_seconds=30 * 86400, skip_none=True)
@@ -989,7 +997,6 @@ def fetch_upstream_buoys():
 
 TRANSLATE_TAU_HOURS = (12, 192)    # plausible source travel times: 0.5–8 days
 TRANSLATE_TAU_STEP = 3
-_EARTH_R_KM = 6371.0
 
 
 def _destination_point(lat, lon, bearing_deg, dist_km):
@@ -1025,11 +1032,8 @@ def translate_buoy(b, now_epoch):
     tp, dp, hs = b.get("tp_s"), b.get("dp_deg"), b.get("hs_m")
     if tp is None or dp is None or not b.get("time"):
         return None
-    try:
-        import datetime as _dt
-        t_obs = _dt.datetime.fromisoformat(
-            b["time"].replace("Z", "+00:00")).timestamp()
-    except Exception:
+    t_obs = _obs_epoch(b)
+    if t_obs is None:
         return None
 
     cg_kmh = 9.81 * tp / (4 * math.pi) * 3.6
@@ -1543,10 +1547,9 @@ HISTORY_DAYS = 14
 def fetch_gland_history(days: int = HISTORY_DAYS):
     """The last `days` of observed-ish conditions at G-Land.
 
-    Nothing is archived locally — Open-Meteo serves its own past analysis for
-    both the wave model and wind, and tide comes from the harmonic fit, so a
-    look-back is just three calls. Rows come back in the SAME shape as the
-    forecast timeline so the table renderer needs no special case.
+    GFS and wind need no archive — Open-Meteo serves its own past analysis —
+    and tide comes from the harmonic fit. Rows come back in the SAME shape as
+    the forecast timeline so the table renderer needs no special case.
 
     ECMWF-WAM comes from the rolling local archive (gland_euro_archive), not
     from a live call: waves_cmems is pinned to the forecast window and CMEMS
@@ -1573,17 +1576,7 @@ def fetch_gland_history(days: int = HISTORY_DAYS):
         tide_series = predict_tide_series(ref[0]["time"][:10], ref[-1]["time"][:10])
     tide = {"series": tide_series or []}
     if tide_series:
-        hilo = []
-        for i in range(1, len(tide_series) - 1):
-            a, b, c = (tide_series[i - 1]["height_m"], tide_series[i]["height_m"],
-                       tide_series[i + 1]["height_m"])
-            if b >= a and b >= c and not (a == b == c):
-                hilo.append({"time": tide_series[i]["time"], "type": "H",
-                             "height_ft": tide_series[i]["height_ft"]})
-            elif b <= a and b <= c and not (a == b == c):
-                hilo.append({"time": tide_series[i]["time"], "type": "L",
-                             "height_ft": tide_series[i]["height_ft"]})
-        tide["hilo"] = hilo
+        tide["hilo"] = _hilo_from_series(tide_series)
 
     timeline = _build_timeline(gfs, euro, wind, tide)
     return {
@@ -1709,19 +1702,7 @@ def fill_tide_gaps(tide):
         # Rebuild hilo in the SAME shape fetch_gland_tide emits (full ISO
         # timestamps). _tide_events returns split date/clock fields for the
         # lookup tool, and feeding those to _build_timeline invents rows.
-        hilo = []
-        for i in range(1, len(series) - 1):
-            a, b, c = (series[i - 1]["height_m"], series[i]["height_m"],
-                       series[i + 1]["height_m"])
-            if a is None or b is None or c is None:
-                continue
-            if b >= a and b >= c and not (a == b == c):
-                hilo.append({"time": series[i]["time"], "type": "H",
-                             "height_ft": series[i]["height_ft"]})
-            elif b <= a and b <= c and not (a == b == c):
-                hilo.append({"time": series[i]["time"], "type": "L",
-                             "height_ft": series[i]["height_ft"]})
-        tide["hilo"] = hilo
+        tide["hilo"] = _hilo_from_series(series)
         heights = [x["height_m"] for x in series if x["height_m"] is not None]
         if heights:
             tide["range_m"] = round(max(heights) - min(heights), 2)
@@ -1912,7 +1893,7 @@ def fetch_upstream_model_swell():
 def fetch_all():
     """Everything the /gland page needs, fetched in parallel."""
     t0 = time.time()
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         jobs = {
             "gfs": pool.submit(fetch_gfs_waves),
             "euro": pool.submit(fetch_euro_waves),

@@ -48,7 +48,6 @@ def _save(rows: dict) -> None:
 
 def _prune(rows: dict) -> dict:
     """Drop anything older than the rolling window."""
-    import gland
     cutoff = (datetime.now(timezone.utc) + timedelta(hours=7)
               - timedelta(days=WINDOW_DAYS)).strftime("%Y-%m-%dT%H:%M")
     return {k: v for k, v in rows.items() if k >= cutoff}

@@ -281,11 +281,9 @@ def _decompose_pair(swden_text: str, swdir_text: str, buoy_id: str,
 def _fetch(url: str, *, attempts: int = 3, timeout: int = 60) -> str | None:
     """Fetch with bounded retries. Returns text on 200 with non-empty body,
     None otherwise. Treats HTML bodies (NDBC error pages) as failure."""
-    last_status = None
     for k in range(attempts):
         try:
             r = requests.get(url, timeout=timeout, headers=HEADERS)
-            last_status = r.status_code
             if r.status_code == 200 and r.text and not r.text.lstrip().startswith("<"):
                 return r.text
             if r.status_code in (404, 410):

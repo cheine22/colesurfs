@@ -1,20 +1,16 @@
 """
-colesurfs — Open-Meteo Marine API Fetcher (wave forecasts)
-Attempts to fetch tertiary swell partitions (_2, _3);
-falls back to base 9 variables on 400 error.
-GFS uses a fallback chain of known model identifiers (API name has changed over time).
+colesurfs — Open-Meteo Marine API Fetcher (GFS-Wave forecasts)
 
-GFS fix: correct identifier is ncep_gfswave025 (0.25° resolution suffix required).
-Previous attempts with ncep_gfswave / gfswave / gfs_wave all returned errors because
-the Open-Meteo Marine API requires the resolution suffix in the model name.
+Requests primary + secondary + tertiary swell partitions and falls back to
+the base variable set on a 400. GFS uses a fallback chain of model
+identifiers (ncep_gfswave025 is current — the Marine API requires the
+resolution suffix). All spots go out in one multi-location call.
 
-v1.3: Batch all spots into a single multi-location API call (matching wind.py pattern).
-v1.5: Open-Meteo EURO is now surfaced as "OM-EURO"; CMEMS-backed "C-EURO"
-      lives in waves_cmems.py and the /api/forecast/C-EURO route.
+EURO is NOT served from here since v1.5 — it lives in waves_cmems.py.
 """
 import requests
 from cache import ttl_cache, record_api_calls
-from config import FORECAST_DAYS, TIMEZONE, MODELS, SPOTS, m_to_ft
+from config import FORECAST_DAYS, TIMEZONE, SPOTS, m_to_ft
 from wave_common import safe_float as _safe, build_swell_components, make_wave_record
 
 MARINE_API = "https://marine-api.open-meteo.com/v1/marine"
@@ -43,18 +39,9 @@ _WAVE_VARS_BASE = [
 
 def _build_components(sw_h,  sw_p,  sw_d,
                        sw_h2, sw_p2, sw_d2,
-                       sw_h3, sw_p3, sw_d3,
-                       wh=None, wp=None, wd=None):
-    """Build swell component list (up to 2) from swell partition fields only.
-
-    v1.5: The combined-sea fallback was removed. Open-Meteo's ecmwf_wam025
-    endpoint returns null for every swell partition, so this function now
-    produces empty cells for OM-EURO in practice — the honest read of the
-    upstream product. GFS-Wave partitions still flow through normally.
-
-    `wh`, `wp`, `wd` kept in the signature for parse-site compatibility but
-    no longer consulted.
-    """
+                       sw_h3, sw_p3, sw_d3):
+    """Build swell component list (up to 2) from swell partition fields only;
+    combined-sea values ride along on the record for CSC2 only."""
     return build_swell_components([
         {"h_m": sw_h,  "p": sw_p,  "d": sw_d,  "type": "swell"},
         {"h_m": sw_h2, "p": sw_p2, "d": sw_d2, "type": "swell2"},
@@ -71,9 +58,9 @@ def _parse_response(data) -> list:
     def col(key):
         return [_safe(v) for v in hourly.get(key, [None] * n)]
 
-    # Combined wave (used only as fallback when all swell partitions are null)
-    # wave_peak_period is preferred over wave_period: peak period matches Windy/Surfline display
-    # and is the spectral peak (Tp), while wave_period is the mean period (~78% of Tp for ECMWF).
+    # Combined (total) sea — carried on the record for CSC2, never shown as
+    # swell. Open-Meteo serves no wave_peak_period for GFS-Wave (null on every
+    # row), so the combined period is the mean period.
     wh  = col("wave_height");  wp  = col("wave_period");  wp_peak = col("wave_peak_period");  wd  = col("wave_direction")
     # Swell partitions — preferred source (correct Open-Meteo naming)
     sh  = col("swell_wave_height");           sp  = col("swell_wave_period");           sd  = col("swell_wave_direction")
@@ -86,28 +73,16 @@ def _parse_response(data) -> list:
             sh[i],  sp[i],  sd[i],
             sh2[i], sp2[i], sd2[i],
             sh3[i], sp3[i], sd3[i],
-            wh[i],  wp_peak[i] or wp[i],  wd[i],   # fallback: peak period preferred over mean period
         )
         # Top-level fields come from the highest-energy swell component,
         # not the combined wave_height — consistent with what is displayed.
         primary = comps[0] if comps else None
 
-        # GFS fallback: swell partitions are absent beyond ~5 days (GFS drops them),
-        # but combined Hs/Tp remain valid. Use combined sea state rather than null.
-        # Only triggers when partitions are genuinely absent, not on fetch errors
-        # (fetch errors prevent _parse_response from being called at all).
-        if primary is None:
-            combined_h = _safe(wh[i])
-            combined_p = _safe(wp_peak[i]) or _safe(wp[i])
-            if combined_h and combined_h > 0:
-                h_ft = m_to_ft(combined_h)
-                primary = {
-                    "height_ft":     h_ft,
-                    "period_s":      round(combined_p, 1) if combined_p else None,
-                    "direction_deg": _safe(wd[i]),
-                    "energy":        round(h_ft ** 2 * combined_p, 1) if (h_ft and combined_p) else None,
-                    "type":          "combined",
-                }
+        # No combined-sea fallback (removed v1.13.1). Open-Meteo serves GFS
+        # partitions for the full 10 days, so an empty `comps` means every
+        # partition was 0 m — pure wind sea — and the old fallback rendered
+        # that as a FUN "primary swell" at the mean period. Honest-empty, as
+        # EURO has always been; csc2.train tags these rows "missing".
 
         # Raw direction: always include the best available swell direction even
         # when components are filtered out (period < 6s etc.), so the map can

@@ -2,8 +2,7 @@
 colesurfs — shared wave-record processing used by waves.py (Open-Meteo GFS)
 and waves_cmems.py (CMEMS EURO).
 
-Extracted in the v1.9 consolidation. Behavior is locked by
-tests/test_wave_identity.py — any change here must be an intentional,
+Behavior is locked by development-assets/tests/test_wave_identity.py — any change here must be an intentional,
 golden-diff-reviewed change, because CSC2 training data must stay
 byte-identical to dashboard rendering (see CLAUDE.md).
 """

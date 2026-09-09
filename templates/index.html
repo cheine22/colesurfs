@@ -110,14 +110,7 @@
     .header-logo { font-size: 14px; font-weight: 700; letter-spacing: .12em; color: var(--accent); display: inline-flex; align-items: center; gap: 3px; }
     .header-logo .wave-glyph { font-size: 1.5em; line-height: 1; position: relative; top: -2px; }
     .header-right { display: flex; align-items: center; gap: 18px; }
-    .live-dot { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--text2); }
-    .live-dot::before {
-      content: ''; width: 6px; height: 6px; border-radius: 50%;
-      background: var(--green); box-shadow: 0 0 5px var(--green);
-      animation: pulse 2.4s ease-in-out infinite;
-    }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-    #clock { font-size: 10px; color: var(--text2); letter-spacing: .05em; font-variant-numeric: tabular-nums; }
 
     /* Data-freshness chip — hidden when everything is fresh */
     .fresh-chip {
@@ -177,15 +170,6 @@
     .sw-btn.active.GFS  { background: var(--green-dim);   color: var(--green);  }
 
     .sep { width: 1px; height: 18px; background: var(--border0); }
-    .pill-group { display: flex; gap: 3px; }
-    .pill {
-      padding: 3px 11px; border-radius: 100px;
-      border: 1px solid var(--border1); background: var(--bg2);
-      color: var(--text1); font-family: var(--font); font-size: 10px; font-weight: 500;
-      cursor: pointer; transition: border-color .15s, background .15s, color .15s;
-    }
-    .pill:hover { border-color: var(--border2); color: var(--text0); }
-    .pill.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); }
     .btn-refresh {
       padding: 3px 12px; border-radius: 5px;
       border: 1px solid var(--border1); background: var(--bg3);
@@ -348,7 +332,8 @@
     .fun-year-cat { padding: 1px 6px; border-radius: 3px; font-size: 9.5px; font-weight: 700;
       letter-spacing: .03em; }
     .fun-year-muted { color: var(--text2); font-size: 9.5px; }
-    .fun-year-link { margin-left: auto; color: var(--accent); text-decoration: none;
+    .fun-year-drought { flex-basis: 100%; color: var(--text1); white-space: normal; line-height: 1.4; }
+    .fun-year-link { color: var(--accent); text-decoration: none;
       font-size: 9.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
     .fun-year-link:hover { text-decoration: underline; }
     td.cell.model-overview-with-history-divider {
@@ -421,7 +406,6 @@
       transition: color .2s;
     }
     .footer-sig:hover { color: var(--text2); }
-    .footer-sig .sig-accent { color: var(--accent); }
     .footer-center { display: flex; align-items: center; gap: 8px; }
     .footer-version { font-size: 8.5px; letter-spacing: .08em; color: var(--text3); font-family: var(--font); }
     .footer-btn {
@@ -436,8 +420,6 @@
     /* Leaflet overrides */
     .leaflet-container { background: var(--map-bg) !important; }
     .leaflet-control-attribution { display: none !important; }
-    /* Theme toggle button (reuses footer-btn style) */
-    #theme-btn { min-width: 64px; }
 
     /* Collision-avoidance post-pass nudge — applied to the Leaflet marker
        wrapper. Uses the standalone `translate` property so it stacks with
@@ -458,9 +440,6 @@
       transform: translateY(-50%);
     }
     .swell-arrow-sec { opacity: 0.65; }
-    /* Leader line from anchor point to a displaced label (drawn as an SVG
-       polyline in swellArrowLayer / regionWindLayer). */
-    .label-leader { stroke: var(--text2); stroke-width: 1; opacity: 0.55; fill: none; }
 
     /* ─── Regional mode ──────────────────────────────────── */
     .spot-cell.region-active { font-weight: 700; color: var(--text0); }
@@ -474,11 +453,6 @@
     }
     .wind-spot-cell a:hover { color: var(--text0); background: var(--bg2); }
     .region-wind-sep td { padding: 0; }
-    .region-section-label {
-      font-size: 9px; font-weight: 700; letter-spacing: .12em;
-      color: var(--text2); padding: 4px 10px 2px;
-      text-transform: uppercase;
-    }
     .wind-cell { min-width: 66px; }
     .wind-cell-inner { padding: 3px 5px; }
     .wind-line { font-size: 10px; line-height: 1.45; color: var(--text1); white-space: nowrap; }
@@ -718,9 +692,6 @@
       }
       .header-logo { font-size: 18px; }
       .header-logo .wave-glyph { font-size: 1.3em; top: -1px !important; }
-      .header-about-btn { display: inline-block !important; font-size: 9px !important; padding: 3px 10px !important; }
-      #clock { font-size: 7.5px; }
-      .live-dot { font-size: 7.5px; }
 
       /* ── Content: vertical stack, fill viewport ── */
       /* height = viewport − header(38) − scrubber(34) − bottom bar(46) − sig(21) */
@@ -804,12 +775,19 @@
         transform: translateX(calc(-1 * var(--table-tx)));
         will-change: transform;
       }
-      .table-scroll td.spot-cell,
-      .table-scroll th.th-spot {
+      .table-scroll td.spot-cell {
         /* sticky has no reference when the container has overflow-x: hidden,
            so re-implement "stick to the left edge" via a counter-translate */
         position: relative !important;
         left: auto !important;
+        transform: translateX(var(--table-tx, 0px));
+      }
+      .table-scroll th.th-spot {
+        /* Vertical sticky still works (overflow-y: auto) — only the left
+           anchor is lost, so keep top:0 and counter-translate for x. Making
+           this `relative` like the cells let the SPOT header scroll away
+           while the rest of the header row stayed pinned. */
+        position: sticky !important; top: 0; left: auto !important;
         transform: translateX(var(--table-tx, 0px));
       }
       .table-scroll::-webkit-scrollbar { display: none !important; } /* Chrome/Safari: hide scrollbar */
@@ -987,7 +965,6 @@
         letter-spacing: .08em;
         font-family: var(--font);
       }
-      .mobile-sig-text .sig-accent { color: var(--accent); }
 
       /* ── Mobile bottom bar: above sig ── */
       .mobile-bottom-bar {
@@ -1032,36 +1009,15 @@
         border-color: var(--green);
         color: var(--green);
       }
-      /* Model run info: stacked, bigger */
       .mob-meta {
         display: flex;
         flex-direction: column;
         align-items: flex-end;
         gap: 1px;
       }
-      .mob-meta-run {
-        font-size: 9.5px;
-        font-weight: 600;
-        color: var(--text1);
-        letter-spacing: .03em;
-        font-family: var(--font);
-        line-height: 1.2;
-      }
-      .mob-meta-next {
-        font-size: 8px;
-        color: var(--text2);
-        letter-spacing: .03em;
-        font-family: var(--font);
-        line-height: 1.2;
-      }
-      /* Hide old sig inside mob-meta */
-      .mob-meta-sig { display: none !important; }
 
-      /* Mobile: swap PREFERENCES (header) ↔ model-run-tag (bottom bar).
-         Header gets the stacked run + next-run readout (mirroring the
-         original bottom-bar styling — same fonts, same muted next color);
-         bottom-bar mob-meta becomes the PREFERENCES button slot. */
-      .header-about-btn { display: none !important; }
+      /* Mobile: the header carries the stacked run + next-run readout and
+         the bottom-bar mob-meta slot holds the MORE button. */
       .header-mob-meta {
         display: flex !important;
         flex-direction: column;
@@ -1078,7 +1034,6 @@
         letter-spacing: .03em;
         font-family: var(--font); line-height: 1.2;
       }
-      #mob-run-tag, #mob-next-tag { display: none !important; }
       .mob-pref-btn {
         display: inline-block !important;
         background: var(--bg1); color: var(--text1);
@@ -1165,7 +1120,6 @@
     /* Make logo tappable */
     .header-logo { cursor: pointer; }
 
-    /* ── Toast notification ─────────────────────────────────── */
     /* ── Buoy history popup ──────────────────────────────────── */
     .buoy-popup-overlay {
       display: none; position: fixed; inset: 0; z-index: 2000;
@@ -1278,14 +1232,6 @@
     .buoy-popup-tooltip .tt-comp { color: var(--accent); }
 
     /* ── Mobile ABOUT button ───────────────────────────────── */
-    .header-about-btn {
-      display: none;   /* shown only on mobile via media query */
-      background: none; border: 1px solid var(--border1); border-radius: 5px;
-      color: var(--text2); font-size: 8px; font-family: var(--font);
-      letter-spacing: .1em; font-weight: 600; padding: 2px 8px;
-      cursor: pointer; transition: color .15s, border-color .15s;
-    }
-    .header-about-btn:hover { color: var(--accent); border-color: var(--accent); }
     /* Mobile-swap defaults — both elements live in the DOM but stay hidden
        on desktop; the @media (max-width:600px) block enables them. */
     .header-mob-meta { display: none; }
@@ -1299,10 +1245,11 @@
       padding: 16px;
     }
     .about-modal-overlay.open { display: flex; }
+    /* Phones: centred in the lower part of the screen — reachable, not a sheet. */
     @media (max-width: 600px) {
       .about-modal-overlay.open {
-        align-items: flex-start; justify-content: flex-start;
-        padding: 56px 12px 12px 12px;
+        align-items: center; justify-content: center;
+        padding: 18vh 12px calc(12px + env(safe-area-inset-bottom));
       }
     }
     .about-modal {
@@ -1353,29 +1300,14 @@
     .about-version {
       font-size: 8.5px; letter-spacing: .08em; color: var(--text3);
     }
-    .toggle-row {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 10px; padding: 6px 2px; font-family: var(--font);
-      font-size: 11px; letter-spacing: .04em; color: var(--text1);
-      cursor: pointer; user-select: none;
-    }
-    /* Desktop: show toolbar toggle, hide prefs-modal toggle. Mobile: inverse. */
-    @media (min-width: 601px) { .toggle-row.toggle-history { display: none; } }
+    /* Desktop: show toolbar toggle, hide the modal's history button. Mobile: inverse. */
+    @media (min-width: 601px) { .toggle-history { display: none; } }
     @media (max-width: 600px) { #desktop-history-switch,
                                  .controls-bar span.ctrl-label-history { display: none; } }
-    .toggle-row input[type="checkbox"] {
-      appearance: none; -webkit-appearance: none; width: 32px; height: 16px;
-      background: var(--bg3); border: 1px solid var(--border1); border-radius: 8px;
-      position: relative; cursor: pointer; transition: background .15s, border-color .15s;
-      margin: 0; flex-shrink: 0;
-    }
-    .toggle-row input[type="checkbox"]::after {
-      content: ''; position: absolute; top: 1px; left: 1px;
-      width: 12px; height: 12px; border-radius: 50%;
-      background: var(--text2); transition: left .15s, background .15s;
-    }
-    .toggle-row input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
-    .toggle-row input[type="checkbox"]:checked::after { left: 17px; background: var(--bg1); }
+    .more-group { display: flex; flex-direction: column; gap: 8px; }
+    .more-group a.info-modal-refresh { text-decoration: none; text-align: center; }
+    /* Side-by-side is desktop-only (shouldBeSbs); never offer it on phones */
+    @media (max-width: 600px) { #sbs-btn { display: none; } }
 
     .toast {
       position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
@@ -1419,10 +1351,7 @@
   <span class="header-logo" onclick="openInfoModal()"><span class="wave-glyph">∿</span>colesurfs</span>
   <div class="header-right">
     <span class="fresh-chip" id="fresh-chip" hidden><span id="fresh-chip-main"></span><span id="fresh-chip-detail" class="fc-detail"></span></span>
-    <button class="header-about-btn" onclick="openAboutModal()">PREFERENCES</button>
-    <!-- Mobile-only: stacked model-run-time + next-run-eta, mirrored from
-         the bottom-bar #mob-run-tag / #mob-next-tag. Swap-in for
-         PREFERENCES on ≤600px viewports. -->
+    <!-- Mobile-only: stacked model-run-time + next-run-eta (_refreshStatus). -->
     <span class="header-mob-meta" aria-hidden="true">
       <span class="header-mob-run"  id="header-mob-run-tag">—</span>
       <span class="header-mob-next" id="header-mob-next-tag"></span>
@@ -1450,8 +1379,8 @@
     <button class="sw-btn"        data-hist="on"  onclick="setShowHistory(true)">ON</button>
   </div>
   <div class="sep"></div>
-  <a class="sw-btn" href="/csc" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1); text-decoration:none; display:inline-flex; align-items:center; gap:5px;"
-     title="CSC2 forecast-correction model (beta)">CSC2 <span style="font-size:9.5px; opacity:.7; font-weight:500;">BETA</span></a>
+  <a class="sw-btn" href="/review" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1); text-decoration:none; display:inline-flex; align-items:center; gap:5px; white-space:nowrap;"
+     title="Observed conditions by region, period and season">▤ CONDITIONS REVIEW</a>
   <div class="status-bar">
     <span class="status-tag" id="model-run-tag">Run: <b>—</b></span>
     <button class="btn-refresh" onclick="refreshAll()">↺ Refresh Model Now</button>
@@ -1528,11 +1457,7 @@
     <button class="mob-btn active" id="mob-3hr" onclick="setResMobile(3)">3hr</button>
   </div>
   <div class="mob-meta">
-    <span class="mob-meta-run" id="mob-run-tag">—</span>
-    <span class="mob-meta-next" id="mob-next-tag"></span>
-    <!-- Mobile-only PREFERENCES button — swap-in for the run tag on
-         ≤600px viewports (run tag moves up to the header). -->
-    <button class="mob-pref-btn" onclick="openAboutModal()" aria-hidden="true">PREFERENCES</button>
+    <button class="mob-pref-btn" onclick="openAboutModal()" aria-hidden="true">MORE</button>
   </div>
 </div>
 
@@ -1566,27 +1491,32 @@
       <dt>Wind</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
+      <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.13.0</span>
+    <span class="info-modal-version">v1.13.1</span>
   </div>
 </div>
 
-<!-- ══ Preferences Modal ════════════════════════════════════ -->
+<!-- ══ More Modal (pages on top, settings below) ════════════ -->
 <div class="about-modal-overlay" id="about-modal-overlay" onclick="closeAboutModalOutside(event)">
   <div class="about-modal">
     <button class="about-modal-close" onclick="closeAboutModal()">✕</button>
-    <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs · preferences</div>
-    <button class="info-modal-refresh" onclick="refreshAll(); closeAboutModal()">↺ REFRESH MODEL NOW</button>
-    <a class="info-modal-refresh" href="/csc" style="text-decoration:none;text-align:center">∿ CSC (BETA)</a>
-    <button class="info-modal-refresh" id="mob-theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
-    <a class="info-modal-refresh" href="/tuner" style="text-decoration:none;text-align:center">⇞ TUNER</a>
-    <a class="info-modal-refresh" href="/gland" style="text-decoration:none;text-align:center">✈︎ G-LAND</a>
-    <a class="info-modal-refresh" href="/review" style="text-decoration:none;text-align:center">▤ CONDITIONS REVIEW</a>
-    <label class="toggle-row toggle-history">
-      <span>show historical data</span>
-      <input type="checkbox" id="pref-show-history" onchange="setShowHistory(this.checked)">
-    </label>
-    <span class="about-version">v1.13.0</span>
+    <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs · more</div>
+    <div class="about-section-title">pages</div>
+    <div class="more-group">
+      <a class="info-modal-refresh" href="/review">▤ CONDITIONS REVIEW</a>
+      <a class="info-modal-refresh" href="/gland">✈︎ G-LAND</a>
+      <a class="info-modal-refresh" href="/csc">∿ CSC (BETA)</a>
+    </div>
+    <div class="about-section-title">settings</div>
+    <div class="more-group">
+      <button class="info-modal-refresh" onclick="refreshAll(); closeAboutModal()">↺ REFRESH MODEL NOW</button>
+      <button class="info-modal-refresh" id="sbs-btn" onclick="toggleSbs()">⊞ SIDE BY SIDE</button>
+      <button class="info-modal-refresh" id="theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
+      <button class="info-modal-refresh toggle-history" id="pref-show-history" onclick="setShowHistory(localStorage['cs_show_history'] !== '1')">◷ SHOW HISTORICAL DATA</button>
+      <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
+    </div>
+    <span class="about-version">v1.13.1</span>
   </div>
 </div>
 
@@ -1622,14 +1552,10 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.13.0</span>
+    <span class="footer-version">v1.13.1</span>
   </div>
   <div class="footer-btns">
-    <button class="footer-btn" id="sbs-btn" onclick="toggleSbs()" title="Toggle side-by-side layout">⊞ SIDE BY SIDE</button>
-    <span class="footer-divider">·</span>
-    <button class="footer-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑ LIGHT</button>
-    <span class="footer-divider">·</span>
-    <button class="footer-btn" onclick="openAboutModal()" title="Preferences">PREFERENCES</button>
+    <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
   </div>
 </footer>
 
@@ -1642,7 +1568,7 @@
      layer lifecycle — canvas appended directly to overlayPane.
      setData() is fully synchronous: stop→clear→resize→init→
      start. No internal timers, no zombie layers.
-   ─ WindScheduler: thin 60ms debounce wrapper around
+   ─ WindScheduler: thin 30 ms debounce wrapper around
      WindRenderer.setData(). Prevents rapid-hover races.
    ─ _requestWind / _resubmitWind: track current wind target
      so zoom/drag events re-render without recalculating.
@@ -1653,7 +1579,7 @@
 // ═══ 0. LOADING PROGRESS ════════════════════════════════════
 const _loader = {
   _done: 0,
-  _total: 10,  // config, buoys, euro, gfs, wind, regionWind, altWind, tides, sunData, windForecast
+  _total: 10,  // interface, buoys, euro, gfs, wind, regionWind, altWind, tides, table, windForecast
   step(label) {
     this._done = Math.min(this._done + 1, this._total);
     const pct = Math.round((this._done / this._total) * 100);
@@ -1700,7 +1626,7 @@ let coastAngleLayer = null;
 // Regional mode state
 let regionMode      = null;   // null = overview; string = active buoy spot name
 let regionWindData  = {};     // { spot_name: [{time, speed_mph, ...}] }
-let regionWindAlt   = {};     // same shape, alternate model — feeds the wind dot's cross-model check
+let regionWindAlt   = {};     // same shape, alternate model — feeds the wind agreement chip's cross-model check
 let regionTideData  = {};     // { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, pct} } }
 
 // Side-by-side mode
@@ -1723,27 +1649,21 @@ const LIGHT_WIND_COLORS = [
 ];
 
 
-// ═══ 2. CLOCK ═══════════════════════════════════════════════
-
-(function tick() {
-  const el = document.getElementById('clock');
-  if (el) el.textContent =
-    new Date().toLocaleTimeString('en-US',
-      { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  setTimeout(tick, 1000);
-})();
-
-
 // ═══ 3. THEME HELPERS ═══════════════════════════════════════
 
 function _isDark() {
   return document.documentElement.getAttribute('data-theme') !== 'light';
 }
 
+// Basemap is rendered by our own server (bathy.py): flat land, depth-shaded
+// sea, nothing else. CARTO began watermarking key-less tiles in 2026-08 and
+// every key-free alternative bakes labels or land relief into the raster.
 function _tileUrl() {
-  return _isDark()
-    ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
+  return `/tiles/bathy/v1/${_isDark() ? 'dark' : 'light'}/{z}/{x}/{y}.png`;
+}
+
+function _tileOpts() {
+  return { maxZoom: 12, detectRetina: true };
 }
 
 function _colorScale() {
@@ -2239,14 +2159,7 @@ async function _refreshStatus() {
         : `<b>EURO</b> ${euroLabel} · <b>GFS</b> ${gfsLabel}`;
     }
 
-    // Mobile bottom-bar mob-meta (legacy desktop fallback path) —
-    // hidden ≤600px since we swap that slot to PREFERENCES on mobile.
-    const mobRun  = document.getElementById('mob-run-tag');
-    const mobNext = document.getElementById('mob-next-tag');
-    if (mobRun)  mobRun.textContent  = aligned ? euroLabel : `EURO ${euroLabel}`;
-    if (mobNext) mobNext.textContent = aligned ? nextLabel : `GFS ${gfsLabel}`;
-
-    // Mobile-swapped header readout (visible ≤600px). Stacked:
+    // Mobile header readout (visible ≤600px). Stacked:
     //   aligned   → "Apr 25 12Z" / "next ~3h"
     //   diverged  → "EURO Apr 24 12Z" / "GFS Apr 25 06Z"
     const headerMobRun  = document.getElementById('header-mob-run-tag');
@@ -2288,7 +2201,7 @@ function syncByTime(timeStr) {
 
   // In regional mode, buildRegionWindMarkers() drives both the map labels AND
   // the wind particles (via setSpotData).  Do NOT also queue a grid-mode
-  // _requestWind — the WindScheduler's 60 ms debounce would fire AFTER
+  // _requestWind — the WindScheduler's 30 ms debounce would fire AFTER
   // setSpotData and overwrite the correct spot-based particles with the
   // coarse overview grid, causing a visible mismatch.
   if (regionMode) {
@@ -2413,7 +2326,7 @@ async function init() {
   await loadAll();
   await wfPromise;   // wait for wind forecast before considering init complete
   // Historical data starts OFF on every fresh page load — user toggles on
-  // explicitly via the toolbar (desktop) or Preferences modal (mobile).
+  // explicitly via the toolbar (desktop) or More modal (mobile).
   // Clearing the key here means the global scroll state never carries over
   // between sessions.
   try { delete localStorage['cs_show_history']; } catch (_) {}
@@ -2670,7 +2583,7 @@ function _primaryHP(rec) {
   };
 }
 
-// Local-time day key, matching the slider's existing dayKey scheme (line ~3554).
+// Local-time day key, matching buildScrubber's dayKey scheme.
 function _dayKey(iso) {
   const d = new Date(iso.replace('T', ' '));
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -2710,25 +2623,12 @@ function computeModelOverview(spotName) {
   const _spotMeta = (CFG.spots || []).find(s => s.name === spotName);
   // For a buoy row (no buoy_region), the spot's own name is the region.
   const _region = (_spotMeta && _spotMeta.buoy_region) || spotName;
-  const _regionWindSpots = ((CFG.wind_spots) || [])
-    .filter(ws => ws.buoy_region === _region && ws.shore_normal != null);
-  const _windyTimes = new Set();  // times where ≥1 region spot is Textured+
-  if (_regionWindSpots.length && typeof regionWindData === 'object' && regionWindData) {
-    const surfable = new Set(['Glassy', 'Groomed', 'Clean', 'Textured']);
-    for (const ws of _regionWindSpots) {
-      const recs = regionWindData[ws.name] || [];
-      for (const rec of recs) {
-        if (!rec || _windyTimes.has(rec.time)) continue;
-        const cond = windCondition(rec.speed_mph, rec.direction_deg,
-                                    ws.shore_normal, rec.gust_mph);
-        if (cond && surfable.has(cond)) _windyTimes.add(rec.time);
-      }
-    }
-  }
+  const _windyTimes = regionWindData
+    ? _regionCleanWind(_region, regionWindData).surfable : new Set();
   // Honest-empty: if region wind data isn't loaded yet, skip the filter
-  // (legacy behavior — count fun+ windows by swell alone) so the column
-  // doesn't go blank during a partial load.
-  const _applyWindFilter = _regionWindSpots.length > 0 && _windyTimes.size > 0;
+  // (count fun+ windows by swell alone) so the column doesn't go blank
+  // during a partial load.
+  const _applyWindFilter = _windyTimes.size > 0;
 
   const funIdx = _swellCatIdx('FUN');
   // Per-day count of fun-or-better windows.
@@ -2911,6 +2811,13 @@ function _funYearHtml(buoyId) {
     }).join('') + '</span>';
   if (y.days_with_data < y.days_elapsed) {
     html += `<span class="fun-year-muted">${y.days_with_data} of ${y.days_elapsed} days with buoy data</span>`;
+  }
+  const dr = fd.drought;
+  if (dr) {
+    const md = iso => `${+iso.slice(5, 7)}/${+iso.slice(8, 10)}/${iso.slice(2, 4)}`;
+    html += `<span class="fun-year-drought">${dr.current_is_longest
+      ? `This is currently the longest drought between fun+ waves in the last year at <b>${dr.days}</b> days long.`
+      : `The longest drought between fun+ waves in the last year was <b>${dr.days}</b> days (${md(dr.start)}–${md(dr.end)}).`}</span>`;
   }
   return html + link;
 }
@@ -3396,35 +3303,9 @@ function buildWaveCell(r, t, extraClass = '', spotName = null) {
                 <div class="comp-line p1 null-dash"><span>—</span></div>
               </div>${chips}</td>`;
   }
-  const primaryComp   = r.components && r.components.length > 0 ? r.components[0] : null;
-  const primaryHeight = primaryComp ? primaryComp.height_ft : r.wave_height_ft;
-  const primaryPeriod = primaryComp ? primaryComp.period_s  : r.wave_period_s;
-  const [bg, fg, catName] = swellColor(primaryHeight, primaryPeriod);
-  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
-  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
-  if (r.components && r.components.length > 0) {
-    r.components.forEach((c, ci) => {
-      const cls   = ['p1','p2','p3'][ci] || 'p3';
-      const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
-      const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
-      inner += `<div class="comp-line ${cls}">
-        <span class="c-ht">${c.height_ft}</span>
-        <span>@${c.period_s ?? '?'}</span>
-        <span>${arrow}${dir}</span>
-      </div>`;
-    });
-  } else {
-    const dir   = r.wave_direction_deg != null ? toCard(r.wave_direction_deg) : '?';
-    const arrow = r.wave_direction_deg != null ? toArrow(r.wave_direction_deg) : '';
-    inner += `<div class="comp-line p1">
-      <span class="c-ht">${r.wave_height_ft}</span>
-      <span>@${r.wave_period_s ?? '?'}</span>
-      <span>${arrow}${dir}</span>
-    </div>`;
-  }
-  inner += '</div>';
+  const built = _buildSwellInner(r);
   const chips = spotName ? _agreementChips(spotName, t) : '';
-  return `<td class="${tdCls}" data-time="${t}" style="background:${bg}">${inner}${chips}</td>`;
+  return `<td class="${tdCls}" data-time="${t}" style="background:${built.bg}">${built.inner}${chips}</td>`;
 }
 
 /**
@@ -3479,18 +3360,20 @@ function windCondColor(cond) {
               : { bg: '#e7e3e0', text: '#6f656a' };
 }
 
-// ── Region clean-wind gate ──────────────────────────────────
-// Reports whether ≥1 spot in a buoy's region rates Glassy/Groomed/Clean at
-// each hour (per the active wind model). Drives the white wind dot. Cached
-// per wind-data object (WeakMap) so model switches / refreshes / snapshot
-// loads invalidate automatically.
+// ── Region wind gate ────────────────────────────────────────
+// Per region per hour, for one wind-data object: `clean` = ≥1 spot rates
+// Glassy/Groomed/Clean (wind agreement chip), `surfable` = ≥1 spot rates
+// Textured-or-better (Fun+ Days gate), `known` = any spot has a record.
+// Cached per wind-data object (WeakMap) so model switches / refreshes /
+// snapshot loads invalidate automatically.
+const _SURFABLE_WIND = new Set(['Glassy', 'Groomed', 'Clean', 'Textured']);
 const _cleanWindCache = new WeakMap();
 function _regionCleanWind(region, data = regionWindData) {
   let byRegion = _cleanWindCache.get(data);
   if (!byRegion) { byRegion = {}; _cleanWindCache.set(data, byRegion); }
   let entry = byRegion[region];
   if (entry) return entry;
-  entry = { clean: new Set(), known: new Set() };
+  entry = { clean: new Set(), surfable: new Set(), known: new Set() };
   const spots = ((CFG && CFG.wind_spots) || [])
     .filter(ws => ws.buoy_region === region && ws.shore_normal != null);
   for (const ws of spots) {
@@ -3502,6 +3385,7 @@ function _regionCleanWind(region, data = regionWindData) {
                                   ws.shore_normal, rec.gust_mph);
       if (cond === 'Glassy' || cond === 'Groomed' || cond === 'Clean')
         entry.clean.add(rec.time);
+      if (_SURFABLE_WIND.has(cond)) entry.surfable.add(rec.time);
     }
   }
   byRegion[region] = entry;
@@ -3511,6 +3395,7 @@ function _regionCleanWind(region, data = regionWindData) {
 // Tri-state region wind outcome:
 // 'solid' (≥1 clean spot) | 'hatched' (known, none clean) | null (unknown —
 // no wind record at t; fetch failed or hour outside the wind window).
+// The 'hatched' name is vestigial — there is no hatch overlay any more.
 function _windHatchState(region, t, data = regionWindData) {
   if (!region || !t || !data) return null;
   const { clean, known } = _regionCleanWind(region, data);
@@ -4261,7 +4146,7 @@ function initMap() {
     zoomControl: false, attributionControl: false,
   });
 
-  tileLayer = L.tileLayer(_tileUrl(), { maxZoom: 12, opacity: _isDark() ? 0.7 : 0.9, detectRetina: true }).addTo(map);
+  tileLayer = L.tileLayer(_tileUrl(), _tileOpts()).addTo(map);
 
   // WindRenderer — initialize BEFORE any vector layers are added to the map.
   // Canvas is appended to overlayPane first, so all SVG vector elements
@@ -4443,7 +4328,7 @@ async function enterRegionMode(spotName) {
       if (data) regionWindData = data;
     } catch(e) { console.warn('[enterRegionMode] region_wind re-fetch failed:', e); }
   }
-  // Alt-model copy only feeds the wind dot — refill in the background.
+  // Alt-model copy only feeds the wind agreement chip — refill in the background.
   if (!Object.keys(regionWindAlt).length) {
     fetch(_regionWindUrl(_altModel())).then(r => r.json())
       .then(alt => { if (alt) { regionWindAlt = alt; if (regionMode) buildTable(); } })
@@ -4599,7 +4484,7 @@ function setModel(model, btn) {
   _refreshStatus();
 
   // Always refresh regionWindData (active) AND regionWindAlt (the other
-  // model, needed by the wind dot's cross-model check) on model switch so
+  // model, needed by the wind agreement chip's cross-model check) on model switch so
   // nothing renders against stale data. Rebuild in ALL modes when it lands.
   regionWindData = {};
   regionWindAlt  = {};
@@ -4650,17 +4535,7 @@ function setModelMobile(model) {
 }
 
 function setResMobile(r) {
-  resolution = r;
-  // Sync desktop buttons
-  document.querySelectorAll('.pill-group .pill').forEach(p => p.classList.remove('active'));
-  const desktopPills = document.querySelectorAll('.pill-group .pill');
-  desktopPills.forEach(p => {
-    if ((r === 1 && p.textContent === 'Hourly') || (r === 3 && p.textContent === '3-Hour'))
-      p.classList.add('active');
-  });
-  // Sync mobile buttons
-  _syncMobileRes(r);
-  buildTable();
+  setResolution(r);   // syncs both the desktop switch and the mobile buttons
 }
 
 function _syncMobileRes(r) {
@@ -5196,7 +5071,15 @@ function closeInfoModalOutside(e) {
   if (e.target === document.getElementById('info-modal-overlay')) closeInfoModal();
 }
 
-// ═══ PREFERENCES MODAL ═══════════════════════════════════════
+// ═══ MORE MODAL ═══════════════════════════════════════
+
+function _syncHistoryBtn(on) {
+  const b = document.getElementById('pref-show-history');
+  if (b) b.textContent = on ? '◷ HIDE HISTORICAL DATA' : '◷ SHOW HISTORICAL DATA';
+}
+function _themeLabel(theme) {
+  return theme === 'light' ? '◑ SWITCH TO DARK MODE' : '◑ SWITCH TO LIGHT MODE';
+}
 
 function setShowHistory(val) {
   const on = !!val;
@@ -5207,17 +5090,14 @@ function setShowHistory(val) {
     document.querySelectorAll('#desktop-history-switch .sw-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.hist === (on ? 'on' : 'off'));
     });
-    const cbq = document.getElementById('pref-show-history');
-    if (cbq) cbq.checked = on;
+    _syncHistoryBtn(on);
     return;
   }
   // Sync desktop toolbar toggle
   document.querySelectorAll('#desktop-history-switch .sw-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.hist === (on ? 'on' : 'off'));
   });
-  // Sync prefs-modal checkbox
-  const cb = document.getElementById('pref-show-history');
-  if (cb) cb.checked = on;
+  _syncHistoryBtn(on);
   // Anchor the rebuild on the model-overview (Fun+ Days) column so that
   // toggling history doesn't appear to jump the viewport — the target column
   // stays at the same screen x after 80 historical cells are added/removed
@@ -5235,7 +5115,7 @@ function setShowHistory(val) {
     _markExpectedScroll(ts);
   }
   // History flips change region_wind's past_days window — needed by the
-  // region-mode wind strip AND the overview wind dot (both active + alt
+  // region-mode wind strip AND the wind agreement chip (both active + alt
   // models) — plus tides' window in Regional Mode. Re-fetch so historical
   // columns have records to render against (and drop the extra payload on
   // flip-off).
@@ -5313,14 +5193,8 @@ function _sliderResetToNow() {
   _updateSliderLabel('LIVE');
 }
 
-// Retained for callers that want a raw pct; after the buoy-view refactor
-// the only real consumer is post-build initialisation which just calls
-// _sliderResetToNow() directly below.
-function _sliderDefaultPct() { return 0; }
-
 function openAboutModal() {
-  const cb = document.getElementById('pref-show-history');
-  if (cb) cb.checked = localStorage['cs_show_history'] === '1';
+  _syncHistoryBtn(localStorage['cs_show_history'] === '1');
   document.getElementById('about-modal-overlay').classList.add('open');
 }
 function closeAboutModal() {
@@ -5543,7 +5417,7 @@ function _drawBuoyChartTop(ctx, canvas) {
   ctx.textAlign = 'center';
   ctx.fillStyle = textColor;
   ctx.font = '8px JetBrains Mono';
-  ctx.fillText('energy (ft·s²)', 0, 0);
+  ctx.fillText('energy (ft²·s)', 0, 0);
   ctx.restore();
 
   // X-axis: day boundaries
@@ -5596,8 +5470,8 @@ function _drawBuoyChartTop(ctx, canvas) {
 // scrubs through time. Mirrors the per-bin formula in
 // _drawBuoySpectrum exactly: energy = H_bin × T², where
 // H_bin = 4·√(E·Δf)·3.28084 (ft per frequency bin) and T = 1/freq (s).
-// Units: ft·s² (a relative wave-energy index — surfer-meaningful, not a
-// physical power flux). Matches the H × T² convention used everywhere
+// Units: ft²·s (∝ deep-water wave power, the convention Surfline's energy
+// figure follows). Matches the H² × T convention used everywhere
 // else (buoy.py:_spectral_components, _parse, fetch_buoy_history).
 function _computeSpectrumMaxFlux(records) {
   let maxE = 0;
@@ -5617,7 +5491,7 @@ function _computeSpectrumMaxFlux(records) {
       else if (i === bins.length - 1)   df = Math.abs(bins[i].freq - bins[i - 1].freq);
       else                              df = Math.abs(bins[i + 1].freq - bins[i - 1].freq) / 2;
       const h_ft = 4 * Math.sqrt(Math.max(0, bins[i].energy) * df) * 3.28084;
-      const e_idx = h_ft * bins[i].period * bins[i].period;
+      const e_idx = h_ft * h_ft * bins[i].period;
       if (e_idx > maxE) maxE = e_idx;
     }
   }
@@ -5625,7 +5499,7 @@ function _computeSpectrumMaxFlux(records) {
 }
 
 // Walk all records and pick the component (single swell partition) with
-// the largest energy proxy. Energy is defined as H × T² across the
+// the largest energy proxy. Energy is defined as H² × T across the
 // codebase (in buoy.py:_spectral_components and _parse), so a long-
 // period groundswell can outrank a same-Hs short-period windswell. The
 // fallback formula here mirrors that convention for any record whose
@@ -5638,7 +5512,7 @@ function _findMaxEnergyComponent(records) {
       if (c == null) continue;
       const e = (c.energy != null) ? c.energy
               : (c.height_ft != null && c.period_s != null
-                  ? c.height_ft * c.period_s * c.period_s : null);
+                  ? c.height_ft * c.height_ft * c.period_s : null);
       if (e == null) continue;
       if (!best || e > best._sortEnergy) best = { ...c, _sortEnergy: e, _ts: r.timestamp };
     }
@@ -5690,11 +5564,11 @@ function _drawBuoySpectrum(ctx, canvas, record) {
   }
 
   // Per-bin frequency width Δf (Hz) via centred-difference, then map
-  // the Y axis to a *wave-energy index* per bin = H × T². This matches
-  // the H × T² convention used everywhere else in the codebase
+  // the Y axis to a *wave-energy index* per bin = H² × T. This matches
+  // the H² × T convention used everywhere else in the codebase
   // (buoy.py:_spectral_components, _parse, fetch_buoy_history). Per
-  // bin: H_bin = 4·√(E·Δf) (m), then ×3.28084 → ft; energy index = H × T²
-  // in ft·s². Heavier weighting on period than the previous wave-energy-
+  // bin: H_bin = 4·√(E·Δf) (m), then ×3.28084 → ft; energy index = H² × T
+  // in ft²·s. Wave-power weighting, the same proxy the models and buoy-
   // flux formulation (which used H² × T) — a 10 s groundswell now
   // dominates a 7 s windswell of similar Hs even more strongly.
   for (let i = 0; i < bins.length; i++) {
@@ -5705,7 +5579,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     else                              df = Math.abs(bins[i + 1].freq - bins[i - 1].freq) / 2;
     bins[i].df = df;
     const h_ft = 4 * Math.sqrt(Math.max(0, bins[i].energy) * df) * 3.28084;
-    bins[i].energy_idx = h_ft * bins[i].period * bins[i].period;  // H × T² (ft·s²)
+    bins[i].energy_idx = h_ft * h_ft * bins[i].period;  // H² × T (ft²·s)
   }
 
   // Default x-axis: 0s → 22s. Extend only when a bin (or a decomposed
@@ -5757,7 +5631,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     ctx.fillText(`${p}s`, x, H - padBottom + 12);
   });
 
-  // Line + fill — Y plotted as per-bin wave-energy index = H × T² (ft·s²).
+  // Line + fill — Y plotted as per-bin wave-energy index = H² × T (ft²·s).
   const dark = _isDark();
   const lineColor = dark ? style.getPropertyValue('--text0') : '#333';
   ctx.beginPath();
@@ -5794,7 +5668,7 @@ function _drawBuoySpectrum(ctx, canvas, record) {
       if (c.period_s == null) return;
       const p = c.period_s;
       if (p < minP || p > maxP) return;
-      // Interpolate per-bin wave-energy index (H × T²) at this period.
+      // Interpolate per-bin wave-energy index (H² × T) at this period.
       let fluxAt = 0;
       for (let i = 0; i < bins.length - 1; i++) {
         const a = bins[i], b = bins[i + 1];
@@ -5862,18 +5736,18 @@ function _drawBuoySpectrum(ctx, canvas, record) {
     });
   }
 
-  // y-axis label — wave-energy index per bin = H × T² (ft·s²).
+  // y-axis label — wave-energy index per bin = H² × T (ft²·s).
   ctx.save();
   ctx.translate(10, padTop + ch / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.textAlign = 'center';
   ctx.fillStyle = textColor;
   ctx.font = '8px JetBrains Mono';
-  ctx.fillText('wave energy (ft·s²)', 0, 0);
+  ctx.fillText('wave energy (ft²·s)', 0, 0);
   ctx.restore();
 
   // y-axis tick labels at 1/4, 1/2, 3/4, full max so the user can read
-  // the H × T² value of a peak directly off the chart.
+  // the H² × T value of a peak directly off the chart.
   ctx.fillStyle = textColor;
   ctx.font = '8px JetBrains Mono';
   ctx.textAlign = 'left';
@@ -6206,18 +6080,14 @@ window.addEventListener('pageshow', (e) => { if (e.persisted) _softRefresh(); })
 function _updateTileLayer() {
   if (!map) return;
   if (tileLayer) { map.removeLayer(tileLayer); tileLayer = null; }
-  tileLayer = L.tileLayer(_tileUrl(), { maxZoom: 12, opacity: _isDark() ? 0.7 : 0.9, detectRetina: true }).addTo(map);
+  tileLayer = L.tileLayer(_tileUrl(), _tileOpts()).addTo(map);
 }
 
 function toggleTheme() {
   const next = _isDark() ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('wave-theme', next);
-  const label = next === 'light' ? '◑ DARK' : '◑ LIGHT';
-  const deskBtn = document.getElementById('theme-btn');
-  const mobBtn  = document.getElementById('mob-theme-btn');
-  if (deskBtn) deskBtn.textContent = label;
-  if (mobBtn)  mobBtn.textContent  = label;
+  document.getElementById('theme-btn').textContent = _themeLabel(next);
   _updateTileLayer();
   // Update WindRenderer color scale for new theme, then restart
   WindRenderer.setColors(_colorScale());
@@ -6234,8 +6104,6 @@ function toggleTheme() {
 
 
 // ═══ 21. SIDE-BY-SIDE MODE ══════════════════════════════════
-
-const SBS_RATIO_THRESHOLD = 1.4;
 
 function shouldBeSbs() {
   if (window.innerWidth <= 600) return false;   // never SBS on mobile
@@ -6364,11 +6232,7 @@ function buoyUpdateHtml(buoyRecord) {
   const sysPref = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   const theme   = saved || (_devHost ? 'light' : sysPref);
   document.documentElement.setAttribute('data-theme', theme);
-  const label = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
-  const btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = label;
-  const mobBtn = document.getElementById('mob-theme-btn');
-  if (mobBtn) mobBtn.textContent = label;
+  document.getElementById('theme-btn').textContent = _themeLabel(theme);
 })();
 
 // Track system preference changes at runtime (only when no saved override).
@@ -6378,11 +6242,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e =
       || location.hostname.endsWith('.local')) return;   // dev stays on light
   const theme = e.matches ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', theme);
-  const label = theme === 'light' ? '◑ DARK' : '◑ LIGHT';
-  const btn = document.getElementById('theme-btn');
-  if (btn) btn.textContent = label;
-  const mobBtn = document.getElementById('mob-theme-btn');
-  if (mobBtn) mobBtn.textContent = label;
+  document.getElementById('theme-btn').textContent = _themeLabel(theme);
   _updateTileLayer();
   buildLegend();
   buildWindScale();

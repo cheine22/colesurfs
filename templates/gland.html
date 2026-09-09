@@ -55,12 +55,15 @@
     }
 
     html, body { min-height:100vh; background:var(--bg0); color:var(--text0);
-                 font-family:var(--font); font-size:13px;
-                 max-width:100%; overflow-x:hidden; }
+                 font-family:var(--font); font-size:13px; max-width:100%; }
+    /* overflow-x on <html> propagates to the viewport; on <body> it would make
+       body its own scroll container and silently break the sticky header. */
+    html { overflow-x:hidden; }
+    body { overflow-x:clip; }
 
     /* ─── Header ─── */
     /* Matches the main dashboard header exactly — same metrics, same accent
-       logo, same PREFERENCES-style buttons. */
+       logo, same MORE-style buttons. */
     .app-header { position:sticky; top:0; z-index:800; background:var(--bg1);
       border-bottom:1px solid var(--border0); padding:0 24px; height:44px;
       display:flex; align-items:center; justify-content:space-between; }
@@ -69,8 +72,10 @@
       color:var(--accent); display:inline-flex; align-items:center; gap:3px;
       text-decoration:none; cursor:pointer; }
     .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+    /* Crumb in the reef teal rather than text1 — the one header cue that this
+       page is off the main dashboard's data spine. */
     .header-crumb { font-size:14px; font-weight:700; letter-spacing:.12em;
-                    color:var(--gl); }
+                    color:var(--gl); white-space:nowrap; }
     .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:5px; }
     .header-right { display:flex; align-items:center; gap:18px; min-width:0; }
     .header-left { min-width:0; }
@@ -84,19 +89,23 @@
       .app-header { height:38px; padding:0 14px; }
       .header-logo { font-size:15px; letter-spacing:.08em; }
       .header-logo .wave-glyph { font-size:1.3em; top:-1px; }
+      .header-crumb { font-size:11px; }
       .header-right { gap:10px; }
       .live-dot { font-size:7.5px; }
       .zone-clock { font-size:8px; gap:4px; }
-      .zone-clock b { font-size:7.5px; }
+      /* The crumb already says G-LAND; the clock's label would repeat it. */
+      .zone-clock b { display:none; }
       .zone-clock.ny { display:none; }
     }
 
 
-    /* ─── Modals — same shape as the main dashboard's preferences ─── */
+    /* ─── Modals — same shape as the main dashboard's More modal ─── */
     .modal-overlay { position:fixed; inset:0; z-index:900; display:none;
       align-items:center; justify-content:center; background:rgba(0,0,0,.62);
       backdrop-filter:blur(2px); padding:20px; }
     .modal-overlay.open { display:flex; }
+    @media (max-width:600px) { .modal-overlay {
+      padding:18vh 12px calc(12px + env(safe-area-inset-bottom)); } }
     .modal { position:relative; background:var(--bg1); border:1px solid var(--border1);
       border-radius:12px; padding:22px 24px; min-width:260px;
       display:flex; flex-direction:column; gap:9px;
@@ -115,6 +124,7 @@
       text-decoration:none; text-align:center; transition:color .15s, border-color .15s; }
     .modal-btn:hover { color:var(--gl); border-color:var(--gl); }
     .modal-btn.inline { padding:5px 12px; }
+    .modal-version { font-size:8.5px; letter-spacing:.08em; color:var(--text3); margin-top:4px; }
 
     .tide-range { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
     .tide-range label { font-size:10px; color:var(--text2); letter-spacing:.06em;
@@ -125,11 +135,12 @@
     .tide-note { font-size:9.5px; color:var(--text3); margin:2px 0 6px; }
     table.tidetbl { width:100%; border-collapse:collapse; font-size:11px;
                     font-variant-numeric:tabular-nums; }
-    table.tidetbl th { text-align:left; font-size:9px; letter-spacing:.1em;
-      text-transform:uppercase; color:var(--text2); font-weight:600;
-      padding:5px 8px; border-bottom:1px solid var(--border1); }
+    table.tidetbl th { text-align:left; font-size:8.5px; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--text3); font-weight:600;
+      padding:4px 8px; border-bottom:1px solid var(--border1); }
     table.tidetbl td { padding:5px 8px; border-bottom:1px solid var(--border0);
                        color:var(--text1); }
+    table.tidetbl tbody tr:last-child td { border-bottom:0; }
     table.tidetbl td.d { font-weight:600; color:var(--text0); white-space:nowrap; }
     .tev { display:inline-block; margin-right:12px; white-space:nowrap; }
     .tev b { font-weight:700; }
@@ -141,68 +152,42 @@
       background:var(--green); box-shadow:0 0 5px var(--green);
       animation:pulse 2.4s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-    #clock { font-size:10px; color:var(--text2); letter-spacing:.05em;
-             font-variant-numeric:tabular-nums; }
-    .icon-btn { background:none; border:1px solid var(--border1); border-radius:5px;
-      color:var(--text2); font-size:8px; font-family:var(--font);
-      letter-spacing:.1em; font-weight:600; padding:2px 8px; cursor:pointer;
-      transition:color .15s, border-color .15s; text-decoration:none;
-      display:inline-flex; align-items:center; }
-    .icon-btn:hover { color:var(--accent); border-color:var(--accent); }
+    /* --gap is the page's single vertical rhythm: header→first panel, between
+       panels, and last panel→footer are all exactly this. */
+    :root { --gap:18px; --footer-h:38px; }
+    .wrap { max-width:1500px; margin:0 auto;
+      padding:var(--gap) 20px calc(var(--footer-h) + var(--gap) + env(safe-area-inset-bottom)); }
 
-    .wrap { max-width:1500px; margin:0 auto; padding:18px 20px 80px; }
-
-    /* ─── Footer — matches the main dashboard, minus side-by-side ─── */
-    .app-footer {
-      position:fixed; bottom:0; left:0; right:0; z-index:800;
+    /* ─── Footer — same shape as the dashboard / review pages ─── */
+    .app-footer { position:fixed; bottom:0; left:0; right:0; z-index:800;
       background:var(--bg1); border-top:1px solid var(--border0);
-      padding:0 24px; height:38px;
-      display:flex; align-items:center; justify-content:space-between;
-      user-select:none;
-    }
-    .footer-sig { font-size:10px; letter-spacing:.18em; color:var(--text3);
-                  transition:color .2s; }
-    .footer-sig:hover { color:var(--text2); }
-    .footer-center { display:flex; align-items:center; gap:8px; }
-    .footer-version { font-size:8.5px; letter-spacing:.08em; color:var(--text3);
-                      font-family:var(--font); }
+      padding:0 24px env(safe-area-inset-bottom); height:calc(var(--footer-h) + env(safe-area-inset-bottom));
+      display:flex; align-items:center; justify-content:space-between; user-select:none; }
+    .footer-sig { font-size:10px; letter-spacing:.18em; color:var(--text3); }
     .footer-btns { display:flex; align-items:center; gap:10px; }
     .footer-divider { color:var(--text3); font-size:12px; }
-    .footer-btn { padding:3px 11px; border:1px solid var(--border1);
-      border-radius:5px; background:transparent; color:var(--text3);
-      font-family:var(--font); font-size:10px; letter-spacing:.1em;
-      cursor:pointer; transition:color .15s, border-color .15s; }
+    .footer-btn { padding:3px 11px; border:1px solid var(--border1); border-radius:5px;
+      background:transparent; color:var(--text3); font-family:var(--font); font-size:10px;
+      letter-spacing:.1em; cursor:pointer; text-decoration:none; display:inline-flex;
+      align-items:center; transition:color .15s, border-color .15s; }
     .footer-btn:hover { color:var(--gl); border-color:var(--gl); }
-    /* Mobile: mirrors the main dashboard's split bottom — a 46 px bar of
-       controls, with the signature as its own centred 21 px strip beneath it.
-       Same heights, padding, fonts and z-indices as .mobile-bottom-bar /
-       .mobile-sig there, so the signature clears the phone's rounded corners
-       and home indicator the same way. */
+    .footer-btn:focus-visible, .modal-btn:focus-visible, .modal-close:focus-visible,
+    .tg:focus-visible, .map-btn:focus-visible { outline:1px solid var(--gl); outline-offset:2px; }
     @media (max-width:600px) {
-      .app-footer {
-        bottom:21px; height:46px; padding:0 14px; gap:6px;
-        border-top:1px solid var(--border0); z-index:200;
-      }
-      .footer-sig {
-        position:fixed; left:0; right:0; bottom:0; z-index:201;
-        height:21px; display:flex; align-items:flex-start;
-        justify-content:center; padding-top:1px; background:var(--bg1);
-        font-size:8px; letter-spacing:.08em; color:var(--text3);
-      }
-      .footer-center { order:1; }
-      .footer-btns { order:2; gap:6px; }
-      .footer-version { font-size:8px; }
-      .footer-btn { padding:4px 10px; font-size:9px; letter-spacing:.06em; }
-      .footer-divider { display:none; }
-      /* Clear the 46 px bar + 21 px strip. */
-      .wrap { padding-bottom:88px; }
+      :root { --gap:12px; --footer-h:46px; }
+      .wrap { padding-left:10px; padding-right:10px; }
+      /* Buttons centred and inset from the phone's curved corners. */
+      .app-footer { justify-content:center;
+        padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)); }
+      .footer-sig { display:none; }
     }
 
 
     /* ─── Section shell ─── */
-    .panel { background:var(--bg1); border:1px solid var(--border0);
-             border-radius:10px; margin-bottom:16px; overflow:hidden; }
-    .panel-head { padding:11px 15px; border-bottom:1px solid var(--border0);
+    .panel { background:var(--bg1); border:1px solid var(--border1);
+             border-radius:10px; margin-bottom:var(--gap); overflow:hidden; }
+    .wrap > .panel:last-child { margin-bottom:0; }
+    .panel-head { padding:11px 16px; border-bottom:1px solid var(--border0);
       display:flex; align-items:center; justify-content:space-between; gap:12px;
       flex-wrap:wrap; }
     .panel-title { font-size:11px; font-weight:700; letter-spacing:.14em;
@@ -210,13 +195,13 @@
     .panel-title .dot { color:var(--gl); }
     .panel-sub { font-size:10.5px; color:var(--text2); font-weight:400;
                  letter-spacing:.02em; text-transform:none; }
-    .panel-body { padding:15px; }
+    .panel-body { padding:14px 16px; }
+    @media (max-width:600px) {
+      .panel-head { padding:10px 12px; }
+      .panel-body { padding:12px; }
+    }
 
     /* ─── Hero ─── */
-    .hero { display:grid; grid-template-columns:1.15fr .85fr; gap:16px;
-            margin-bottom:16px; }
-    @media (max-width:1040px){ .hero{ grid-template-columns:1fr; } }
-
     .hero-title { font-size:26px; font-weight:700; letter-spacing:.04em;
                   margin-bottom:2px; }
     .hero-title .gl { color:var(--gl); }
@@ -303,9 +288,7 @@
       line-height:1.6; pointer-events:none; }
     html[data-theme="light"] .map-legend { background:rgba(255,255,255,.88); color:#484860; }
 
-    /* ─── The point schematic ─── */
-    .reef-wrap { position:relative; }
-    .reef-svg { width:100%; height:auto; display:block; }
+    /* ─── The point ─── */
     /* Section cards carry PREFERRED conditions only — no live rating, no
        wind. What the section wants, not what it's doing. */
     .sec-row { display:grid; gap:9px; margin-top:12px;
@@ -330,24 +313,6 @@
                  font-size:8.5px; }
     .pref b { color:var(--text1); font-weight:600; }
     .pref b em { font-style:normal; color:var(--gl); }
-
-    .sec-detail { margin-top:12px; background:var(--bg2); border:1px solid var(--border0);
-      border-radius:8px; padding:13px 14px; font-size:11.5px; line-height:1.65;
-      color:var(--text1); }
-    .sec-detail h4 { font-size:12px; color:var(--text0); margin-bottom:6px;
-                     letter-spacing:.04em; }
-    .sec-detail .kv { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
-    .kvi { background:var(--bg3); border-radius:5px; padding:3px 8px; font-size:10px;
-           color:var(--text1); }
-    .kvi b { color:var(--gl); font-weight:600; }
-
-    /* ─── Compass ─── */
-    .compass-grid { display:grid; grid-template-columns:auto 1fr; gap:18px;
-                    align-items:center; }
-    @media (max-width:700px){ .compass-grid{ grid-template-columns:1fr; } }
-    .compass-legend { font-size:11px; line-height:1.8; color:var(--text1); }
-    .compass-legend .sw { display:inline-block; width:10px; height:10px;
-      border-radius:2px; margin-right:7px; vertical-align:-1px; }
 
     /* ─── Forecast table ─── */
     .tbl-scroll { overflow-x:auto; }
@@ -386,7 +351,7 @@
        first, then reads down. */
     .c-pd { opacity:.72; font-weight:600; }
     .c-dir { opacity:.9; font-weight:600; font-size:9.5px; }
-    /* H·T² — the energy proxy, on its own line under the reading. */
+    /* H²·T — the energy proxy, on its own line under the reading. */
     /* Inline energy chart: one bar per cell, scaled across the visible row so
        the shape of the swell's build and fade reads at a glance. */
     /* Energy chart lives in its own row so the bars have the height to make
@@ -466,12 +431,14 @@
     }
 
     /* ─── Upstream ─── */
-    table.up { width:100%; border-collapse:collapse; font-size:11px; }
-    table.up th { text-align:left; font-size:9.5px; letter-spacing:.1em;
-      text-transform:uppercase; color:var(--text2); font-weight:600;
-      padding:6px 9px; border-bottom:1px solid var(--border1); }
-    table.up td { padding:7px 9px; border-bottom:1px solid var(--border0);
-                  font-variant-numeric:tabular-nums; }
+    table.up { width:100%; border-collapse:collapse; font-size:10.5px;
+               font-variant-numeric:tabular-nums; }
+    table.up th { text-align:left; font-size:8.5px; letter-spacing:.1em;
+      text-transform:uppercase; color:var(--text3); font-weight:600;
+      padding:4px 8px; border-bottom:1px solid var(--border1); white-space:nowrap; }
+    table.up td { padding:5px 8px; border-bottom:1px solid var(--border0);
+                  color:var(--text1); white-space:nowrap; }
+    table.up tbody tr:last-child td { border-bottom:0; }
     table.up tr:hover td { background:var(--bg2); }
     .site { font-weight:600; color:var(--text0); }
     .aim { display:inline-block; padding:1px 6px; border-radius:4px; font-size:9.5px; }
@@ -562,18 +529,9 @@
     .card li .num { color:var(--gl); font-weight:700; }
     .card p { font-size:11.5px; line-height:1.72; color:var(--text1); }
 
-    .dl { display:grid; grid-template-columns:auto 1fr; gap:5px 12px; font-size:11.5px; }
-    .dl dt { color:var(--text2); }
-    .dl dd { color:var(--text0); font-weight:600; }
-
     .srcs { font-size:10px; color:var(--text2); line-height:1.9; }
     .srcs a { color:var(--text1); text-decoration:none; border-bottom:1px dotted var(--border2); }
     .srcs a:hover { color:var(--gl); }
-
-    .season { display:grid; grid-template-columns:repeat(12,1fr); gap:3px; margin-top:4px; }
-    .mo { text-align:center; border-radius:4px; padding:6px 0 5px; font-size:9px;
-          letter-spacing:.04em; }
-    .mo b { display:block; font-size:10.5px; font-weight:700; margin-top:2px; }
 
     .toggles { display:flex; gap:6px; align-items:center; }
     .tg { background:var(--bg2); border:1px solid var(--border1); color:var(--text2);
@@ -585,7 +543,8 @@
 
     .loading { padding:40px; text-align:center; color:var(--text2); font-size:12px; }
     .err { padding:16px; color:var(--red); font-size:11.5px; }
-    .footnote { font-size:10px; color:var(--text3); line-height:1.7; margin-top:10px; }
+    .footnote { font-size:10px; color:var(--text2); line-height:1.6; margin-top:10px; }
+    .footnote b { color:var(--text1); }
   </style>
 </head>
 <body>
@@ -593,6 +552,7 @@
 <header class="app-header">
   <div class="header-left">
     <a class="header-logo" href="/"><span class="wave-glyph">∿</span>colesurfs</a>
+    <span class="header-crumb"><span class="sep">/</span>G-LAND</span>
   </div>
   <div class="header-right">
     <span class="live-dot">LIVE</span>
@@ -601,15 +561,15 @@
   </div>
 </header>
 
-<!-- ══ Preferences modal — mirrors the main dashboard's ══ -->
+<!-- ══ More modal — mirrors the main dashboard's ══ -->
 <div class="modal-overlay" id="prefsOverlay">
   <div class="modal">
     <button class="modal-close" id="prefsClose">✕</button>
-    <div class="modal-title"><span class="wave-glyph">∿</span>G-Land · preferences</div>
+    <div class="modal-title"><span class="wave-glyph">∿</span>G-Land · more</div>
+    <a class="modal-btn" href="/gland/tuner">⇞ TUNER</a>
     <button class="modal-btn" id="refreshBtn">↺ REFRESH NOW</button>
     <button class="modal-btn" id="themeBtn">◑ THEME</button>
-    <a class="modal-btn" href="/gland/tuner">⇞ TUNER</a>
-    <a class="modal-btn" href="/">∿ MAIN DASHBOARD</a>
+    <span class="modal-version">v1.13.1</span>
   </div>
 </div>
 
@@ -786,11 +746,10 @@
 
 <footer class="app-footer">
   <span class="footer-sig">made by cole and claude &copy; 2026</span>
-  <div class="footer-center"><span class="footer-version">v1.13.0</span></div>
   <div class="footer-btns">
-    <button class="footer-btn" id="themeBtn2" title="Toggle light/dark mode">◑ THEME</button>
+    <a class="footer-btn" href="/" title="Back to the dashboard">← DASHBOARD</a>
     <span class="footer-divider">·</span>
-    <button class="footer-btn" id="prefsBtn" title="Preferences">PREFERENCES</button>
+    <button class="footer-btn" id="prefsBtn" title="Pages and settings">MORE</button>
   </div>
 </footer>
 
@@ -1482,7 +1441,7 @@ function renderTable(rows){
       if (!sw){ s += `<td class="en-cell${night}"></td>`; return; }
       const cat = categorize(sw.height_ft, sw.period_s, sw.direction_deg);
       const ink = catColors(cat)[1];
-      const e = Math.round(sw.height_ft * sw.period_s ** 2);
+      const e = Math.round(sw.height_ft ** 2 * sw.period_s);
       s += `<td class="en-cell${night}" title="${label} energy ${e}" style="color:${ink}">
         <div class="e-bar"><i style="height:${enPct(sw)}%"></i></div>
         <span class="en-val">${e}</span></td>`;
@@ -1490,7 +1449,7 @@ function renderTable(rows){
     return s + '</tr>';
   };
 
-  // Energy H*T^2, normalised across the MIN-MAX of everything visible in both
+  // Energy H²·T (as everywhere on the site), normalised across the MIN-MAX of everything visible in both
   // model rows. Scaling from zero would render a 700-1100 spread as a row of
   // near-identical full-height bars; min-max makes the build and fade legible.
   // The absolute number sits above each bar so the stretched scale can't
@@ -1499,12 +1458,12 @@ function renderTable(rows){
   use.forEach(r => ['gfs','euro'].forEach(k => {
     const sw = r[k];
     if (!sw) return;
-    const e = sw.height_ft * sw.period_s ** 2;
+    const e = sw.height_ft ** 2 * sw.period_s;
     enMax = Math.max(enMax, e); enMin = Math.min(enMin, e);
   }));
   const enSpan = enMax - enMin;
   const enPct = sw => {
-    const e = sw.height_ft * sw.period_s ** 2;
+    const e = sw.height_ft ** 2 * sw.period_s;
     if (!isFinite(enMin) || enSpan <= 0) return 60;
     return Math.round(10 + (e - enMin) / enSpan * 90);
   };

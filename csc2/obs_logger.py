@@ -87,7 +87,9 @@ def _rows_for_buoy(buoy_id: str, now_utc: str) -> list[dict]:
     if not b or b.get("_offline"):
         return []
 
-    valid_utc = _iso_z(b.get("time_utc") or b.get("obs_time_utc") or now_utc)
+    # fetch_buoy returns the NDBC observation time as "timestamp"; falling back
+    # to the wall clock stamped every row with ingest time until 2026-09.
+    valid_utc = _iso_z(b.get("timestamp") or now_utc)
     rows: list[dict] = []
     # Partition 0 = combined / "now" reading (matches pre-CSC2 convention).
     # buoy.fetch_buoy returns wave_height_ft / wave_period_s / wave_direction_deg.

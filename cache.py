@@ -1,11 +1,11 @@
 """
 colesurfs — Thread-safe TTL cache utility + API call counter.
-Drop-in replacement for @st.cache_data for Flask usage.
 
-v1.3: Added disk persistence (write-through on set, restore on startup).
-v1.5: Used by the CMEMS C-EURO fetcher for cross-restart cache continuity.
+Entries are written through to .cache/*.json and restored on startup so
+slow fetchers (CMEMS) survive a process restart.
 """
 import hashlib
+import re
 import json
 import os
 import time
@@ -58,7 +58,8 @@ class _TTLStore:
         try:
             if os.path.isdir(_DISK_CACHE_DIR):
                 for f in os.listdir(_DISK_CACHE_DIR):
-                    if f.endswith(".json"):
+                    # only our md5-named entries; .cache/ also holds lkg_forecast.json
+                    if re.fullmatch(r"[0-9a-f]{32}\.json", f):
                         os.unlink(os.path.join(_DISK_CACHE_DIR, f))
         except Exception:
             pass
@@ -194,7 +195,6 @@ def ttl_cache(ttl_seconds: int = 3600, skip_none: bool = False):
                 if result is not None or not skip_none:
                     _store.set(key, result, ttl_seconds)
                 return result
-        wrapper._cache_key_fn = lambda *a, **kw: f"{prefix}:{a}:{sorted(kw.items())}"
         return wrapper
     return decorator
 
@@ -202,6 +202,11 @@ def ttl_cache(ttl_seconds: int = 3600, skip_none: bool = False):
 def get_cache_age(key: str) -> float | None:
     """Return age in seconds for a cache key, or None if not cached."""
     return _store.get_age(key)
+
+
+def age_of(func, *args, **kwargs) -> float | None:
+    """Age of the entry a decorated fetcher would serve for these args."""
+    return _store.get_age(f"{func.__module__}.{func.__qualname__}:{args}:{sorted(kwargs.items())}")
 
 
 def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0,
@@ -263,7 +268,6 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0,
                 cached, hit = _store.get(key)
                 return cached if hit else result
 
-        wrapper._cache_key_fn = lambda *a, **kw: f"{prefix}:{a}:{sorted(kw.items())}"
         wrapper._new_run_checker = None  # set by caller
         return wrapper
     return decorator

@@ -1,4 +1,4 @@
-# colesurfs · v1.13.0
+# colesurfs · v1.13.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -16,7 +16,7 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 - **Model concordance & wind at a glance** — up to two small tinted letter chips stacked in each forecast cell's top-right corner. The **swell agreement chip** ("M") is a solid block in the *hidden* model's swell category colour (matches the cell when EURO and GFS agree, reveals the other model's rating when they diverge; shown only for poor-or-better hidden reads). The **wind agreement chip** ("W", neutral-white) appears only when *both* models agree ≥1 spot in the buoy's region has clean wind at that hour.
 - **Customized swell rating scale** — 7 hierarchical tiers (Flat / Weak / Fun / Solid / Firing / Hectic / Monstro) per swell (current or modeled) based on swell size and period
 - **At-a-glance swell forecast evaluation ("Fun+ Days", new in v1.7)** — per-region count of days in the forecast with ≥2 daytime 3-hour windows where *both* models rate the primary swell fun-or-better (`min(GFS, EURO) ≥ FUN`) *and* ≥1 spot in the region has Textured-or-better wind at that hour. Denominator is the forecast span in days; cell colour tracks the best `min(GFS, EURO)` window across the forecast.
-- **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or Preferences modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
+- **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or More modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
 - **NOAA buoy readings** — live wave height, dominant period, and direction per buoy
 - **Historical buoy popup** — BUOY SPECTRA button (or clicking any BUOY NOW cell) opens a 3-day modal with two stacked charts: a live frequency spectrum at the scrubbed time (top) and energy-over-time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile.
 - **Tide predictions** — NOAA CO-OPS harmonic predictions per spot, with Surfline-matched time corrections
@@ -34,7 +34,7 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 
 All data is fetched from free or free-tier public services:
 
-- **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min); yearly stdmet archives back to 2021 used for NDBC backfill
+- **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min); yearly stdmet + spectral (swden/swdir) archives back to 2019 used for the obs backfills
 - **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC with swell partitions (VHM0_SW1/SW2, VTM01_SW1/SW2, VMDR_SW1/SW2), the EURO source for both the dashboard and CSC2. Live fetch via `copernicusmarine` (free `copernicusmarine login` credential at `~/.copernicusmarine/.copernicusmarine-credentials`)
 - **Google Earth Engine — `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`** — cycle-preserving archive of the same CMEMS product, used by CSC2's historical backfill because CMEMS itself overwrites past cycles. The GEE mirror ingests one cycle per day starting 2025-04-28; see `csc2/gee_backfill.py`. Free for noncommercial use (Community Tier: 150 EECU-hours/month)
 - **AWS Open Data — `s3://noaa-gfs-bdp-pds/`** — NOAA GFS-Wave GRIB2 archive with swell partitions back to 2021-04 used by CSC2's historical backfill; byte-range fetches via `.idx` sidecars
@@ -76,7 +76,7 @@ difference.
 |-------------------|-----------------------------------------------------|----------------------------------------------------------------------------------|
 | EURO (CMEMS)      | `com.colesurfs.csc2-logger` @ 3 AM + 3 PM ET        | Google Earth Engine `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H` (2025-04 → today) |
 | GFS (Open-Meteo)  | same plist, same schedule                           | AWS `s3://noaa-gfs-bdp-pds/` byte-range GRIB2 fetch (scope A: 2025-04 → today)   |
-| Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet yearly archives (2021 → today)                                       |
+| Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet + spectral archives (2019 → today), CDIP for 44091/97/98             |
 
 **Model architectures.** Two tiers reported side-by-side on the eval page:
 
@@ -100,9 +100,9 @@ buoy picker (individual or combined):
 An "Archive accumulation" panel at the top of the page stays visible even
 after training, showing per-buoy EURO cycles, GFS cycles, and **paired cycles**
 (init times where both model forecasts *and* matching buoy observations
-exist — the minimum condition for a trainable sample). The page also scaffolds
-a live forecast row showing CSC2 vs EURO vs GFS for the selected buoy out to
-+240 h, activated once the model is trained.
+exist — the minimum condition for a trainable sample). A live forecast row
+shows CSC2 vs EURO vs GFS for the selected buoy out to +240 h
+(`/api/csc2/forecast`).
 
 **Training cadence.** First models trained in v1.8 once east-pool paired
 coverage crossed the bar; current top performer is `CSC2+ML_260704_0.84_v5`
@@ -142,36 +142,42 @@ In regional mode, each spot is classified by surf-quality based on wind directio
 
 | Rating | Color | Condition |
 |---|---|---|
-| **Glassy** | Green | Offshore, sustained < 9 mph |
+| **Glassy** | Green | Offshore, sustained < 9.3 mph |
 | **Groomed** | Green | Offshore, sustained > 20 mph |
 | **Clean** | Green | Offshore at any speed in between, or any direction with sustained < 3 mph |
-| **Textured** | Gold | Sideshore + sustained < 15 mph, or onshore + sustained < 8 mph |
-| **Messy** | Blue | Sideshore + sustained < 18 mph, or onshore + sustained < 13 mph |
+| **Textured** | Gold | Sideshore + sustained < 15.5 mph, or onshore + sustained < 8.1 mph |
+| **Messy** | Blue | Sideshore + sustained < 18.3 mph, or onshore + sustained < 13.3 mph |
 | **Blown Out** | Grey | Everything else |
 
-Wind direction zones are defined relative to each spot's measured shore normal: offshore (≤ 32° from offshore direction), sideshore (32°–115°), onshore (> 115°). Thresholds are tunable per-spot via `/tuner`; live values are stored in `wind-categorization-scheme.toml`.
+Wind direction zones are defined relative to each spot's measured shore normal: offshore (≤ 32° from offshore direction), sideshore (32°–115°), onshore (> 115°). Thresholds are site-wide and tunable via `/tuner`; the numbers above are the values in `wind-categorization-scheme.toml` at the time of writing.
 
 ---
 
 ## Local data layout (not committed to Git)
 
-All CSC2 training inputs and model artifacts live outside Git. `.gitignore`
-covers every directory below:
+All CSC2 training inputs, observed-ledger data and model artifacts live
+outside Git. `.gitignore` covers every directory below:
 
 ```
 colesurfs/
-├── .csc_data/                 # legacy observation archive, preserved (buoy-only, model-agnostic)
-│   ├── observations/          # NDBC stdmet yearly archives (2021 → today), written by csc2.ndbc_backfill
-│   └── live_log/observations/ # 30-min live obs, written by csc2.obs_logger
-├── .csc2_data/                # CSC2 forecast archive — fresh, lead-resolved, per-cycle parquet
+├── .cache/                    # TTL-cache write-through JSON + lkg_forecast.json
+│   └── bathy_tiles/<STYLE>/   # self-rendered basemap PNGs (bathy.py)
+├── .csc_data/                 # observation archive (buoy-only, model-agnostic)
+│   ├── observations/          # NDBC stdmet + spectral / CDIP shards (2019 → today), per buoy/year
+│   ├── live_log/observations/ # 30-min live obs, written by csc2.obs_logger
+│   ├── wind_archive/          # per-spot hourly ECMWF wind, year=Y.parquet (fun_days gate)
+│   └── fun_days/              # observed fun+ ledger, buoy=<id>/year=Y.parquet
+├── .csc2_data/                # CSC2 forecast archive — lead-resolved, per-cycle parquet
 │   ├── forecasts/
 │   │   ├── model=EURO/buoy=<id>/year=Y/month=M/cycle=YYYYMMDDTHHZ.parquet
 │   │   └── model=GFS/buoy=<id>/year=Y/month=M/cycle=YYYYMMDDTHHZ.parquet
+│   ├── live_eval/             # daily live-skill rows per model (csc2.eval_live)
 │   ├── logs/                  # per-job append-only text logs
 │   └── archive_status_cache.json   # cached payload for /api/csc2/archive_status
-├── .csc2_models/              # trained model weights (materializes when first model fits)
-│   └── east/<version>/ …
-│   └── west/<version>/ …
+├── .csc2_models/              # trained model weights
+│   ├── east/<name>/ …
+│   └── west/<name>/ …
+├── .gland_data/               # rolling 14-day EURO archive for /gland history (gland_euro_archive.py)
 ├── development-assets/        # dev-only: tests, design mockups, doc sources, icon archive
 └── _hold/                     # staging for files awaiting manual review/deletion
 ```
@@ -200,13 +206,32 @@ Why not Git?
 
 ## Changelog
 
+### v1.13.1
+- **Map: the basemap is now rendered in-house.** CARTO began watermarking every raster tile requested without an API key ("API KEY REQUIRED", late August 2026); it looked intermittent only because tiles cache in the browser for 180 days, so old clean tiles sat next to freshly fetched watermarked ones. Every key-free replacement tried (Esri gray canvas, terrain base) bakes state names, roads or land relief into the image. New `bathy.py` draws the map itself: for each tile it pulls raw float32 elevation from NOAA NCEI's `DEM_global_mosaic` (Coastal Relief Models over an ETOPO base, no key), paints land flat and shades the sea by depth — half the ramp across the shelf (0–200 m), half down the slope to 4 km — in the theme palette, and nothing else. Coastlines are anti-aliased by rendering at 2× and box-filtering. `/tiles/bathy/v1/<dark|light>/{z}/{x}/{y}.png` serves them with immutable cache headers; PNGs persist under `.cache/bathy_tiles/v1/` (one NOAA fetch renders both themes), zooms 5–13 within a NY/New England envelope, and the ~160 tiles under the default view pre-render in a background thread at startup. Bump `bathy.STYLE` for any palette change so browsers and the disk cache roll over together.
+- **Footer: one button.** The desktop footer's `⊞ SIDE BY SIDE` and `◑ LIGHT` buttons are gone; both live in the modal now.
+- **`/review` on a phone: the region rides along.** Scrolling the region selector under the header crossfades the `CONDITIONS REVIEW` crumb into a compact region select beside the logo, so logo and region stay on screen; it mirrors the main selector both ways, and the header picks up a soft shadow while condensed.
+- **Regional view: the ▤ CONDITIONS REVIEW link** in the fun+ summary row now follows the text instead of floating to the cell's right edge.
+- **Fix: the SPOT header cell scrolled away on phones.** Mobile positions the spot column with a counter-translate instead of left-sticky, and the header's SPOT cell had been made `position: relative` along with the body cells — so scrolling the table down pinned every header cell except that one. It is sticky on the vertical axis again (the counter-translate only replaces the lost left anchor).
+- **GFS combined-sea fallback removed.** When no GFS swell partition survived, the dashboard synthesised a "primary swell" from the combined sea state, on the premise that GFS drops partitions beyond five days. Open-Meteo now serves GFS partitions for all ten days and never provides a peak period for GFS, so the fallback only ever fired on hours where every partition was 0 m — pure wind sea — and drew it as a FUN swell at the mean period (Block Island, Sep 10 02:00: 6.9 ft @ 6.4 s FUN against EURO's 0.7 ft FLAT). Those hours are now empty cells, as they always were for EURO; `csc2.train` tags them "missing" and leaves them out of training instead of learning wind sea as swell.
+- **Archived buoy partitions re-ranked.** The spectral observation shards (2019 → today, 1,288 files) had partition 1 / 2 assigned by the old H·T² proxy; they were re-sorted by H²·T (2.6 % of two-partition hours swapped) and the fun+ ledgers rebuilt on top, so the observed primary swell is the same one the dashboard and CSC2 now pick.
+- **CSC2: EURO cycles labelled from the data, and the archive relabelled.** CMEMS publishes the 00Z run at about 08:30 UTC and the 12Z run at about 20:50 UTC (bulletin file times), so the logger's 07 UTC capture holds the previous day's 12Z run and its 19 UTC capture the same day's 00Z run — the old clock-based tag ("00Z" at 07 UTC, "12Z" at 19 UTC) put every live EURO cycle twelve hours late, understating lead hours on roughly half of the EURO archive and pairing EURO and GFS runs twelve hours apart. `csc2.logger.euro_cycle_id` now derives the run from the series' last valid time (both runs end at D+10 00Z) plus the capture clock; every live EURO shard since 2026-04-21 was relabelled with `lead_hours` recomputed; the dashboard's live CSC2 prediction uses the same anchor, its EURO run badge now reads the true run (`MODEL_UPDATE_HOURS_UTC` 10/21 UTC), and the archive-status cache was reset. Models trained before this learned short lead hours on the live half of their EURO rows — an off-cycle retrain is recommended.
+- **One energy formula everywhere: H²·T.** Buoy partitions were ranked and their `energy` reported as H·T² while the wave models used H²·T, so the two sides could pick a different "primary" swell in a few hundred hours a year and the CSC2 partition-1 target didn't always match the model's. Deep-water wave power is ∝ H²·T and that is the convention Surfline's energy figure follows, so the buoy side moved to it: `buoy.py` (now, history, spectral partitions), the buoy modal's spectrum and energy-history charts (`ft²·s`), the fun+ ledger's daily peak (`peak_energy`, every year rebuilt) and `/review`'s energy chart, and G-Land's energy rows. Spectral observation shards archived earlier keep the old partition order in the ~0.2 % of hours where the two proxies disagree.
+- **Audit round (code, data, polish).** *Fix:* the CSC2 observation logger read a key `fetch_buoy` never returned, so every live observation row since 2026-04-24 was stamped with the logger's clock instead of the buoy's; rows now carry the NDBC observation time (existing rows are still ingest-stamped — see the CLAUDE.md note). *Fix:* `POST /api/refresh` and tuner saves cleared `.cache/` wholesale, deleting the on-disk last-known-good forecast; the clear now only removes the cache's own md5-named files. Basemap tiles get a per-tile lock so parallel first requests don't fetch NOAA twice. The `/review` custom season + year picker reaches back to 2019 (ledgers and wind archive both do). Stale comments, dead code (an every-second clock timer for an element that no longer exists, unused helpers and imports across `csc2/`, `config.py`, `wind_rules.py`) and duplicated parsers in `buoy.py` / `gland.py` / `csc2/predict.py` were cleaned up with output-identical checks; the golden suite passes and the tests directory gained a `conftest.py` so the documented command runs as written. *Polish:* `/csc`, `/gland` and `/gland/tuner` now share the review page's shell — sticky header with crumb, card and table styling, the single `--gap` rhythm, safe-area footer with `← DASHBOARD · MORE`, More modal with theme and version, phone layouts that scroll wide tables inside their cards.
+- **Seasons run equinox to solstice.** Every season on `/review` — the review-period presets, the season + year picker and the Annual Comparison tables — now starts on the 21st: winter Dec 21 → Mar 20 (named for the year of its Jan–Mar part), spring Mar 21 → Jun 20, summer Jun 21 → Sep 20, fall Sep 21 → Dec 20, instead of whole calendar months. `fun_days.season_of` and the page's `seasonRange()` are the two definitions and must stay in step.
+- **Droughts between fun+ swells.** A fun+ swell is a run of consecutive fun+ days; a drought is the calendar days between one run and the next (`fun_days.droughts`, mirrored by `droughtsOf` in `review.html`). Three places use it: the dashboard's regional summary row gains a line — *"The longest drought between fun+ waves in the last year was 37 days (3/2/26–4/7/26)"*, or *"This is currently the longest drought between fun+ waves in the last year at 35 days long"* when the open gap since the last fun+ day is the longest (`/api/fun_days` → `drought`); `/review` gets a **Days between fun+ swells** histogram between the rating histogram and the energy chart (weekly bins: <7, <14, <21, <28, <35, 35+ days) captioned with the gap count, median and average; and the season tables gain a rightmost **Median Drought Length** column (`median_drought`, "Drought" on phones). The period chart's caption now also reports the median and average of the day's-peak period over the review period. The energy chart moved to its own full-width row so the two histograms share the first.
+- **`/review` polish.** "Review window" is now "Review period" everywhere it's shown. The footer holds `← DASHBOARD` and `MORE` (the dashboard link left the modal; the version number moved into it), sits inside the phone's safe areas so curved corners no longer clip it, and on phones centres its buttons. The page runs on one vertical rhythm: the gap between header and selector, between every panel, and between the closing paragraph and the footer are all the same `--gap` (18 px desktop, 12 px phone) — the stray status line no longer adds space once it's empty, and the old 90 px bottom padding is gone. The closing paragraph now spells out the literal fun+ criterion before defining a fun+ day in terms of it: the minimum primary-swell height per period band (`at least 5 ft at 5.9–7.5 s, 3.5 ft at 7.5–9.5 s, …; nothing under 5.9 s counts`), generated from the live categorization scheme so it follows `/tuner` edits — and the surfable-wind gate the same way (`offshore at any speed, under 3 mph from any direction, side-shore under 15.5 mph, or onshore under 8.1 mph`, from the live wind scheme).
+- **Phones: the More modal sits lower.** It centres in the lower part of the screen (18 vh of top padding, safe-area aware at the bottom) so the buttons are thumb-reachable without being a bottom sheet; `/review` and `/gland` modals do the same.
+- **More modal buttons read as actions.** The theme button says `◑ SWITCH TO DARK MODE` in light mode and `◑ SWITCH TO LIGHT MODE` in dark; the mobile history toggle is now a button like the rest, `◷ SHOW HISTORICAL DATA` / `◷ HIDE HISTORICAL DATA`, instead of a checkbox row.
+- **Desktop toolbar: ▤ CONDITIONS REVIEW replaces CSC2 BETA.** The CSC2 page stays reachable from the More modal.
+- **Preferences → More.** The footer button (desktop) and bottom-bar button (mobile) read `MORE`, and the modal is `colesurfs · more`, split into two groups: **pages** on top (▤ CONDITIONS REVIEW, ✈︎ G-LAND, ∿ CSC (BETA)) and **settings** below (↺ REFRESH MODEL NOW, ◑ theme, ⊞ SIDE BY SIDE on desktop, show-historical-data on mobile, ⇞ TUNER). `/gland` and `/review` follow suit: their footers keep only `MORE`, their modals list the page links before the theme button.
+
 ### v1.13.0
 - **Days since the last fun+ day.** The Fun+ Days cell gains a second line — `-34 days`, or `-250+ days` when no fun+ day is on record in the searched span; blank when today already qualifies — computed from what the buoy actually recorded, not from the models. Hover for the date and category of that day.
 - **Fun+ days this calendar year.** Regional view ends with a full-width summary row under the spots: *"So far there have been 37 fun+ days in 2026"*, followed by one pill per category (FUN / SOLID / FIRING / HECTIC / MONSTRO) and, when the buoy has gaps, how many days of the year had data. The row's content sticks to the left edge of the scroller so it stays readable while the table scrolls.
 - **Same rule as the forecast column, applied to observations.** A new `fun_days.py` module scores each past day exactly the way `computeModelOverview` scores a forecast day: 3-hour windows, night skipped (sunrise −30 / sunset +30 via `astral`), primary swell categorized with the site scheme, each window gated on ≥1 spot in the region rating Textured-or-better, and ≥2 qualifying windows to earn a tier. A day's category is the highest tier that ≥2 windows reach, so SOLID means "≥2 windows at SOLID or better" and FUN means fun-but-not-solid. Primary swell is the spectral partition=1 row (the dashboard's own decomposition), with combined stdmet as the fallback for hours that have no spectral row — the same precedence a live buoy cell uses.
 - **Wind archive for the gate.** Historical wind comes from Open-Meteo's historical-forecast API for the same `ecmwf_ifs` model the wind cells use, per spot, hourly, back to 2025-01-01, stored under `.csc_data/wind_archive/year=Y.parquet`. Today's hours are gated from the dashboard's already-cached EURO region-wind payload, so the live tail needs no extra upstream call.
 - **Ledger + daily job.** Results persist as one row per local day under `.csc_data/fun_days/buoy=<id>/year=Y.parquet`. `com.colesurfs.fun-days` (daily 04:20 local) tops up the last 7 days of wind and recomputes this year and last for every buoy; `/api/fun_days` reads the ledgers and re-derives the trailing 3 days from live obs at request time (10-min TTL, warmed with the rest).
-- **New page: `/review` — Conditions Review** (Preferences → ▤ CONDITIONS REVIEW). One region at a time (selector, remembered; `?region=<buoy_id>` deep-links and the regional summary row on the dashboard links straight to it), over a chosen review window — calendar year, last 365 days, the eight most recent completed seasons labelled by year (`Fall '25`, `Winter '25-'26`), or a custom date range (with a season + year picker back to 2021). Seasonal windows label months with their year: a histogram of days per swell rating captioned with the period's fun+ count, the day's maximum buoy energy (H×T², ft·s²) over time coloured by that day's rating, and the primary swell period at the day's peak reading with the day's period range behind it. Same day-rating rule as the dashboard's tally; the ledger carries each day's peak reading (`peak_energy`, `peak_h_ft`, `peak_p_s`, `p_min`, `p_max`), with readings under 0.5 ft excluded from peak selection because H×T² otherwise rewards tiny long-period noise partitions. The histogram's caption carries only coverage — the period's fun+ count sits once, top-right of the card. Below the charts, a **season history** panel (independent of the review window) lists, for the selected region, four tables — fall / winter / spring / summer — with one row per year from fall 2019: fun+ days (FUN or better), then flat, solid and firing days (exactly that tier), each column shaded by value with its maximum in bold, and a muted `n/N d` marker on seasons the buoy only partly covered. To reach 2019 the wind archive was extended to 2019-01-01 and NDBC yearly spectral + stdmet archives were pulled for 2019–2020 (NY Harbor Entrance, Massachusetts) and 2019–2025 (Long Island, Cape Cod — the latter has nothing after 2024); ledgers exist for 2019–2026 for every buoy, other years build on demand.
+- **New page: `/review` — Conditions Review** (Preferences → ▤ CONDITIONS REVIEW). One region at a time (selector, remembered; `?region=<buoy_id>` deep-links and the regional summary row on the dashboard links straight to it), over a chosen review window — calendar year, last 365 days, the eight most recent completed seasons labelled by year (`Fall '25`, `Winter '25-'26`), or a custom date range (with a season + year picker back to 2021). Seasonal windows label months with their year: a histogram of days per swell rating captioned with the period's fun+ count, the day's maximum buoy energy (H×T², ft·s²) over time coloured by that day's rating, and the primary swell period at the day's peak reading with the day's period range behind it. Same day-rating rule as the dashboard's tally; the ledger carries each day's peak reading (`peak_energy`, `peak_h_ft`, `peak_p_s`, `p_min`, `p_max`), with readings under 0.5 ft excluded from peak selection because H×T² otherwise rewards tiny long-period noise partitions. The histogram's caption carries only coverage — the period's fun+ count sits once, top-right of the card. Below the charts, a **season history** panel (independent of the review window) lists, for the selected region, four tables — fall / winter / spring / summer — with one row per year from fall 2019: flat days, fun+ days (FUN or better), then solid and firing days (exactly that tier), each column shaded by value with its maximum in bold, and a muted `n/N d` marker on seasons the buoy only partly covered. To reach 2019 the wind archive was extended to 2019-01-01 and NDBC yearly spectral + stdmet archives were pulled for 2019–2020 (NY Harbor Entrance, Massachusetts) and 2019–2025 (Long Island, Cape Cod — the latter has nothing after 2024); ledgers exist for 2019–2026 for every buoy, other years build on demand.
 - **Coverage.** Long Island (44025) was backfilled for 2026 from NDBC's monthly spectral archives + realtime (Feb → today; January is stdmet-only, so those hours fall back to combined sea). Cape Cod (44018) has been offline all year and NDBC serves nothing for it — its cell reads `no obs` and its regional row says so rather than showing a zero. The CSC2 obs logger now also captures the dashboard buoys outside CSC2 scope (44025, 44018) every 30 min so both stay current going forward; CSC2's own scope is unchanged.
 
 ### v1.12.5

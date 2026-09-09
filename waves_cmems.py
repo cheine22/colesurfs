@@ -13,9 +13,8 @@ circularly interpolate from-directions to produce an hourly grid that
 matches the dashboard's display resolution.
 
 Output record shape is identical to waves._parse_response so the frontend
-treats CMEMS as a drop-in replacement.
-
-v1.5: introduced alongside Open-Meteo EURO as the "C-EURO" model.
+treats CMEMS as a drop-in replacement. This is the site's only EURO wave
+source (Open-Meteo's ecmwf_wam publishes no swell partitions).
 """
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ from datetime import datetime, timedelta, timezone as dtz
 from zoneinfo import ZoneInfo
 
 from cache import model_aware_cache, record_api_calls
-from config import FORECAST_DAYS, TIMEZONE, SPOTS, m_to_ft
+from config import FORECAST_DAYS, TIMEZONE, SPOTS
 from wave_common import safe_float as _safe, build_swell_components, make_wave_record
 
 # copernicusmarine logs every subset at INFO plus a WARNING about "subset

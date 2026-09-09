@@ -5,9 +5,8 @@ Source of truth for spot wind-rating thresholds is
 
 Mirrors swell_rules.py: `load_config(force=False)` returns the parsed
 config, `reload()` re-reads from disk, `categorize(speed, dir, shore_normal,
-gust)` returns one of the six ratings. `to_payload()` emits the same
-structure the frontend consumes so `/api/config` and the tuner page share
-a single schema.
+gust)` returns one of the six ratings. `/api/config` and the tuner page
+both serve `load_config()` verbatim as `wind_rating`.
 """
 
 from __future__ import annotations
@@ -20,15 +19,6 @@ except ImportError:
 
 # Evaluation order (hierarchical — first match wins).
 RATINGS = ["Glassy", "Groomed", "Clean", "Textured", "Messy", "Blown Out"]
-
-# Color tiers match swell_rules.COLORS' conventions (no frontend coupling
-# needed; frontend already hardcodes these four tiers).
-TIER_OF = {
-    "Glassy":   "clean", "Groomed":  "clean", "Clean":    "clean",
-    "Textured": "gold",
-    "Messy":    "blue",
-    "Blown Out": "grey",
-}
 
 _TOML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "wind-categorization-scheme.toml")
@@ -79,11 +69,6 @@ def load_config(force: bool = False) -> dict:
 
 def reload() -> dict:
     return load_config(force=True)
-
-
-def to_payload() -> dict:
-    """The shape served by /api/config and consumed by the tuner page."""
-    return {"wind_rating": load_config()}
 
 
 def _direction_band(direction_deg: float | None,

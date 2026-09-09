@@ -25,7 +25,7 @@ Inputs (all local, all gitignored):
 Outputs:
   .csc_data/fun_days/buoy=<id>/year=Y.parquet   one row per local day:
       date, category, fun_windows, obs_windows, day_windows, wind_gated,
-      peak_energy (ft·s², max H×T² over the day's obs — buoy.py's energy
+      peak_energy (ft²·s, max H²×T over the day's obs — buoy.py's energy
       convention), peak_h_ft, peak_p_s (the reading at that peak),
       p_min / p_max (primary-period span), n_obs
 
@@ -43,6 +43,7 @@ Maintenance:
 """
 from __future__ import annotations
 
+import statistics
 import argparse
 import re
 import sys
@@ -78,7 +79,7 @@ MIN_WINDOWS = 2                    # windows needed for a day to earn a tier
 LIGHT_PAD = timedelta(minutes=30)  # first/last light = sunrise-30 / sunset+30 (index.html)
 SURFABLE_WIND = {"Glassy", "Groomed", "Clean", "Textured"}
 LIVE_TAIL_DAYS = 3                 # days re-derived from live obs at request time
-PEAK_MIN_H_FT = 0.5                # H×T² rewards tiny long-period noise partitions
+PEAK_MIN_H_FT = 0.5                # keeps tiny long-period noise partitions out of the peak
                                    # (0.2 ft @ 27 s outscores 2 ft @ 8 s); readings
                                    # under this height can't be the day's peak
 
@@ -377,7 +378,7 @@ def classify_day(day: date, lat: float, lon: float, obs_epoch, obs_h, obs_p,
         a, b = int(np.searchsorted(obs_epoch, d0)), int(np.searchsorted(obs_epoch, d1))
         if b > a:
             hh, pp = obs_h[a:b].astype(float), obs_p[a:b].astype(float)
-            e = np.where(hh >= PEAK_MIN_H_FT, hh * pp * pp, -1.0)
+            e = np.where(hh >= PEAK_MIN_H_FT, hh * hh * pp, -1.0)   # H²·T, as buoy.py
             k = int(np.argmax(e))
             real = hh >= PEAK_MIN_H_FT
             peak = {"peak_energy": round(float(e[k]), 1) if e[k] >= 0 else None,
@@ -512,6 +513,30 @@ def rows_between(buoy_id: str, start: date, end: date, *,
     return by_date
 
 
+def _fun_runs(fun_dates) -> list[tuple[date, date]]:
+    """Maximal runs of consecutive fun+ calendar days — one run is one
+    fun+ swell, however many days it lasted."""
+    runs: list[tuple[date, date]] = []
+    for d in sorted(fun_dates):
+        if runs and d == runs[-1][1] + timedelta(days=1):
+            runs[-1] = (runs[-1][0], d)
+        else:
+            runs.append((d, d))
+    return runs
+
+
+def droughts(fun_dates) -> list[dict]:
+    """Gaps between consecutive fun+ swells: the non-fun+ days from the day
+    after one run ends to the day before the next begins. Days without obs
+    inside a gap count as drought days (calendar span). review.html's
+    `droughtsOf` mirrors this rule client-side."""
+    runs = _fun_runs(fun_dates)
+    return [{"days": (b[0] - a[1]).days - 1,
+             "start": (a[1] + timedelta(days=1)).isoformat(),
+             "end": (b[0] - timedelta(days=1)).isoformat()}
+            for a, b in zip(runs, runs[1:])]
+
+
 def summary(buoy_id: str, *, live_wind: dict | None = None, today: date | None = None) -> dict:
     """Days since the last fun+ day and this year's tally — from the ledger
     for this year and last, live tail included (see rows_between)."""
@@ -541,6 +566,24 @@ def summary(buoy_id: str, *, live_wind: dict | None = None, today: date | None =
         if _idx(r) >= FUN_IDX:
             by_cat[r["category"]] += 1
     today_row = by_date.get(today.isoformat())
+
+    # Longest drought in the trailing year. The open-ended gap since the last
+    # fun+ day competes with the closed ones; a 0-day "current drought" (today
+    # is fun+) never wins, and no line at all when the year holds no fun+ day.
+    win_start = today - timedelta(days=364)
+    fun_dates = {date.fromisoformat(k) for k, r in by_date.items()
+                 if k >= win_start.isoformat() and _idx(r) >= FUN_IDX}
+    gaps = droughts(fun_dates)
+    longest = max(gaps, key=lambda g: g["days"], default=None)
+    drought = None
+    if last_fun and date.fromisoformat(last_fun["date"]) >= win_start:
+        current = (today - date.fromisoformat(last_fun["date"])).days
+        if current > 0 and current >= (longest["days"] if longest else 0):
+            drought = {"current_is_longest": True, "days": current,
+                       "start": (date.fromisoformat(last_fun["date"]) + timedelta(days=1)).isoformat(),
+                       "end": today.isoformat()}
+        elif longest:
+            drought = {"current_is_longest": False, **longest}
     return {
         "buoy_id":       buoy_id,
         "today":         today.isoformat(),
@@ -551,6 +594,7 @@ def summary(buoy_id: str, *, live_wind: dict | None = None, today: date | None =
         # Earliest day with obs in the walk — when days_since_fun is null this
         # bounds the claim ("no fun+ day since at least …").
         "searched_from": earliest.isoformat() if earliest else None,
+        "drought":       drought,
         "year": {
             "year":           today.year,
             "fun_plus":       sum(by_cat.values()),
@@ -610,21 +654,32 @@ def review_payload(start_iso: str, end_iso: str) -> dict | None:
 
 # ─── Season history (/review bottom panel) ───────────────────────────────────
 
-SEASON_OF_MONTH = {12: "winter", 1: "winter", 2: "winter", 3: "spring", 4: "spring",
-                   5: "spring", 6: "summer", 7: "summer", 8: "summer",
-                   9: "fall", 10: "fall", 11: "fall"}
-SEASON_START = {"winter": (12, 1), "spring": (3, 1), "summer": (6, 1), "fall": (9, 1)}
+# Seasons run equinox to solstice on fixed dates (not calendar months):
+# winter Dec 21 → Mar 20, spring Mar 21 → Jun 20, summer Jun 21 → Sep 20,
+# fall Sep 21 → Dec 20. Winter is named for the year of its Jan–Mar part.
+# review.html's seasonRange() must agree.
+SEASON_START = {"winter": (12, 21), "spring": (3, 21), "summer": (6, 21), "fall": (9, 21)}
+_NEXT_SEASON = {"winter": "spring", "spring": "summer", "summer": "fall", "fall": "winter"}
 SEASONS_FIRST_YEAR = 2019   # NDBC yearly backfills + wind archive reach here;
                             # the first season shown is FALL 2019 (winter 2019
                             # would need Dec 2018, which isn't archived)
 
 
+def season_of(d: date) -> tuple[str, int]:
+    md = (d.month, d.day)
+    if md >= SEASON_START["winter"]:
+        return "winter", d.year + 1
+    for s in ("fall", "summer", "spring"):
+        if md >= SEASON_START[s]:
+            return s, d.year
+    return "winter", d.year
+
+
 def _season_bounds(season: str, year: int):
-    """Meteorological season `year` (winter `year` = Dec year-1 → Feb year)."""
     m, d = SEASON_START[season]
     start = date(year - 1 if season == "winter" else year, m, d)
-    nm = (start.month + 3 - 1) % 12 + 1
-    end = date(start.year + (1 if start.month + 3 > 12 else 0), nm, 1) - timedelta(days=1)
+    nm, nd = SEASON_START[_NEXT_SEASON[season]]
+    end = date(year, nm, nd) - timedelta(days=1)
     return start, end
 
 
@@ -639,7 +694,8 @@ def _ledger_years(buoy_id: str) -> list[int]:
 def season_tables() -> dict | None:
     """Per buoy, per season, one row per year with fun+ / flat / solid /
     firing day counts (fun+ = FUN or better; flat, solid, firing = exactly
-    that tier),
+    that tier) and the median drought (days between fun+ swells, see
+    `droughts`) within the season,
     from every ledger year on disk, fall SEASONS_FIRST_YEAR onward. `elapsed`
     is the season's day count to date so the page can flag partial coverage."""
     today = datetime.now(TZ).date()
@@ -654,16 +710,16 @@ def season_tables() -> dict | None:
                 cat = r.get("category")
                 if not cat:
                     continue
-                yr, mo = int(r["date"][:4]), int(r["date"][5:7])
-                season = SEASON_OF_MONTH[mo]
-                syear = yr + 1 if mo == 12 else yr
+                season, syear = season_of(date.fromisoformat(r["date"]))
                 if syear < SEASONS_FIRST_YEAR or (syear == SEASONS_FIRST_YEAR and season != "fall"):
                     continue
                 c = per.setdefault((season, syear),
                                    {"year": syear, "days": 0, "fun_plus": 0, "flat": 0,
-                                    "solid": 0, "firing": 0})
+                                    "solid": 0, "firing": 0, "_fun_dates": set()})
                 c["days"] += 1
                 c["fun_plus"] += CATS.index(cat) >= FUN_IDX
+                if CATS.index(cat) >= FUN_IDX:
+                    c["_fun_dates"].add(date.fromisoformat(r["date"]))
                 c["flat"] += cat == "FLAT"
                 c["solid"] += cat == "SOLID"
                 c["firing"] += cat == "FIRING"
@@ -674,8 +730,10 @@ def season_tables() -> dict | None:
                 if sn != season:
                     continue
                 start, end = _season_bounds(season, syear)
+                gaps = [g["days"] for g in droughts(c.pop("_fun_dates"))]
                 rows.append({**c, "season_days": (end - start).days + 1,
-                             "elapsed": max(0, (min(end, today) - start).days + 1)})
+                             "elapsed": max(0, (min(end, today) - start).days + 1),
+                             "median_drought": statistics.median(gaps) if gaps else None})
             tables[season] = sorted(rows, key=lambda r: -r["year"])
         out[bid] = tables
     return {"first_year": SEASONS_FIRST_YEAR, "buoys": out}
