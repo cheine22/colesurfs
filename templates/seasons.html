@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>colesurfs — Seasonal Analysis</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=22"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="Seasons"/>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+
+  <style>
+    /* ═══════════════════════════════════════════════════
+       Seasonal Analysis — same shell as /review (header, card, footer, modal)
+    ════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg0:#0d0d0f; --bg1:#131316; --bg2:#1a1a1f; --bg3:#222228;
+      --border0:#1e1e24; --border1:#2e2e38; --border2:#3e3e4e;
+      --text0:#e8e8f0; --text1:#a0a0b8; --text2:#606075; --text3:#404055;
+      --accent:#7c6af7; --accent-glow:#7c6af733;
+      --green:#3fb950; --amber:#d29922; --red:#f85149;
+      --font:'JetBrains Mono','Fira Code',monospace;
+      --grid:#ffffff10;
+    }
+    @media (prefers-color-scheme: light) {
+      html:not([data-theme="dark"]) {
+        --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+        --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+        --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+        --accent-glow:#7c6af718; --grid:#00000012;
+      }
+    }
+    html[data-theme="light"] {
+      --bg0:#f6f6f7; --bg1:#ffffff; --bg2:#fafafa; --bg3:#f0f0f2;
+      --border0:#e5e5e8; --border1:#d0d0d6; --border2:#b0b0bc;
+      --text0:#1e1e21; --text1:#484860; --text2:#72728a; --text3:#a0a0ae;
+      --accent-glow:#7c6af718; --grid:#00000012;
+    }
+
+    html, body { min-height:100vh; background:var(--bg0); color:var(--text0);
+                 font-family:var(--font); font-size:13px; max-width:100%; }
+    html { overflow-x:hidden; }
+    body { overflow-x:clip; }
+
+    /* ─── Header: bigger than the dashboard's and persistent — logo + page
+       name never leave; the region selector rides up into it (right side on
+       desktop, its own row on phones) once the primary selector scrolls
+       under the header. body.condensed is set by an IntersectionObserver. ─── */
+    :root { --hdr-h:54px; }
+    .app-header { position:sticky; top:0; z-index:800; background:var(--bg1);
+      border-bottom:1px solid var(--border0); padding:0 24px; min-height:var(--hdr-h);
+      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
+      gap:0 16px; transition:box-shadow .22s ease; }
+    .header-left { display:inline-flex; align-items:center; gap:10px; min-width:0; height:var(--hdr-h); }
+    .header-logo { font-size:18px; font-weight:700; letter-spacing:.12em;
+      color:var(--accent); display:inline-flex; align-items:center; gap:3px;
+      text-decoration:none; cursor:pointer; white-space:nowrap; }
+    .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
+    .header-crumb { font-size:18px; font-weight:800; letter-spacing:.12em; color:var(--text0); white-space:nowrap; }
+    .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:6px; }
+    .header-right { display:flex; align-items:center; gap:16px; min-width:0; height:var(--hdr-h);
+      font-size:10px; color:var(--text2); letter-spacing:.06em; white-space:nowrap; }
+    .header-region { display:inline-flex; align-items:center; opacity:0; transform:translateY(6px);
+      pointer-events:none; transition:opacity .22s ease, transform .22s ease; }
+    body.condensed .header-region { opacity:1; transform:none; pointer-events:auto; }
+    body.condensed .app-header { box-shadow:0 8px 20px -12px rgba(0,0,0,.7); }
+    .header-region select { appearance:none; -webkit-appearance:none; background:transparent; border:0;
+      color:var(--text0); font-family:var(--font); font-size:14px; font-weight:800; letter-spacing:.06em;
+      padding:2px 16px 2px 2px; cursor:pointer; max-width:280px; text-overflow:ellipsis;
+      border-bottom:2px solid var(--accent); border-radius:0; }
+    .header-region select:focus { outline:none; border-bottom-color:var(--text0); }
+    .header-region .caret { margin-left:-12px; font-size:10px; color:var(--accent); pointer-events:none; }
+    @media (max-width:600px) {
+      :root { --hdr-h:46px; }
+      .app-header { padding:0 14px; }
+      .header-logo { font-size:16px; letter-spacing:.08em; }
+      .header-crumb { font-size:13px; letter-spacing:.1em; }
+      .header-meta { display:none; }
+      /* Region gets its own row under the title; the row unfolds when condensed. */
+      .header-right { flex-basis:100%; height:auto; max-height:0; overflow:hidden; opacity:0;
+        justify-content:flex-start; transition:max-height .22s ease, opacity .22s ease, padding .22s ease; }
+      body.condensed .header-right { max-height:48px; opacity:1; padding-bottom:9px; }
+      .header-region { transform:none; }
+      .header-region select { font-size:13px; max-width:calc(100vw - 60px); }
+    }
+
+    :root { --gap:18px; --footer-h:38px; }
+    .wrap { max-width:1500px; margin:0 auto;
+      padding:var(--gap) 20px calc(var(--footer-h) + var(--gap) + env(safe-area-inset-bottom)); }
+
+    /* ─── Region picker (the page's title) ─── */
+    .controls { display:flex; flex-wrap:wrap; gap:10px 16px; align-items:flex-end;
+      background:var(--bg1); border:1px solid var(--border1); border-radius:10px;
+      padding:14px 16px; margin-bottom:var(--gap); }
+    .controls label { display:flex; flex-direction:column; gap:4px;
+      font-size:9px; color:var(--text2); letter-spacing:.08em; text-transform:uppercase; }
+    .controls label.primary select {
+      font-size:17px; font-weight:800; letter-spacing:.06em; padding:6px 12px 6px 4px;
+      background:transparent; border:0; border-bottom:2px solid var(--accent); border-radius:0;
+      color:var(--text0); font-family:var(--font); cursor:pointer; }
+    .controls label.primary select:focus { outline:none; border-bottom-color:var(--text0); }
+    @media (max-width:600px) { .controls label.primary select { font-size:14px; } }
+
+
+    /* Descriptor: collapsed by default, one line that unfolds on tap. */
+    .method { font-size:10px; color:var(--text2); line-height:1.5; margin:0; max-width:980px; }
+    .method b { color:var(--text1); }
+    .method-toggle { background:none; border:0; padding:0; cursor:pointer; font-family:var(--font);
+      font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); }
+    .method-toggle:hover { color:var(--accent); }
+    .method-toggle .tri { display:inline-block; width:1em; color:var(--accent); }
+    .method-body { margin-top:6px; }
+    .more-link { font-size:10.5px; color:var(--text1); line-height:1.5; margin-top:var(--gap); }
+    .more-link a { color:var(--accent); text-decoration:none; font-weight:700; letter-spacing:.04em; }
+    .more-link a:hover { text-decoration:underline; }
+
+    .status { font-size:10.5px; color:var(--text2); margin-bottom:var(--gap); }
+    .status:empty { display:none; }
+    .status.err { color:var(--red); }
+
+    /* ─── Season tables: one card per season ─── */
+    /* Four cards need ~320 px each for the fixed-layout table; below that, two per row. */
+    .season-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:var(--gap); margin-bottom:var(--gap); }
+    @media (max-width:1400px) { .season-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+    .season { background:var(--bg1); border:1px solid var(--border1); border-radius:10px; padding:14px 16px 12px; min-width:0; }
+    .season h3 { font-size:13px; font-weight:800; letter-spacing:.14em; text-transform:uppercase;
+      color:var(--text0); margin-bottom:7px; padding-bottom:5px; border-bottom:2px solid var(--accent);
+      display:flex; align-items:baseline; justify-content:space-between; }
+    .season h3 .months { font-size:9px; font-weight:500; letter-spacing:.06em; text-transform:none; color:var(--text2); }
+    table.stbl { width:100%; border-collapse:collapse; font-size:10.5px; font-variant-numeric:tabular-nums; }
+    table.stbl th { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+      color:var(--text3); text-align:right; padding:3px 6px; border-bottom:1px solid var(--border1); }
+    table.stbl th:first-child, table.stbl td:first-child { text-align:left; }
+    table.stbl td { padding:3px 6px; text-align:right; color:var(--text1); border-bottom:1px solid var(--border0); }
+    table.stbl td:first-child { color:var(--text0); font-weight:600; }
+    table.stbl td .part { color:var(--text3); font-weight:400; font-size:8.5px; display:block; line-height:1.2; }
+    table.stbl td.num { color:var(--text0); border-radius:3px; }
+    table.stbl td.num.max { font-weight:800; }
+    table.stbl td.num.zero { color:var(--text3); }
+    table.stbl .none { color:var(--text3); font-size:10px; padding:6px; text-align:left; }
+    table.stbl td.drought { color:var(--text0); }
+    table.stbl td.drought .med { color:var(--text2); font-size:9.5px; }
+    /* One line per cell everywhere; every header breaks in the same place in
+       every table so header and row heights match across the four tables.
+       Fixed layout at every width: auto sizing let the year+coverage cell and
+       the drought header dictate uneven columns. */
+    table.stbl { table-layout:fixed; }
+    table.stbl th, table.stbl td { white-space:nowrap; }
+    table.stbl th { vertical-align:bottom; }
+    table.stbl th:first-child { width:62px; }
+    table.stbl th:last-child { width:82px; }
+    @media (max-width:600px) {
+      .season-grid { grid-template-columns:1fr; }
+      table.stbl th, table.stbl td { padding:3px 4px; }
+      table.stbl th { font-size:8px; letter-spacing:.05em; }
+      table.stbl th:first-child { width:58px; }
+      table.stbl th:last-child { width:74px; }
+      table.stbl td.drought .med { font-size:8.5px; }
+    }
+
+    /* ─── Modal + footer (same shape as the dashboard's More modal) ─── */
+    .modal-overlay { position:fixed; inset:0; z-index:900; display:none;
+      align-items:center; justify-content:center; background:rgba(0,0,0,.62);
+      backdrop-filter:blur(2px); padding:20px; }
+    .modal-overlay.open { display:flex; }
+    @media (max-width:600px) { .modal-overlay {
+      padding:18vh 12px calc(12px + env(safe-area-inset-bottom)); } }
+    .modal { position:relative; background:var(--bg1); border:1px solid var(--border1);
+      border-radius:12px; padding:22px 24px; min-width:260px;
+      display:flex; flex-direction:column; gap:9px;
+      box-shadow:0 12px 40px rgba(0,0,0,.5); }
+    .modal-title { font-size:13px; font-weight:700; letter-spacing:.1em;
+      color:var(--accent); display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .modal-title .wave-glyph { font-size:1.4em; line-height:1; }
+    .modal-close { position:absolute; top:10px; right:12px; background:none;
+      border:0; color:var(--text3); font-size:13px; cursor:pointer; }
+    .modal-close:hover { color:var(--text0); }
+    .modal-btn { background:var(--bg2); border:1px solid var(--border1);
+      color:var(--text1); border-radius:6px; padding:8px 14px; font-size:11px;
+      font-family:var(--font); letter-spacing:.08em; cursor:pointer;
+      text-decoration:none; text-align:center; transition:color .15s, border-color .15s; }
+    .modal-btn:hover { color:var(--accent); border-color:var(--accent); }
+    .modal-version { font-size:8.5px; letter-spacing:.08em; color:var(--text3); margin-top:4px; }
+
+    .app-footer { position:fixed; bottom:0; left:0; right:0; z-index:800;
+      background:var(--bg1); border-top:1px solid var(--border0);
+      padding:0 24px env(safe-area-inset-bottom); height:calc(var(--footer-h) + env(safe-area-inset-bottom));
+      display:flex; align-items:center; justify-content:space-between; user-select:none; }
+    .footer-sig { font-size:10px; letter-spacing:.18em; color:var(--text3); }
+    .footer-btns { display:flex; align-items:center; gap:10px; }
+    .footer-divider { color:var(--text3); font-size:12px; }
+    .footer-btn { padding:3px 11px; border:1px solid var(--border1); border-radius:5px;
+      background:transparent; color:var(--text3); font-family:var(--font); font-size:10px;
+      letter-spacing:.1em; cursor:pointer; text-decoration:none; display:inline-flex;
+      align-items:center; transition:color .15s, border-color .15s; }
+    .footer-btn:hover { color:var(--accent); border-color:var(--accent); }
+    @media (max-width:600px) {
+      :root { --gap:12px; --footer-h:46px; }
+      .wrap { padding-left:10px; padding-right:10px; }
+      .app-footer { justify-content:center;
+        padding-left:max(14px, env(safe-area-inset-left)); padding-right:max(14px, env(safe-area-inset-right)); }
+      .footer-sig { display:none; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-left">
+    <a class="header-logo" href="/"><span class="wave-glyph">∿</span>colesurfs</a>
+    <span class="header-crumb"><span class="sep">/</span>SEASONAL ANALYSIS</span>
+  </div>
+  <div class="header-right">
+    <span class="header-region"><select id="hdrRegionSel" aria-label="Region"></select><span class="caret">▾</span></span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <label class="primary">Region
+      <select id="regionSel"></select>
+    </label>
+  </div>
+
+  <div class="status" id="status">Loading…</div>
+  <div id="seasons"></div>
+
+  <div class="method">
+    <button class="method-toggle" id="methodToggle" type="button" aria-expanded="false" aria-controls="methodBody"><span class="tri">▸</span>How fun+ days and droughts are counted</button>
+    <div class="method-body" id="methodBody" hidden>
+      <b>Fun+ swell</b> is primary swell tall enough for its period to rate FUN or better:
+      <span id="funDef">—</span>.
+      <b>Surfable wind</b> is sustained wind that is <span id="windDef">—</span>.
+      A <b>fun+ day</b> has at least two daylight 3-hour windows of fun+ swell in which at least one spot
+      in the region also had surfable wind; the day takes the highest rating that two such windows reached.
+      Swell is observed at the region's NDBC buoy; wind comes from the EURO (ECMWF) model.
+      A <b>drought</b> is the run of non-fun+ days between one fun+ swell and the next; each season also counts
+      the run from its first day to its first fun+ swell and from its last fun+ swell to its end (today, while
+      the season is in progress), so a drought that straddles two seasons is counted in both.
+    </div>
+  </div>
+  <div class="more-link">More detailed historical analysis (days per rating, daily peak energy and
+    period over any review period) can be found in the <a id="reviewLink" href="/review">Conditions Reviewer →</a></div>
+</div>
+
+<div class="modal-overlay" id="prefsOverlay">
+  <div class="modal">
+    <button class="modal-close" id="prefsClose">✕</button>
+    <div class="modal-title"><span class="wave-glyph">∿</span>seasons · more</div>
+    <a class="modal-btn" id="reviewLinkModal" href="/review">▤ CONDITIONS REVIEWER</a>
+    <button class="modal-btn" id="themeBtn">◑ THEME</button>
+    <span class="modal-version">v1.13.2</span>
+  </div>
+</div>
+
+<footer class="app-footer">
+  <span class="footer-sig">made by cole and claude &copy; 2026</span>
+  <div class="footer-btns">
+    <a class="footer-btn" href="/" title="Back to the dashboard">← DASHBOARD</a>
+    <span class="footer-divider">·</span>
+    <button class="footer-btn" id="prefsBtn" title="Settings">MORE</button>
+  </div>
+</footer>
+
+<script>
+const CFG = {{ inline_config | safe }};
+let _seasonsData = null;
+
+// ─── Theme (shares the dashboard's key so the choice follows the user) ───
+const isLight = () => {
+  const t = document.documentElement.getAttribute('data-theme');
+  if (t === 'light') return true;
+  if (t === 'dark') return false;
+  return window.matchMedia('(prefers-color-scheme: light)').matches;
+};
+function catColors(cat) {
+  const c = CFG.colors[cat] || CFG.colors.FLAT;
+  return isLight() ? [c.light_bg, c.light_text] : [c.dark_bg, c.dark_text];
+}
+try {
+  const t = localStorage.getItem('wave-theme');
+  if (t) document.documentElement.setAttribute('data-theme', t);
+} catch (e) {}
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const next = isLight() ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', next);
+  try { localStorage.setItem('wave-theme', next); } catch (e) {}
+  if (_seasonsData) renderSeasons(_seasonsData);
+});
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if (_seasonsData) renderSeasons(_seasonsData); });
+document.getElementById('prefsBtn').addEventListener('click', () => document.getElementById('prefsOverlay').classList.add('open'));
+document.getElementById('prefsClose').addEventListener('click', () => document.getElementById('prefsOverlay').classList.remove('open'));
+document.getElementById('prefsOverlay').addEventListener('click', e => { if (e.target.id === 'prefsOverlay') e.target.classList.remove('open'); });
+
+const cap = w => w[0].toUpperCase() + w.slice(1);
+const yy = y => `'${String(y).slice(2)}`;
+const fmt1 = v => (Math.round(v * 10) / 10).toString();
+
+// Region: one at a time. ?region=<buoy_id> deep-links (the dashboard's regional
+// summary row points here); the choice is remembered under the same key as
+// /review so the two pages open on the same region.
+function currentRegion() {
+  return CFG.spots.find(s => s.buoy_id === document.getElementById('regionSel').value) || CFG.spots[0];
+}
+(function initRegion() {
+  const rs = document.getElementById('regionSel');
+  CFG.spots.forEach(s => { const o = document.createElement('option'); o.value = s.buoy_id; o.textContent = s.name; rs.appendChild(o); });
+  const fromUrl = new URLSearchParams(location.search).get('region');
+  let pick = null;
+  try { pick = localStorage.getItem('cs_review_region'); } catch (e) {}
+  if (fromUrl && CFG.spots.some(s => s.buoy_id === fromUrl)) pick = fromUrl;
+  if (pick && CFG.spots.some(s => s.buoy_id === pick)) rs.value = pick;
+  const syncLinks = () => {
+    ['reviewLink', 'reviewLinkModal'].forEach(id => { document.getElementById(id).href = `/review?region=${rs.value}`; });
+  };
+  syncLinks();
+  rs.addEventListener('change', () => {
+    try { localStorage.setItem('cs_review_region', rs.value); } catch (e) {}
+    history.replaceState(null, '', `?region=${rs.value}`);
+    syncLinks();
+    if (_seasonsData) renderSeasons(_seasonsData);
+  });
+})();
+// Fun+ floor per period band, read off the live scheme so the sentence tracks
+// /tuner (same derivation as /review's renderFunDef).
+(function renderFunDef() {
+  const cats = CFG.categories, fi = cats.indexOf('FUN');
+  const f = v => (Math.round(v * 10) / 10).toString();
+  const rows = []; let lo = 0;
+  CFG.swell_bands.forEach(b => {
+    const r = b.rules; let floor = 0, none = false;
+    for (const c of cats.slice(0, fi)) {
+      if (r[c] === 'always') { none = true; break; }
+      if (typeof r[c] === 'number') floor = r[c];
+    }
+    if (!none && cats.slice(fi).every(c => r[c] === 'never')) none = true;
+    const last = rows[rows.length - 1];
+    if (last && last.none === none && last.floor === floor) last.hi = b.period_ub;
+    else rows.push({ lo, hi: b.period_ub, floor, none });
+    lo = b.period_ub;
+  });
+  const span = ({ lo, hi }) => hi == null ? `${f(lo)} s and longer` : lo === 0 ? `under ${f(hi)} s` : `${f(lo)}–${f(hi)} s`;
+  const yes = rows.filter(r => !r.none).map(r => `${f(r.floor)} ft at ${span(r)}`);
+  const no = rows.filter(r => r.none).map(span);
+  document.getElementById('funDef').textContent =
+    'at least ' + yes.join(', ').replace(/, ([^,]*)$/, ' or $1') + (no.length ? `; nothing ${no.join(' or ')} counts` : '');
+  const w = CFG.wind_rating;
+  document.getElementById('windDef').textContent =
+    `offshore (within ${f(w.angles.offshore_max)}° of straight offshore) at any speed, ` +
+    `under ${f(w.low_sustained.clean_max)} mph from any direction, ` +
+    `side-shore under ${f(w.sideshore.textured_sust_max)} mph, or onshore under ${f(w.onshore.textured_sust_max)} mph`;
+})();
+// Condensed header (mobile): the header's region select mirrors #regionSel
+// both ways; body.condensed flips once the primary selector is under the header.
+(function initCondensedHeader() {
+  const rs = document.getElementById('regionSel'), hs = document.getElementById('hdrRegionSel');
+  CFG.spots.forEach(s => { const o = document.createElement('option'); o.value = s.buoy_id; o.textContent = s.name; hs.appendChild(o); });
+  hs.value = rs.value;
+  rs.addEventListener('change', () => { hs.value = rs.value; });
+  hs.addEventListener('change', () => { rs.value = hs.value; rs.dispatchEvent(new Event('change')); });
+  // Scroll-driven: condensed once the primary selector's top passes under
+  // the header's BASE height (--hdr-h, not the grown phone header, so the
+  // state can't oscillate while the region row unfolds). One rect read per
+  // scroll event is cheap enough to skip rAF batching.
+  const primary = document.querySelector('.controls label.primary');
+  const hdrH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr-h')) || 54;
+  const check = () => document.body.classList.toggle('condensed', primary.getBoundingClientRect().top < hdrH());
+  window.addEventListener('scroll', check, { passive: true });
+  window.addEventListener('resize', check);
+  check();
+})();
+
+// ─── Data: every season × year for the selected region ───
+const SEASON_MONTHS = { fall: 'Sep 21–Dec 20', winter: 'Dec 21–Mar 20', spring: 'Mar 21–Jun 20', summer: 'Jun 21–Sep 20' };
+async function loadSeasons() {
+  const st = document.getElementById('status');
+  try {
+    const r = await fetch('/api/review/seasons');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    _seasonsData = d;
+    st.textContent = '';
+    renderSeasons(d);
+  } catch (e) {
+    st.className = 'status err'; st.textContent = `Could not load the season history: ${e.message}`;
+  }
+}
+function renderSeasons(d) {
+  const root = document.getElementById('seasons');
+  root.innerHTML = '';
+  // Per-column shading: each cell's wash is that column's category colour
+  // at an opacity proportional to value / column max; the max is bold.
+  const colFg = { fun_plus: catColors('FUN')[1], flat: catColors('FLAT')[1],
+                  solid_or_firing: `color-mix(in srgb, ${catColors('SOLID')[1]} 55%, #000)` };
+  const cell = (r, key, max) => {
+    const v = r[key];
+    const pct = max ? v / max : 0;
+    const strength = key === 'solid_or_firing' ? Math.round(14 + pct * 56) : Math.round(8 + pct * 42);
+    const wash = v ? `background:color-mix(in srgb, ${colFg[key]} ${strength}%, transparent);` : '';
+    return `<td class="num${v && v === max ? ' max' : ''}${v ? '' : ' zero'}" style="${wash}">${v}</td>`;
+  };
+  const droughtCell = r => r.mean_drought == null ? '<td class="num drought">—</td>'
+    : `<td class="num drought">${fmt1(r.mean_drought)} <span class="med">(${fmt1(r.median_drought)})</span></td>`;
+  const tables = d.buoys[currentRegion().buoy_id] || {};
+  const grid = document.createElement('div');
+  grid.className = 'season-grid';
+  ['fall', 'winter', 'spring', 'summer'].forEach(season => {
+    const rows = tables[season] || [];
+    const label = y => season === 'winter' ? `${yy(y - 1)}-${yy(y)}` : String(y);
+    let html = `<div class="season"><h3>${cap(season)}<span class="months">${SEASON_MONTHS[season]}</span></h3>`;
+    if (!rows.length) {
+      html += `<table class="stbl"><tr><td class="none">no buoy data</td></tr></table></div>`;
+    } else {
+      html += `<table class="stbl"><thead><tr><th>Year</th><th>Flat</th><th>Fun+</th>` +
+              `<th title="Days rated SOLID or FIRING">Solid/<br>Firing</th>` +
+              `<th title="Average (median) drought length in days: gaps between fun+ swells within the season, plus the run from the season's start to its first fun+ swell and from its last fun+ swell to its end (today while in progress)">Drought d<br>avg (med)</th></tr></thead><tbody>`;
+      const max = {};
+      ['fun_plus', 'flat', 'solid_or_firing'].forEach(k => { max[k] = Math.max(...rows.map(r => r[k])); });
+      rows.forEach(r => {
+        // Flag seasons where the buoy covered well under the days elapsed
+        // (offline stretches, or a season still in progress).
+        const partial = r.days < r.elapsed * .85 || r.elapsed < r.season_days;
+        html += `<tr><td>${label(r.year)}${partial ? `<span class="part">${r.days}/${r.elapsed} d</span>` : ''}</td>` +
+                ['flat', 'fun_plus', 'solid_or_firing'].map(k => cell(r, k, max[k])).join('') +
+                droughtCell(r) + `</tr>`;
+      });
+      html += `</tbody></table></div>`;
+    }
+    grid.innerHTML += html;
+  });
+  root.appendChild(grid);
+}
+
+// Descriptor paragraph: minimized by default; the toggle line unfolds it.
+(function initMethodToggle() {
+  const btn = document.getElementById('methodToggle'), body = document.getElementById('methodBody');
+  btn.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    btn.querySelector('.tri').textContent = body.hidden ? '▸' : '▾';
+    btn.setAttribute('aria-expanded', String(!body.hidden));
+  });
+})();
+
+loadSeasons();
+</script>
+</body>
+</html>

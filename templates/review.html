@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>colesurfs — Conditions Review</title>
+  <title>colesurfs — Conditions Reviewer</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"/>
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"/>
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=22"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="apple-mobile-web-app-title" content="Review"/>
+  <meta name="apple-mobile-web-app-title" content="Reviewer"/>
 
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
@@ -17,7 +17,7 @@
 
   <style>
     /* ═══════════════════════════════════════════════════
-       Conditions Review — colesurfs palette (same tokens as the dashboard)
+       Conditions Reviewer — colesurfs palette (same tokens as the dashboard)
     ════════════════════════════════════════════════════ */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -52,42 +52,46 @@
     html { overflow-x:hidden; }
     body { overflow-x:clip; }
 
-    /* ─── Header (matches the dashboard) ─── */
+    /* ─── Header: bigger than the dashboard's and persistent — logo + page
+       name never leave; the region selector rides up into it (right side on
+       desktop, its own row on phones) once the primary selector scrolls
+       under the header. body.condensed is set by an IntersectionObserver. ─── */
+    :root { --hdr-h:54px; }
     .app-header { position:sticky; top:0; z-index:800; background:var(--bg1);
-      border-bottom:1px solid var(--border0); padding:0 24px; height:44px;
-      display:flex; align-items:center; justify-content:space-between; }
-    .header-left { display:inline-flex; align-items:center; gap:8px; min-width:0; }
-    .header-logo { font-size:14px; font-weight:700; letter-spacing:.12em;
+      border-bottom:1px solid var(--border0); padding:0 24px; min-height:var(--hdr-h);
+      display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
+      gap:0 16px; transition:box-shadow .22s ease; }
+    .header-left { display:inline-flex; align-items:center; gap:10px; min-width:0; height:var(--hdr-h); }
+    .header-logo { font-size:18px; font-weight:700; letter-spacing:.12em;
       color:var(--accent); display:inline-flex; align-items:center; gap:3px;
-      text-decoration:none; cursor:pointer; }
+      text-decoration:none; cursor:pointer; white-space:nowrap; }
     .header-logo .wave-glyph { font-size:1.5em; line-height:1; position:relative; top:-2px; }
-    .header-crumb { font-size:14px; font-weight:700; letter-spacing:.12em; color:var(--text1); }
-    .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:5px; }
-    /* Condensed header: once the region selector scrolls under the header
-       (mobile), the crumb crossfades into a compact region select so logo +
-       region stay on screen. body.condensed is set by an IntersectionObserver. */
-    .header-swap { position:relative; display:inline-flex; align-items:center; min-width:0; }
-    .header-crumb, .header-region { transition:opacity .22s ease, transform .22s ease; }
-    .header-region { position:absolute; left:0; top:50%; transform:translateY(calc(-50% + 7px));
-      opacity:0; pointer-events:none; display:inline-flex; align-items:center; white-space:nowrap; }
-    .header-region .sep { color:var(--text3); margin-right:5px; font-size:11px; }
+    .header-crumb { font-size:18px; font-weight:800; letter-spacing:.12em; color:var(--text0); white-space:nowrap; }
+    .header-crumb .sep { color:var(--text3); font-weight:400; margin-right:6px; }
+    .header-right { display:flex; align-items:center; gap:16px; min-width:0; height:var(--hdr-h);
+      font-size:10px; color:var(--text2); letter-spacing:.06em; white-space:nowrap; }
+    .header-region { display:inline-flex; align-items:center; opacity:0; transform:translateY(6px);
+      pointer-events:none; transition:opacity .22s ease, transform .22s ease; }
+    body.condensed .header-region { opacity:1; transform:none; pointer-events:auto; }
+    body.condensed .app-header { box-shadow:0 8px 20px -12px rgba(0,0,0,.7); }
     .header-region select { appearance:none; -webkit-appearance:none; background:transparent; border:0;
-      color:var(--text0); font-family:var(--font); font-size:11px; font-weight:800; letter-spacing:.06em;
-      padding:0 12px 0 0; cursor:pointer; max-width:210px; text-overflow:ellipsis;
+      color:var(--text0); font-family:var(--font); font-size:14px; font-weight:800; letter-spacing:.06em;
+      padding:2px 16px 2px 2px; cursor:pointer; max-width:280px; text-overflow:ellipsis;
       border-bottom:2px solid var(--accent); border-radius:0; }
     .header-region select:focus { outline:none; border-bottom-color:var(--text0); }
-    .header-region .caret { margin-left:-10px; font-size:9px; color:var(--accent); pointer-events:none; }
-    .app-header { transition:box-shadow .22s ease; }
-    .header-right { display:flex; align-items:center; gap:14px; min-width:0;
-      font-size:10px; color:var(--text2); letter-spacing:.06em; white-space:nowrap; }
+    .header-region .caret { margin-left:-12px; font-size:10px; color:var(--accent); pointer-events:none; }
     @media (max-width:600px) {
-      .app-header { height:38px; padding:0 14px; }
-      .header-logo { font-size:15px; letter-spacing:.08em; }
-      .header-crumb { font-size:11px; }
-      .header-right { display:none; }
-      body.condensed .header-crumb { opacity:0; transform:translateY(-7px); pointer-events:none; }
-      body.condensed .header-region { opacity:1; transform:translateY(-50%); pointer-events:auto; }
-      body.condensed .app-header { box-shadow:0 8px 20px -12px rgba(0,0,0,.7); }
+      :root { --hdr-h:46px; }
+      .app-header { padding:0 14px; }
+      .header-logo { font-size:16px; letter-spacing:.08em; }
+      .header-crumb { font-size:13px; letter-spacing:.1em; }
+      .header-meta { display:none; }
+      /* Region gets its own row under the title; the row unfolds when condensed. */
+      .header-right { flex-basis:100%; height:auto; max-height:0; overflow:hidden; opacity:0;
+        justify-content:flex-start; transition:max-height .22s ease, opacity .22s ease, padding .22s ease; }
+      body.condensed .header-right { max-height:48px; opacity:1; padding-bottom:9px; }
+      .header-region { transform:none; }
+      .header-region select { font-size:13px; max-width:calc(100vw - 60px); }
     }
 
     /* --gap is the page's single vertical rhythm: header→controls, between
@@ -123,36 +127,32 @@
     .window-summary b { color:var(--text0); }
     .window-summary .muted { color:var(--text3); }
 
-    /* ─── Region cards ─── */
-    .region { background:var(--bg1); border:1px solid var(--border1); border-radius:10px;
-      padding:14px 16px 12px; margin-bottom:var(--gap); }
-    .region-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
-    .region-head h2 { font-size:13px; font-weight:700; letter-spacing:.1em; color:var(--text0); }
-    .region-head h2 .by { font-weight:500; color:var(--text2); letter-spacing:.08em; }
-    .region-head .buoy { font-size:9.5px; color:var(--text3); letter-spacing:.08em; }
-    .region-head .funplus { margin-left:auto; font-size:11px; color:var(--text1); }
-    .region-head .funplus b { color:var(--text0); font-size:13px; }
-    .charts { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    /* ─── Chart cards: one card per chart ─── */
+    .charts { display:grid; grid-template-columns: 1fr 1fr; gap:var(--gap); margin-bottom:var(--gap); }
     .chart.energy, .chart.period { grid-column: 1 / -1; }
     @media (max-width:900px)  { .charts { grid-template-columns: 1fr; } }
-    .chart { min-width:0; }
+    .chart { min-width:0; background:var(--bg1); border:1px solid var(--border1); border-radius:10px;
+      padding:14px 16px 12px; }
     .chart h3 { font-size:9.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
       color:var(--text2); margin-bottom:4px; display:flex; justify-content:space-between; gap:8px; }
     .chart h3 .unit { font-weight:400; letter-spacing:.04em; text-transform:none; color:var(--text3); }
     .chart canvas { width:100%; height:280px; display:block; border-radius:6px; background:var(--bg2); }
     .chart .caption { font-size:9.5px; color:var(--text2); margin-top:5px; line-height:1.4; }
     .chart .caption b { color:var(--text1); }
-    .empty { font-size:11px; color:var(--text3); padding:20px 0 8px; }
+    .empty { font-size:11px; color:var(--text3); padding:20px 16px; background:var(--bg1);
+      border:1px solid var(--border1); border-radius:10px; margin-bottom:var(--gap); }
 
-    .legend { display:flex; flex-wrap:wrap; gap:5px; margin:0 0 8px; }
-    .legend-pill { font-size:9px; font-weight:700; letter-spacing:.06em; padding:2px 8px;
-      border-radius:4px; border:1px solid rgba(255,255,255,.08); }
-    html[data-theme="light"] .legend-pill { border-color:rgba(0,0,0,.12); }
-    @media (prefers-color-scheme: light) {
-      html:not([data-theme="dark"]) .legend-pill { border-color:rgba(0,0,0,.12); }
-    }
+    /* Descriptor: collapsed by default, one line that unfolds on tap. */
     .method { font-size:10px; color:var(--text2); line-height:1.5; margin:0; max-width:980px; }
     .method b { color:var(--text1); }
+    .method-toggle { background:none; border:0; padding:0; cursor:pointer; font-family:var(--font);
+      font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); }
+    .method-toggle:hover { color:var(--accent); }
+    .method-toggle .tri { display:inline-block; width:1em; color:var(--accent); }
+    .method-body { margin-top:6px; }
+    .more-link { font-size:10.5px; color:var(--text1); line-height:1.5; margin-top:var(--gap); }
+    .more-link a { color:var(--accent); text-decoration:none; font-weight:700; letter-spacing:.04em; }
+    .more-link a:hover { text-decoration:underline; }
 
     .tip { position:fixed; z-index:950; pointer-events:none; display:none;
       background:var(--bg1); border:1px solid var(--border2); border-radius:6px;
@@ -163,43 +163,6 @@
     .status { font-size:10.5px; color:var(--text2); margin-bottom:var(--gap); }
     .status:empty { display:none; }
 
-    /* ─── Season history ─── */
-    .region-head .sub { font-size:9.5px; color:var(--text3); letter-spacing:.06em; }
-    .season-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; }
-    @media (max-width:900px) { .season-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
-    .season h3 { font-size:13px; font-weight:800; letter-spacing:.14em; text-transform:uppercase;
-      color:var(--text0); margin-bottom:7px; padding-bottom:5px; border-bottom:2px solid var(--accent);
-      display:flex; align-items:baseline; justify-content:space-between; }
-    .season h3 .months { font-size:9px; font-weight:500; letter-spacing:.06em; text-transform:none; color:var(--text2); }
-    table.stbl { width:100%; border-collapse:collapse; font-size:10.5px; font-variant-numeric:tabular-nums; }
-    table.stbl th { font-size:8.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
-      color:var(--text3); text-align:right; padding:3px 6px; border-bottom:1px solid var(--border1); }
-    table.stbl th:first-child, table.stbl td:first-child { text-align:left; }
-    table.stbl td { padding:3px 6px; text-align:right; color:var(--text1); border-bottom:1px solid var(--border0); }
-    table.stbl td:first-child { color:var(--text0); font-weight:600; }
-    table.stbl td .part { color:var(--text3); font-weight:400; font-size:8.5px; margin-left:4px; }
-    table.stbl td.num { color:var(--text0); border-radius:3px; }
-    table.stbl td.num.max { font-weight:800; }
-    table.stbl td.num.zero { color:var(--text3); }
-    table.stbl .none { color:var(--text3); font-size:10px; padding:6px; text-align:left; }
-    table.stbl td.drought { color:var(--text1); }
-    /* One line per cell everywhere; the coverage marker sits under the year
-       and the drought header breaks in the same two places in every table,
-       so header and row heights match across the four season tables. */
-    table.stbl th, table.stbl td { white-space:nowrap; }
-    table.stbl th { vertical-align:bottom; }
-    table.stbl td .part { display:block; margin-left:0; line-height:1.2; }
-    table.stbl th .short { display:none; }
-    @media (max-width:600px) { table.stbl th .long { display:none; } table.stbl th .short { display:inline; } }
-    @media (max-width:600px) {
-      .season-grid { grid-template-columns:1fr; }
-      /* Fixed layout: auto sizing let the year+coverage cell and the FIRING
-         header dictate uneven columns on phones. */
-      table.stbl { table-layout:fixed; }
-      table.stbl th, table.stbl td { padding:3px 4px; }
-      table.stbl th { font-size:8px; letter-spacing:.05em; }
-      table.stbl th:first-child { width:64px; }
-    }
     .status.err { color:var(--red); }
 
     /* ─── Modal + footer (same shape as the dashboard's More modal) ─── */
@@ -254,12 +217,12 @@
 <header class="app-header">
   <div class="header-left">
     <a class="header-logo" href="/"><span class="wave-glyph">∿</span>colesurfs</a>
-    <span class="header-swap">
-      <span class="header-crumb"><span class="sep">/</span>CONDITIONS REVIEW</span>
-      <span class="header-region"><span class="sep">/</span><select id="hdrRegionSel" aria-label="Region"></select><span class="caret">▾</span></span>
-    </span>
+    <span class="header-crumb"><span class="sep">/</span>CONDITIONS REVIEWER</span>
   </div>
-  <div class="header-right"><span id="hdrWindow">—</span></div>
+  <div class="header-right">
+    <span class="header-meta" id="hdrWindow">—</span>
+    <span class="header-region"><select id="hdrRegionSel" aria-label="Region"></select><span class="caret">▾</span></span>
+  </div>
 </header>
 
 <div class="wrap">
@@ -288,20 +251,24 @@
   </div>
 
   <div class="status" id="status">Loading…</div>
-  <div id="regions"></div>
+  <div id="charts"></div>
 
-  <div class="status" id="seasonsStatus"></div>
-  <div id="seasons"></div>
-
-  <div class="legend" id="legend"></div>
   <div class="method">
-    <b>Fun+ swell</b> is primary swell tall enough for its period to rate FUN or better:
-    <span id="funDef">—</span>.
-    <b>Surfable wind</b> is sustained wind that is <span id="windDef">—</span>.
-    A <b>fun+ day</b> has at least two daylight 3-hour windows of fun+ swell in which at least one spot
-    in the region also had surfable wind; the day takes the highest rating that two such windows reached.
-    Swell is observed at the region's NDBC buoy; wind comes from the EURO (ECMWF) model.
+    <button class="method-toggle" id="methodToggle" type="button" aria-expanded="false" aria-controls="methodBody"><span class="tri">▸</span>How fun+ days and droughts are counted</button>
+    <div class="method-body" id="methodBody" hidden>
+      <b>Fun+ swell</b> is primary swell tall enough for its period to rate FUN or better:
+      <span id="funDef">—</span>.
+      <b>Surfable wind</b> is sustained wind that is <span id="windDef">—</span>.
+      A <b>fun+ day</b> has at least two daylight 3-hour windows of fun+ swell in which at least one spot
+      in the region also had surfable wind; the day takes the highest rating that two such windows reached.
+      Swell is observed at the region's NDBC buoy; wind comes from the EURO (ECMWF) model.
+      A <b>drought</b> is the run of non-fun+ days between one fun+ swell and the next; the review period also
+      counts the run from its first observed day to its first fun+ swell and from its last fun+ swell to its
+      last observed day, and a period with no fun+ swell at all is one drought spanning its observed days.
+    </div>
   </div>
+  <div class="more-link">Comparison of key metrics across different seasons over the years can be found in the
+    <a id="seasonsLinkBottom" href="/seasons">Seasonal Analysis →</a></div>
 </div>
 
 <div class="tip" id="tip"></div>
@@ -309,9 +276,10 @@
 <div class="modal-overlay" id="prefsOverlay">
   <div class="modal">
     <button class="modal-close" id="prefsClose">✕</button>
-    <div class="modal-title"><span class="wave-glyph">∿</span>review · more</div>
+    <div class="modal-title"><span class="wave-glyph">∿</span>reviewer · more</div>
+    <a class="modal-btn" id="seasonsLink" href="/seasons">▦ SEASONAL ANALYSIS</a>
     <button class="modal-btn" id="themeBtn">◑ THEME</button>
-    <span class="modal-version">v1.13.1</span>
+    <span class="modal-version">v1.13.2</span>
   </div>
 </div>
 
@@ -352,8 +320,7 @@ document.getElementById('themeBtn').addEventListener('click', () => {
   const next = isLight() ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', next);
   try { localStorage.setItem('wave-theme', next); } catch (e) {}
-  renderLegend(); drawAll();
-  if (_seasonsData) renderSeasons(_seasonsData);
+  drawAll();
 });
 document.getElementById('prefsBtn').addEventListener('click', () => document.getElementById('prefsOverlay').classList.add('open'));
 document.getElementById('prefsClose').addEventListener('click', () => document.getElementById('prefsOverlay').classList.remove('open'));
@@ -381,7 +348,8 @@ const yy = y => `'${String(y).slice(2)}`;
 // "Fall '25" / "Winter '25-'26"
 const seasonLabel = (name, year) => `${cap(name)} ${name === 'winter' ? `${yy(year - 1)}-${yy(year)}` : yy(year)}`;
 
-// The last two COMPLETED instances of each season as of today, newest first.
+// The season in progress (its start → today), then the last two COMPLETED
+// instances of each season as of today, newest first.
 function seasonPresets() {
   const y = +TODAY.slice(0, 4);
   const out = [];
@@ -390,6 +358,7 @@ function seasonPresets() {
     for (let yr = y + 1; yr >= y - 3 && n < 2; yr--) {
       const [s, e] = seasonRange(name, yr);
       if (e < TODAY) { out.push({ name, year: yr, start: s, end: e }); n++; }
+      else if (s <= TODAY) out.push({ name, year: yr, start: s, end: e, current: true });
     }
   }
   return out.sort((a, b) => (a.start < b.start ? 1 : -1));
@@ -404,7 +373,7 @@ function resolveWindow() {
   if (sel.startsWith('season:')) {
     const [, name, yr] = sel.split(':');
     const [s, e] = seasonRange(name, +yr);
-    return { start: s, end: e, label: seasonLabel(name, +yr), seasonal: true };
+    return { start: s, end: e > TODAY ? TODAY : e, label: seasonLabel(name, +yr) + (e > TODAY ? ' so far' : ''), seasonal: true };
   }
   const s = document.getElementById('startIn').value, e = document.getElementById('endIn').value;
   if (!s || !e || e < s) return null;
@@ -427,7 +396,8 @@ document.getElementById('seasonFill').addEventListener('click', () => {
 ['startIn', 'endIn'].forEach(id => document.getElementById(id).addEventListener('input', () => { _customSeasonal = false; }));
 
 // Region: one at a time so the charts get the width. ?region=<buoy_id> deep-links
-// (the dashboard's regional summary row points here); the choice is remembered.
+// (the dashboard's regional summary row points here); the choice is remembered
+// and shared with /seasons (same key) so the two pages open on the same region.
 function currentRegion() {
   return CFG.spots.find(s => s.buoy_id === document.getElementById('regionSel').value) || CFG.spots[0];
 }
@@ -439,11 +409,13 @@ function currentRegion() {
   try { pick = localStorage.getItem('cs_review_region'); } catch (e) {}
   if (fromUrl && CFG.spots.some(s => s.buoy_id === fromUrl)) pick = fromUrl;
   if (pick && CFG.spots.some(s => s.buoy_id === pick)) rs.value = pick;
+  const syncLink = () => { ['seasonsLink', 'seasonsLinkBottom'].forEach(id => { document.getElementById(id).href = `/seasons?region=${rs.value}`; }); };
+  syncLink();
   rs.addEventListener('change', () => {
     try { localStorage.setItem('cs_review_region', rs.value); } catch (e) {}
     history.replaceState(null, '', `?region=${rs.value}`);
+    syncLink();
     if (DATA) renderAll();
-    if (_seasonsData) renderSeasons(_seasonsData);
   });
 })();
 // Fun+ floor per period band, read off the live scheme so the sentence tracks
@@ -486,11 +458,16 @@ function currentRegion() {
   hs.value = rs.value;
   rs.addEventListener('change', () => { hs.value = rs.value; });
   hs.addEventListener('change', () => { rs.value = hs.value; rs.dispatchEvent(new Event('change')); });
-  const hdr = document.querySelector('.app-header');
-  const io = new IntersectionObserver(([e]) => {
-    document.body.classList.toggle('condensed', !e.isIntersecting && e.boundingClientRect.top < hdr.offsetHeight);
-  }, { rootMargin: `-${hdr.offsetHeight}px 0px 0px 0px`, threshold: 0 });
-  io.observe(document.querySelector('.controls label.primary'));
+  // Scroll-driven: condensed once the primary selector's top passes under
+  // the header's BASE height (--hdr-h, not the grown phone header, so the
+  // state can't oscillate while the region row unfolds). One rect read per
+  // scroll event is cheap enough to skip rAF batching.
+  const primary = document.querySelector('.controls label.primary');
+  const hdrH = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hdr-h')) || 54;
+  const check = () => document.body.classList.toggle('condensed', primary.getBoundingClientRect().top < hdrH());
+  window.addEventListener('scroll', check, { passive: true });
+  window.addEventListener('resize', check);
+  check();
 })();
 (function initWindow() {
   const ws = document.getElementById('windowSel');
@@ -498,7 +475,7 @@ function currentRegion() {
   const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; ws.appendChild(o); };
   add('calendar', `Calendar year ${y}`);
   add('trailing', '−1 year (last 365 days)');
-  seasonPresets().forEach(p => add(`season:${p.name}:${p.year}`, seasonLabel(p.name, p.year)));
+  seasonPresets().forEach(p => add(`season:${p.name}:${p.year}`, seasonLabel(p.name, p.year) + (p.current ? ' (so far)' : '')));
   add('custom', 'Custom');
 })();
 (function initCustom() {
@@ -533,54 +510,37 @@ async function load() {
 }
 
 // ─── Render ───
-function renderLegend() {
-  const el = document.getElementById('legend');
-  el.innerHTML = '';
-  CATS.forEach(cat => {
-    const [bg, fg] = catColors(cat);
-    const p = document.createElement('span');
-    p.className = 'legend-pill'; p.style.background = bg; p.style.color = fg; p.textContent = cat;
-    el.appendChild(p);
-  });
-}
-
 function renderAll() {
   const w = WINDOW, days = daysBetween(w.start, w.end);
+  const spot = currentRegion();
+  const rows = (DATA.buoys[spot.buoy_id] || []);
+  const withData = rows.filter(r => r.category);
+  const funPlus = withData.filter(r => CATS.indexOf(r.category) >= FUN_IDX).length;
   document.getElementById('windowSummary').innerHTML =
-    `<b>${fmtDate(w.start)}</b> → <b>${fmtDate(w.end)}</b> · ${days} days <span class="muted">· ${w.label}</span>`;
-  const root = document.getElementById('regions');
+    `<b>${fmtDate(w.start)}</b> → <b>${fmtDate(w.end)}</b> · ${days} days <span class="muted">· ${w.label}</span>` +
+    (withData.length ? ` · <b>${funPlus}</b> fun+ day${funPlus === 1 ? '' : 's'}` : '');
+  const root = document.getElementById('charts');
   root.innerHTML = '';
-  [currentRegion()].forEach(spot => {
-    const rows = (DATA.buoys[spot.buoy_id] || []);
-    const withData = rows.filter(r => r.category);
-    const card = document.createElement('div');
-    card.className = 'region';
-    const funPlus = withData.filter(r => CATS.indexOf(r.category) >= FUN_IDX).length;
-    const gaps = droughtsOf(withData);
-    const periods = withData.filter(r => r.peak_p_s != null).map(r => r.peak_p_s);
-    card.innerHTML = `<div class="region-head"><h2>${spot.name}</h2>
-        ${withData.length ? `<span class="funplus"><b>${funPlus}</b> fun+ day${funPlus === 1 ? '' : 's'}</span>` : ''}</div>`;
-    if (!withData.length) {
-      card.innerHTML += `<div class="empty">No buoy observations on record for this period.</div>`;
-      root.appendChild(card);
-      return;
-    }
-    const charts = document.createElement('div');
-    charts.className = 'charts';
-    charts.innerHTML = `
-      <div class="chart hist"><h3>Days per swell rating</h3><canvas data-kind="hist"></canvas>
-        <div class="caption">${withData.length} of ${days} days with buoy data</div></div>
-      <div class="chart hist gaps"><h3>Days between fun+ swells <span class="unit">days</span></h3><canvas data-kind="gaps"></canvas>
-        <div class="caption">${gapCaption(gaps)}</div></div>
-      <div class="chart energy"><h3>Max buoy energy per day <span class="unit">H²×T, ft²·s</span></h3><canvas data-kind="energy"></canvas>
-        <div class="caption">Strongest primary-swell reading each day, coloured by that day's rating.</div></div>
-      <div class="chart period"><h3>Primary swell period per day <span class="unit">seconds</span></h3><canvas data-kind="period"></canvas>
-        <div class="caption">Period at the day's peak reading; the faint bar spans the day's primary-period range.
-          ${periods.length ? `Median <b>${fmt1(median(periods))} s</b> · average <b>${fmt1(mean(periods))} s</b> over ${periods.length} days.` : ''}</div></div>`;
-    card.appendChild(charts);
-    root.appendChild(card);
-    charts.querySelectorAll('canvas').forEach(cv => { cv._rows = rows; cv._gaps = gaps; attachHover(cv); });
-  });
+  if (!withData.length) {
+    root.innerHTML = `<div class="empty">No buoy observations on record for this period.</div>`;
+    return;
+  }
+  const gaps = droughtsOf(withData);
+  const periods = withData.filter(r => r.peak_p_s != null).map(r => r.peak_p_s);
+  const charts = document.createElement('div');
+  charts.className = 'charts';
+  charts.innerHTML = `
+    <div class="chart hist"><h3>Days per swell rating</h3><canvas data-kind="hist"></canvas>
+      <div class="caption">${withData.length} of ${days} days with buoy data</div></div>
+    <div class="chart hist gaps"><h3>Days between fun+ swells <span class="unit">days</span></h3><canvas data-kind="gaps"></canvas>
+      <div class="caption">${gapCaption(gaps)}</div></div>
+    <div class="chart energy"><h3>Max buoy energy per day <span class="unit">H²×T, ft²·s</span></h3><canvas data-kind="energy"></canvas>
+      <div class="caption">Strongest primary-swell reading each day, coloured by that day's rating.</div></div>
+    <div class="chart period"><h3>Primary swell period per day <span class="unit">seconds</span></h3><canvas data-kind="period"></canvas>
+      <div class="caption">Period at the day's peak reading; the faint bar spans the day's primary-period range.
+        ${periods.length ? `Median <b>${fmt1(median(periods))} s</b> · average <b>${fmt1(mean(periods))} s</b> over ${periods.length} days.` : ''}</div></div>`;
+  root.appendChild(charts);
+  charts.querySelectorAll('canvas').forEach(cv => { cv._rows = rows; cv._gaps = gaps; attachHover(cv); });
   drawAll();
 }
 
@@ -593,25 +553,37 @@ function drawAll() {
   });
 }
 
-// ─── Droughts: days between fun+ swells (mirrors fun_days.droughts) ───
+// ─── Droughts: days between fun+ swells (mirrors fun_days.season_tables) ───
 // A fun+ swell is a maximal run of consecutive fun+ days; a drought is the
 // calendar days from the day after one run ends to the day before the next
-// begins. Only closed gaps count — nothing before the first or after the last.
+// begins. The period's edges count too: first observed day → first fun+ day
+// and last fun+ day → last observed day; a period with no fun+ day at all is
+// one drought spanning its observed days.
 function droughtsOf(rows) {
+  const DAY = 86400000;
+  const obs = rows.map(r => parse(r.date).getTime());
   const fun = rows.filter(r => CATS.indexOf(r.category) >= FUN_IDX).map(r => parse(r.date).getTime()).sort((a, b) => a - b);
+  if (!obs.length) return [];
+  const first = Math.min(...obs), last = Math.max(...obs);
+  if (!fun.length) return [Math.round((last - first) / DAY) + 1];
   const runs = [];
   fun.forEach(t => {
-    if (runs.length && t === runs[runs.length - 1][1] + 86400000) runs[runs.length - 1][1] = t;
+    if (runs.length && t === runs[runs.length - 1][1] + DAY) runs[runs.length - 1][1] = t;
     else runs.push([t, t]);
   });
-  return runs.slice(1).map((r, i) => Math.round((r[0] - runs[i][1]) / 86400000) - 1);
+  const gaps = runs.slice(1).map((r, i) => Math.round((r[0] - runs[i][1]) / DAY) - 1);
+  const lead = Math.round((runs[0][0] - first) / DAY), tail = Math.round((last - runs[runs.length - 1][1]) / DAY);
+  if (lead > 0) gaps.unshift(lead);
+  if (tail > 0) gaps.push(tail);
+  return gaps;
 }
 const median = a => { const s = [...a].sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; };
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 const fmt1 = v => (Math.round(v * 10) / 10).toString();
 function gapCaption(gaps) {
-  if (!gaps.length) return 'Fewer than two fun+ swells in this period, so no gaps to measure.';
-  return `${gaps.length} gap${gaps.length === 1 ? '' : 's'} between fun+ swells · median <b>${fmt1(median(gaps))} days</b> · average <b>${fmt1(mean(gaps))} days</b>.`;
+  if (!gaps.length) return 'No days to measure in this period.';
+  return `${gaps.length} drought${gaps.length === 1 ? '' : 's'} · average <b>${fmt1(mean(gaps))} days</b> · median <b>${fmt1(median(gaps))} days</b>. ` +
+         `Runs at the period's edges count (first observed day → first fun+ swell, last fun+ swell → last observed day).`;
 }
 // Weekly bins: <7, <14, <21, <28, <35, 35+ days.
 const GAP_BINS = [[1, 6], [7, 13], [14, 20], [21, 27], [28, 34], [35, Infinity]];
@@ -780,79 +752,22 @@ function attachHover(cv) {
   cv.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 }
 
-// ─── Season history: every region × fall/winter/spring/summer × year ───
-let _seasonsData = null;
-const SEASON_MONTHS = { fall: 'Sep 21–Dec 20', winter: 'Dec 21–Mar 20', spring: 'Mar 21–Jun 20', summer: 'Jun 21–Sep 20' };
-async function loadSeasons() {
-  const st = document.getElementById('seasonsStatus');
-  try {
-    const r = await fetch('/api/review/seasons');
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const d = await r.json();
-    _seasonsData = d;
-    st.textContent = '';
-    renderSeasons(d);
-  } catch (e) {
-    st.className = 'status err'; st.textContent = `Could not load the season history: ${e.message}`;
-  }
-}
-function renderSeasons(d) {
-  const root = document.getElementById('seasons');
-  root.innerHTML = '';
-  // Per-column shading: each cell's wash is that column's category colour
-  // at an opacity proportional to value / column max; the max is bold.
-  const colFg = { fun_plus: catColors('FUN')[1], flat: catColors('FLAT')[1],
-                  solid: catColors('SOLID')[1], firing: catColors('FIRING')[1] };
-  const cell = (r, key, max) => {
-    const v = r[key];
-    const pct = max ? v / max : 0;
-    const wash = v ? `background:color-mix(in srgb, ${colFg[key]} ${Math.round(8 + pct * 42)}%, transparent);` : '';
-    return `<td class="num${v && v === max ? ' max' : ''}${v ? '' : ' zero'}" style="${wash}">${v}</td>`;
-  };
-  [currentRegion()].forEach(spot => {
-    const tables = d.buoys[spot.buoy_id] || {};
-    const card = document.createElement('div');
-    card.className = 'region';
-    card.innerHTML = `<div class="region-head"><h2>Annual Comparison <span class="by">by Season</span></h2>` +
-      `<span class="sub">every year on record from fall ${d.first_year} · independent of the review period</span></div>`;
-    const grid = document.createElement('div');
-    grid.className = 'season-grid';
-    ['fall', 'winter', 'spring', 'summer'].forEach(season => {
-      const rows = tables[season] || [];
-      const label = y => season === 'winter' ? `${yy(y - 1)}-${yy(y)}` : String(y);
-      let html = `<div class="season"><h3>${cap(season)}<span class="months">${SEASON_MONTHS[season]}</span></h3>`;
-      if (!rows.length) {
-        html += `<table class="stbl"><tr><td class="none">no buoy data</td></tr></table></div>`;
-      } else {
-        html += `<table class="stbl"><thead><tr><th>Year</th><th>Flat</th><th>Fun+</th><th>Solid</th><th>Firing</th>` +
-                `<th title="Median days between fun+ swells within the season"><span class="long">Median drought<br>length</span><span class="short">Drought</span></th></tr></thead><tbody>`;
-        const max = {};
-        ['fun_plus', 'flat', 'solid', 'firing'].forEach(k => { max[k] = Math.max(...rows.map(r => r[k])); });
-        rows.forEach(r => {
-          // Flag seasons where the buoy covered well under the days elapsed
-          // (offline stretches, or a season still in progress).
-          const partial = r.days < r.elapsed * .85 || r.elapsed < r.season_days;
-          html += `<tr><td>${label(r.year)}${partial ? `<span class="part">${r.days}/${r.elapsed} d</span>` : ''}</td>` +
-                  ['flat', 'fun_plus', 'solid', 'firing'].map(k => cell(r, k, max[k])).join('') +
-                  `<td class="num drought">${r.median_drought == null ? '—' : `${fmt1(r.median_drought)} d`}</td></tr>`;
-        });
-        html += `</tbody></table></div>`;
-      }
-      grid.innerHTML += html;
-    });
-    card.appendChild(grid);
-    root.appendChild(card);
+// Descriptor paragraph: minimized by default; the toggle line unfolds it.
+(function initMethodToggle() {
+  const btn = document.getElementById('methodToggle'), body = document.getElementById('methodBody');
+  btn.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    btn.querySelector('.tri').textContent = body.hidden ? '▸' : '▾';
+    btn.setAttribute('aria-expanded', String(!body.hidden));
   });
-}
+})();
 
 let _rt = null;
 window.addEventListener('resize', () => { clearTimeout(_rt); _rt = setTimeout(drawAll, 120); });
-window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { renderLegend(); drawAll(); });
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', drawAll);
 
-renderLegend();
 setWindowUI();
 load();
-loadSeasons();
 </script>
 </body>
 </html>

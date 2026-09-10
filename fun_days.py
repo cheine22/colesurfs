@@ -694,35 +694,54 @@ def _ledger_years(buoy_id: str) -> list[int]:
 def season_tables() -> dict | None:
     """Per buoy, per season, one row per year with fun+ / flat / solid /
     firing day counts (fun+ = FUN or better; flat, solid, firing = exactly
-    that tier) and the median drought (days between fun+ swells, see
-    `droughts`) within the season,
-    from every ledger year on disk, fall SEASONS_FIRST_YEAR onward. `elapsed`
-    is the season's day count to date so the page can flag partial coverage."""
+    that tier; `solid_or_firing` = either) and the mean + median drought
+    within the season, from every ledger year on disk, fall
+    SEASONS_FIRST_YEAR onward. Droughts here are the closed gaps between
+    fun+ swells (`droughts`) PLUS the season's edge gaps: from the first
+    observed day of the season to the first fun+ day, and from the last fun+
+    day to the last observed day (today, for a season in progress). A season
+    with no fun+ day at all is one drought spanning its observed days. So a
+    drought that straddles a season boundary is counted in both seasons,
+    each for the part that fell inside it — unlike /review's gap histogram,
+    which counts closed gaps only. `elapsed` is the season's day count to
+    date so /seasons can flag partial coverage."""
     today = datetime.now(TZ).date()
+    live_wind = _live_wind()
     out = {}
     for s in SPOTS:
         bid = s["buoy_id"]
-        per: dict[tuple, dict] = {}
+        # Ledger years, then the same live tail rows_between applies so the
+        # season in progress agrees with /review down to today's row.
+        by_date: dict[str, dict] = {}
         for y in _ledger_years(bid):
             if y < SEASONS_FIRST_YEAR - 1:
                 continue
             for r in load_ledger(bid, y):
-                cat = r.get("category")
-                if not cat:
-                    continue
-                season, syear = season_of(date.fromisoformat(r["date"]))
-                if syear < SEASONS_FIRST_YEAR or (syear == SEASONS_FIRST_YEAR and season != "fall"):
-                    continue
-                c = per.setdefault((season, syear),
-                                   {"year": syear, "days": 0, "fun_plus": 0, "flat": 0,
-                                    "solid": 0, "firing": 0, "_fun_dates": set()})
-                c["days"] += 1
-                c["fun_plus"] += CATS.index(cat) >= FUN_IDX
-                if CATS.index(cat) >= FUN_IDX:
-                    c["_fun_dates"].add(date.fromisoformat(r["date"]))
-                c["flat"] += cat == "FLAT"
-                c["solid"] += cat == "SOLID"
-                c["firing"] += cat == "FIRING"
+                by_date[r["date"]] = r
+        try:
+            for r in classify_range(bid, today - timedelta(days=LIVE_TAIL_DAYS - 1), today, live_wind=live_wind):
+                by_date[r["date"]] = r
+        except Exception as e:
+            print(f"[fun_days] seasons live tail {bid} failed: {e}")
+        per: dict[tuple, dict] = {}
+        for r in by_date.values():
+            cat = r.get("category")
+            if not cat:
+                continue
+            season, syear = season_of(date.fromisoformat(r["date"]))
+            if syear < SEASONS_FIRST_YEAR or (syear == SEASONS_FIRST_YEAR and season != "fall"):
+                continue
+            c = per.setdefault((season, syear),
+                               {"year": syear, "days": 0, "fun_plus": 0, "flat": 0,
+                                "solid": 0, "firing": 0, "_fun_dates": set(), "_obs": set()})
+            c["days"] += 1
+            c["_obs"].add(date.fromisoformat(r["date"]))
+            c["fun_plus"] += CATS.index(cat) >= FUN_IDX
+            if CATS.index(cat) >= FUN_IDX:
+                c["_fun_dates"].add(date.fromisoformat(r["date"]))
+            c["flat"] += cat == "FLAT"
+            c["solid"] += cat == "SOLID"
+            c["firing"] += cat == "FIRING"
         tables = {}
         for season in ("fall", "winter", "spring", "summer"):
             rows = []
@@ -730,9 +749,18 @@ def season_tables() -> dict | None:
                 if sn != season:
                     continue
                 start, end = _season_bounds(season, syear)
-                gaps = [g["days"] for g in droughts(c.pop("_fun_dates"))]
-                rows.append({**c, "season_days": (end - start).days + 1,
+                fun_dates, obs = c.pop("_fun_dates"), c.pop("_obs")
+                gaps = [g["days"] for g in droughts(fun_dates)]
+                first_obs, last_obs = min(obs), max(obs)
+                if fun_dates:
+                    gaps += [g for g in ((min(fun_dates) - first_obs).days,
+                                         (last_obs - max(fun_dates)).days) if g > 0]
+                else:
+                    gaps.append((last_obs - first_obs).days + 1)
+                rows.append({**c, "solid_or_firing": c["solid"] + c["firing"],
+                             "season_days": (end - start).days + 1,
                              "elapsed": max(0, (min(end, today) - start).days + 1),
+                             "mean_drought": statistics.fmean(gaps) if gaps else None,
                              "median_drought": statistics.median(gaps) if gaps else None})
             tables[season] = sorted(rows, key=lambda r: -r["year"])
         out[bid] = tables

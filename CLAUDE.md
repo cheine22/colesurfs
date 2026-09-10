@@ -56,21 +56,24 @@ defs, metric tables).
   drought rule (non-fun+ days between consecutive runs of fun+ days):
   `summary()` reports the trailing-365-day longest gap vs the open gap
   since the last fun+ day (`drought`, `current_is_longest`), and
-  `season_tables()` adds `median_drought` per season-year. `review.html`
-  re-implements it as `droughtsOf` for the gap histogram — keep the two
-  in step.
-- `templates/review.html` — the `/review` Conditions Review page: per
-  region, a days-per-rating histogram, daily peak energy and daily peak
-  period over a review period (calendar year / trailing 365 d / last
-  completed season / custom or season+year; seasons run equinox to
+  `season_tables()` adds `mean_drought` + `median_drought` per season-year,
+  and there the gap set ALSO includes the season's edge runs (first observed
+  day → first fun+ day, last fun+ day → last observed day; a season with no
+  fun+ day is one drought) so a straddling drought lands in both seasons.
+  `review.html` re-implements the same rule (edge runs included) as
+  `droughtsOf` for the gap histogram over the review period — keep the two
+  in step. `droughts()` itself stays closed-gaps-only for the dashboard's
+  trailing-365-day longest-drought line.
+- `templates/review.html` — the `/review` Conditions Reviewer page: per
+  region, a days-per-rating histogram, gap histogram, daily peak energy and
+  daily peak period, one card each, over a review period (calendar year /
+  trailing 365 d / season in progress "(so far)" / last completed seasons /
+  custom or season+year; seasons run equinox to
   solstice on fixed dates — Mar/Jun/Sep/Dec 21 — via `fun_days.season_of`
   and `seasonRange()`, not calendar months). Reads
   `/api/review?start&end` → `fun_days.review_payload` (10-min TTL), which
   builds missing ledger years on demand when the buoy has obs shards for
-  that year, and `/api/review/seasons` → `fun_days.season_tables` (1 h TTL)
-  for the season-history panel (fall 2019 onward — winter 2019 would need
-  Dec 2018, which isn't archived; `SEASONS_FIRST_YEAR`). Ledgers are built
-  2019–2026 for every buoy. Charts are hand-drawn canvas (no chart library — page inlines
+  that year. Charts are hand-drawn canvas (no chart library — page inlines
   everything like the rest of the site); theme key is the dashboard's
   `wave-theme` so the choice follows the user between pages. Layout runs on
   one `--gap` custom property (18 px / 12 px phone) shared by the wrap
@@ -78,6 +81,25 @@ defs, metric tables).
   is `← DASHBOARD · MORE` inside safe-area insets, version lives in the
   More modal. `renderFunDef` writes the fun+ threshold sentence from
   `CFG.swell_bands` and the surfable-wind sentence from `CFG.wind_rating`
+  (duplicated verbatim in `seasons.html` — change both).
+- `templates/seasons.html` — the `/seasons` Seasonal Analysis page (split
+  out of /review in v1.13.2): region picker only, four season-by-year
+  tables (Flat / Fun+ / Solid or Firing / drought length as
+  `average (median)` days) from `/api/review/seasons` →
+  `fun_days.season_tables` (1 h TTL; overlays the same live tail as
+  `rows_between` so the season in progress matches /review to today's row;
+  persisted to `.cache/` — delete the
+  md5 file for key `fun_days.season_tables:():[]` after changing the row
+  schema or the restart serves the old shape for up to an hour). Fall 2019
+  onward — winter 2019 would need Dec 2018, which isn't archived;
+  `SEASONS_FIRST_YEAR`. Ledgers are built 2019–2026 for every buoy. Same
+  shell as review.html (54 px header, logo + page name persistent, region
+  select slides into the header's right side / its own phone row once the
+  primary selector scrolls under — `body.condensed`); one card per season
+  table, no region heading; shares the remembered region key
+  `cs_review_region` and links to `/review?region=` at the bottom and in
+  its More modal. Neither page shows the full rating-scale legend.
+  Both pages share `_review_inline_config()` in app.py.
   (the route inlines `swell_rules.load_bands()` / `wind_rules.load_config()`),
   so the page never hard-codes either scheme. On phones the region selector condenses into the sticky
   header (`initCondensedHeader`, `body.condensed`) — note `overflow-x`
@@ -500,7 +522,7 @@ logger still writes the combined_* columns alongside the raw partitions.
   list.
 - **More modal** — `#about-modal-overlay`, opened by the `MORE` button
   (footer on desktop, bottom bar on mobile). Two `.more-group`
-  blocks: pages (review, gland, csc) above settings (refresh,
+  blocks: pages (seasons, review, gland, csc) above settings (refresh,
   `#theme-btn`, `#sbs-btn` desktop-only, `#pref-show-history` button
   mobile-only, tuner). Labels are actions: theme reads "switch to <other>
   mode" (`_themeLabel`), history reads show/hide (`_syncHistoryBtn`). The

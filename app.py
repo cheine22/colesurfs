@@ -3,7 +3,7 @@ colesurfs — Flask Application
 
 Routes:
   /                              Dashboard UI (single-page app)
-  /review, /csc, /csc-model, /gland, /tuner, /gland/tuner, /palette-preview
+  /review, /seasons, /csc, /csc-model, /gland, /tuner, /gland/tuner, /palette-preview
   /api/buoys                     Live NOAA buoy readings for all regions
   /api/forecast/<EURO|GFS>       10-day hourly wave forecast per buoy
   /api/wind?model=               Current wind snapshot for map init
@@ -18,7 +18,7 @@ Routes:
   /api/buoy_history/<station_id>  10-day historical buoy data with spectral components (?days= override)
   /api/buoy_historical_context    Historical obs + per-hour model_agreement vs CSC2 archives
   /api/fun_days                  Observed fun+ ledger per buoy (fun_days.py)
-  /api/review, /api/review/seasons   Ledger rows + season tables for /review
+  /api/review, /api/review/seasons   Ledger rows for /review + season tables for /seasons
   /api/refresh (POST)            Clear caches + reload swell rules
   /api/tuner/save, /api/gland/tuner/save (POST)   Write the TOML schemes
   /api/gland/*                   G-Land page data (gland.py)
@@ -494,10 +494,10 @@ def api_fun_days():
     return jsonify(data)
 
 
-@app.route("/review")
-def review_page():
-    """Conditions Review — per-region histograms of observed swell ratings,
-    daily peak energy and primary period over a chosen window (fun_days.py)."""
+def _review_inline_config() -> str:
+    """Shared inline config for /review and /seasons: spots, the live
+    categorization scheme (for the fun+ definition sentence and colours),
+    today's date and the ledger floor year."""
     from datetime import datetime as _dt
     from zoneinfo import ZoneInfo as _Zi
     from config import TIMEZONE as _TZ
@@ -511,8 +511,21 @@ def review_page():
         "today":      _dt.now(_Zi(_TZ)).date().isoformat(),
         "first_year": 2019,   # floor of the custom season/year picker (ledgers + wind archive reach 2019)
     }
-    return render_template("review.html",
-                           inline_config=_json.dumps(payload, separators=(",", ":")))
+    return _json.dumps(payload, separators=(",", ":"))
+
+
+@app.route("/review")
+def review_page():
+    """Conditions Reviewer — per-region histograms of observed swell ratings,
+    daily peak energy and primary period over a chosen window (fun_days.py)."""
+    return render_template("review.html", inline_config=_review_inline_config())
+
+
+@app.route("/seasons")
+def seasons_page():
+    """Seasonal Analysis — per-region season-by-year tables of observed day
+    counts and drought lengths (fun_days.season_tables)."""
+    return render_template("seasons.html", inline_config=_review_inline_config())
 
 
 @app.route("/api/review")
@@ -535,8 +548,9 @@ def api_review():
 
 @app.route("/api/review/seasons")
 def api_review_seasons():
-    """Season-by-year fun+/flat/firing+ day counts per buoy, every ledger
-    year on disk from 2019 (fun_days.season_tables, 1 h TTL)."""
+    """Season-by-year fun+/flat/solid-or-firing day counts and drought
+    lengths per buoy, every ledger year on disk from 2019
+    (fun_days.season_tables, 1 h TTL). Feeds /seasons."""
     data = _season_tables()
     if data is None:
         return jsonify({"error": "data unavailable"}), 503

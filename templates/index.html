@@ -333,6 +333,7 @@
       letter-spacing: .03em; }
     .fun-year-muted { color: var(--text2); font-size: 9.5px; }
     .fun-year-drought { flex-basis: 100%; color: var(--text1); white-space: normal; line-height: 1.4; }
+    .fun-year-links { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 16px; }
     .fun-year-link { color: var(--accent); text-decoration: none;
       font-size: 9.5px; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
     .fun-year-link:hover { text-decoration: underline; }
@@ -1380,7 +1381,7 @@
   </div>
   <div class="sep"></div>
   <a class="sw-btn" href="/review" style="font-weight:700;letter-spacing:.05em;border-radius:6px;border:1px solid var(--border1); text-decoration:none; display:inline-flex; align-items:center; gap:5px; white-space:nowrap;"
-     title="Observed conditions by region, period and season">▤ CONDITIONS REVIEW</a>
+     title="Observed conditions by region and review period">▤ CONDITIONS REVIEWER</a>
   <div class="status-bar">
     <span class="status-tag" id="model-run-tag">Run: <b>—</b></span>
     <button class="btn-refresh" onclick="refreshAll()">↺ Refresh Model Now</button>
@@ -1493,7 +1494,7 @@
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.13.1</span>
+    <span class="info-modal-version">v1.13.2</span>
   </div>
 </div>
 
@@ -1504,7 +1505,8 @@
     <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs · more</div>
     <div class="about-section-title">pages</div>
     <div class="more-group">
-      <a class="info-modal-refresh" href="/review">▤ CONDITIONS REVIEW</a>
+      <a class="info-modal-refresh" href="/seasons">▦ SEASONAL ANALYSIS</a>
+      <a class="info-modal-refresh" href="/review">▤ CONDITIONS REVIEWER</a>
       <a class="info-modal-refresh" href="/gland">✈︎ G-LAND</a>
       <a class="info-modal-refresh" href="/csc">∿ CSC (BETA)</a>
     </div>
@@ -1516,7 +1518,7 @@
       <button class="info-modal-refresh toggle-history" id="pref-show-history" onclick="setShowHistory(localStorage['cs_show_history'] !== '1')">◷ SHOW HISTORICAL DATA</button>
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
     </div>
-    <span class="about-version">v1.13.1</span>
+    <span class="about-version">v1.13.2</span>
   </div>
 </div>
 
@@ -1552,7 +1554,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.13.1</span>
+    <span class="footer-version">v1.13.2</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -2790,7 +2792,9 @@ function _funSinceHtml(buoyId) {
 }
 function _funYearHtml(buoyId) {
   const fd = funDaysData[buoyId];
-  const link = `<a class="fun-year-link" href="/review?region=${buoyId}" onclick="event.stopPropagation()">▤ CONDITIONS REVIEW</a>`;
+  const link = `<span class="fun-year-links">` +
+    `<a class="fun-year-link" href="/seasons?region=${buoyId}" onclick="event.stopPropagation()">▦ REVIEW SEASONAL ANALYSIS</a>` +
+    `<a class="fun-year-link" href="/review?region=${buoyId}" onclick="event.stopPropagation()">▤ CONDITIONS REVIEWER</a></span>`;
   if (!fd || !fd.year) {
     const msg = Object.keys(funDaysData).length ? 'no buoy observations on record' : 'loading…';
     return `<span>Fun+ days this year: <span class="fun-year-muted">${msg}</span></span>${link}`;
