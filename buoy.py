@@ -6,25 +6,36 @@ Spectral swell components are derived from two NDBC files:
   .swdir      — mean wave direction (alpha1) per frequency bin
 
 The algorithm reproduces Surfline's "Individual Swells" processing:
-  1. Find local energy maxima in the swell band (period ≥ 6 s, freq ≤ 0.167 Hz).
-     One extra bin beyond the cutoff is included so the edge bin has a right-
-     neighbour for peak detection.
+  1. Find local energy maxima over the WHOLE spectrum (no period cutoff —
+     partitioning first and filtering afterwards is what keeps a 5–6 s
+     windswell's energy in one piece instead of truncating it at a band edge).
   2. Merge adjacent peaks that share similar direction (< 35°) AND have a high
-     valley/min-peak ratio (≥ 0.70) — this prevents splitting a single broad
-     swell train into spurious sub-peaks.
-  3. Assign each swell-band frequency bin to the nearest (by energy valley) merged
-     peak, forming partitions.
+     valley/min-peak ratio (≥ 0.70) AND sit within a 1.5× frequency ratio —
+     this prevents splitting a single broad swell train into spurious
+     sub-peaks without letting a small long-period swell disappear into a
+     big co-directional windsea on its shoulder.
+  3. Assign each frequency bin to the nearest (by energy valley) merged peak,
+     forming partitions.
   4. For each partition compute:
-       Hm0 = 4 √(Σ E(f) Δf)                  [significant wave height]
-       Tm  = Σ(E(f)Δf · T(f)) / Σ(E(f)Δf)    [energy-weighted mean period]
-       dir = circular energy-weighted mean of alpha1(f)
-  5. Filter: Hm0 ≥ 0.2 ft and Tm ≥ 6 s; sort by energy Hm0²·Tm (wave power ∝ H²T,
-     the same proxy the wave models and Surfline use); return top 2.
+       Hm0 = 4 √(Σ E(f) Δf)      [significant wave height]
+       Tp  = 1 / f_peak          [period of the partition's peak bin]
+       dir = alpha1(f_peak)      [direction of the peak bin]
+     Peak period and peak-bin direction are what Surfline prints; the
+     energy-weighted mean period / circular-mean direction used until
+     v1.13.3 read ~0.3 s long and 10–15° off on broad partitions.
+  5. Filter: Hm0 ≥ 0.2 ft and Tp ≥ wave_common.MIN_SWELL_PERIOD_S (5.0 s, the
+     same floor the wave models apply); sort by energy Hm0²·Tp (wave power
+     ∝ H²T, the same proxy the wave models and Surfline use); return top 2.
 
-Validation against Surfline buoy 44097 (Block Island) at 0600 UTC 2026-03-25:
-  Algorithm → Surfline
-  1.56 ft  9.7 s  113°  →  1.60 ft  10 s  105°  ESE  ✓
-  0.61 ft  6.4 s  104°  →  0.60 ft   6 s  100°    E  ✓
+Validation against Surfline, 2026-09-13 (algorithm → Surfline):
+  44065 NY Harbor Entrance 1720Z   2.1 ft 5.6 s 124° → 2.2 ft 6 s 125°   0.9 ft 8.3 s 148° → 1.0 ft 8 s 150°
+  44065 NY Harbor Entrance 1750Z   2.4 ft 5.3 s 136° → 2.3 ft 5 s 135°   0.7 ft 10.0 s 136° → 0.5 ft 10 s 140°
+  44025 Long Island        1740Z   2.9 ft 5.9 s 144° → 2.8 ft 6 s 145°   0.9 ft 10.0 s 128° → 0.9 ft 10 s 130°
+  (44097 Block Island agrees on period/direction but not height — Surfline's
+  partition heights there don't sum to its own Hs, so it likely reads CDIP's
+  2-D partitions for that buoy rather than NDBC's 1-D spectrum.)
+(The pre-v1.13.3 code read 0.9 ft 9.3 s / 0.8 ft 6.7 s for the same spectrum:
+it dropped every bin shorter than 6 s BEFORE partitioning.)
 
 Falls back to .spec summary file if .data_spec/.swdir are unavailable (some buoys
 only report the summary).
@@ -36,6 +47,7 @@ from datetime import datetime, timedelta, timezone
 import swell_rules
 from cache import ttl_cache, record_api_calls
 from config import m_to_ft, ms_to_mph, ms_to_kts
+from wave_common import MIN_SWELL_PERIOD_S
 
 NDBC_URL          = "https://www.ndbc.noaa.gov/data/realtime2/{station_id}.txt"
 NDBC_LATEST_URL   = "https://www.ndbc.noaa.gov/data/latest_obs/{station_id}.txt"
@@ -212,17 +224,17 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
 
     Returns a list of component dicts (same schema as the wave-model
     `components`, see wave_common.build_swell_components) sorted by energy
-    descending.  Only swell-band components (Tm ≥ 6 s, Hm0 ≥ 0.2 ft)
-    are returned; at most 2 are kept.
+    descending. The whole spectrum is partitioned first; only partitions with
+    Tp ≥ MIN_SWELL_PERIOD_S and Hm0 ≥ 0.2 ft are returned, at most 2.
     """
     # Align the two arrays by frequency index (they should match exactly)
     n = min(len(spec_bins), len(swdir_bins))
-    if n == 0:
+    if n < 3:
         return []
 
     freqs  = [spec_bins[i][0]  for i in range(n)]
     energy = [spec_bins[i][1]  for i in range(n)]
-    dirs   = [swdir_bins[i][1] for i in range(n)]
+    dirs   = [None if swdir_bins[i][1] in _FILL else swdir_bins[i][1] for i in range(n)]
 
     # Centred-difference bin widths (m Hz⁻¹ → m² when multiplied by spectral density)
     def bw(i: int) -> float:
@@ -230,23 +242,12 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
         if i == n-1: return freqs[-1] - freqs[-2]
         return (freqs[i + 1] - freqs[i - 1]) / 2.0
 
-    # Swell cutoff: period ≥ 6 s  ↔  freq ≤ 1/6 ≈ 0.1667 Hz
-    # Include one extra bin beyond the cutoff so the last swell-band bin has a
-    # right-neighbour for peak detection, then restrict partitions to the cutoff.
-    SWELL_CUTOFF = 1.0 / 6.0                                # 0.1667 Hz
-    ext_idx  = [i for i in range(n) if freqs[i] <= SWELL_CUTOFF + 0.015]
-    swell_idx = [i for i in range(n) if freqs[i] <= SWELL_CUTOFF]
-
-    # ── 1. Find local energy maxima ──────────────────────────────────────────
+    # ── 1. Find local energy maxima over the whole spectrum ─────────────────
     NOISE_FLOOR = 0.005   # m²/Hz — ignore sub-noise peaks
-    raw_peaks: list[int] = []
-    for pos in range(1, len(ext_idx) - 1):
-        i  = ext_idx[pos]
-        pi = ext_idx[pos - 1]
-        ni = ext_idx[pos + 1]
-        if energy[i] > energy[pi] and energy[i] > energy[ni] and energy[i] > NOISE_FLOOR:
-            raw_peaks.append(i)
-
+    raw_peaks: list[int] = [
+        i for i in range(1, n - 1)
+        if energy[i] > energy[i - 1] and energy[i] > energy[i + 1] and energy[i] > NOISE_FLOOR
+    ]
     if not raw_peaks:
         return []
 
@@ -256,10 +257,18 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
     # Physically: the direction test keeps separate swells from different storms
     # apart even if their spectra overlap; the valley test keeps the merge from
     # combining clearly distinct systems that happen to be co-directional.
-    DIR_THRESH    = 35.0   # degrees
-    VALLEY_THRESH = 0.70   # fraction
+    # A peak with no direction (NDBC 999 fill) is merged on the valley test alone.
+    # Peaks further apart than MAX_FREQ_RATIO in frequency are never one train:
+    # the valley test is relative to the SMALLER peak, so a 0.5 ft 10 s swell
+    # riding the shoulder of a 2.5 ft 5 s windsea (0.100 vs 0.190 Hz, both SE)
+    # would otherwise vanish into it — Surfline reports the two separately.
+    DIR_THRESH     = 35.0   # degrees
+    VALLEY_THRESH  = 0.70   # fraction
+    MAX_FREQ_RATIO = 1.5
 
-    def _dir_diff(a: float, b: float) -> float:
+    def _dir_diff(a: float | None, b: float | None) -> float:
+        if a is None or b is None:
+            return 0.0
         d = abs(a - b) % 360
         return min(d, 360.0 - d)
 
@@ -269,29 +278,27 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
         valley_e  = min(energy[j] for j in range(prev, pk + 1))
         min_peak  = min(energy[prev], energy[pk])
         ratio     = valley_e / min_peak if min_peak > 0 else 0.0
-        d_diff    = _dir_diff(dirs[prev], dirs[pk])
-        if d_diff < DIR_THRESH and ratio >= VALLEY_THRESH:
+        near      = freqs[pk] / freqs[prev] <= MAX_FREQ_RATIO
+        if near and _dir_diff(dirs[prev], dirs[pk]) < DIR_THRESH and ratio >= VALLEY_THRESH:
             # keep the higher-energy bin as the partition representative
             merged[-1] = pk if energy[pk] > energy[prev] else prev
         else:
             merged.append(pk)
 
-    # ── 3. Assign swell-band bins to partitions via valley boundaries ────────
-    def _partition_bins(peak_i: int) -> list[int]:
-        rank = merged.index(peak_i)
-        # left edge: one bin past the valley between previous peak and this one
+    # ── 3. Assign bins to partitions via valley boundaries ──────────────────
+    def _partition_bins(rank: int) -> list[int]:
+        peak_i = merged[rank]
         li = 0
         if rank > 0:
             prev_pk = merged[rank - 1]
             li = min(range(prev_pk, peak_i + 1), key=lambda j: energy[j]) + 1
-        # right edge: the valley bin between this peak and the next
-        ri = max(swell_idx) if swell_idx else 0
+        ri = n - 1
         if rank < len(merged) - 1:
             nxt_pk = merged[rank + 1]
             ri = min(range(peak_i, nxt_pk + 1), key=lambda j: energy[j])
-        return [j for j in swell_idx if li <= j <= ri]
+        return list(range(li, ri + 1))
 
-    # ── 4 & 5. Compute Hm0, Tm, direction for each partition ────────────────
+    # ── 4 & 5. Hm0, Tp, direction for each partition; filter; rank ──────────
     def _circular_mean(weights: list[float], angles_deg: list[float]) -> float:
         ss = sum(w * math.sin(math.radians(a)) for w, a in zip(weights, angles_deg))
         cs = sum(w * math.cos(math.radians(a)) for w, a in zip(weights, angles_deg))
@@ -300,39 +307,39 @@ def _spectral_components(spec_bins: list, swdir_bins: list) -> list:
     MIN_HM0_FT = 0.2
     components: list[dict] = []
 
-    for pk in merged:
-        if pk not in swell_idx:
-            continue   # peak itself is outside the swell band
-        part = _partition_bins(pk)
-        if not part:
-            continue
-
+    for rank, pk in enumerate(merged):
+        part = _partition_bins(rank)
         w       = [energy[i] * bw(i) for i in part]   # energy per bin (m²)
         total_e = sum(w)
         if total_e <= 0:
             continue
 
-        hm0_m   = 4.0 * math.sqrt(total_e)
-        hm0_ft  = m_to_ft(hm0_m)
-        # Energy-weighted mean period — matches Surfline's displayed period
-        Tm      = sum(wi * (1.0 / freqs[i]) for wi, i in zip(w, part)) / total_e
-        mean_dir = _circular_mean(w, [dirs[i] for i in part])
+        hm0_ft = m_to_ft(4.0 * math.sqrt(total_e))
+        Tp     = 1.0 / freqs[pk]
+        if hm0_ft < MIN_HM0_FT or Tp < MIN_SWELL_PERIOD_S:
+            continue
+
+        # Peak-bin direction (what Surfline prints); energy-weighted circular
+        # mean only when the peak bin carries the 999 fill.
+        if dirs[pk] is not None:
+            mean_dir = dirs[pk]
+        else:
+            known = [(wi, dirs[i]) for wi, i in zip(w, part) if dirs[i] is not None]
+            if not known:
+                continue
+            mean_dir = _circular_mean([k[0] for k in known], [k[1] for k in known])
+
         # H² × T — partition energy proxy. Used both for component sort
         # below and as `energy` consumed by the buoy modal's max-single-
         # swell callout, the modal's energy-history chart, and the
         # spectrum chart. Same convention as _parse / fetch_buoy_history
         # and the wave models (wave_common), so partition #1 is picked the
         # same way on both sides of the CSC2 comparison.
-        e_score  = round(hm0_ft ** 2 * Tm, 1)
-
-        if hm0_ft < MIN_HM0_FT or Tm < 6.0:
-            continue
-
         components.append({
             "height_ft":     round(hm0_ft, 2),
-            "period_s":      round(Tm, 1),
-            "direction_deg": round(mean_dir),
-            "energy":        e_score,
+            "period_s":      round(Tp, 1),
+            "direction_deg": round(mean_dir) % 360,
+            "energy":        round(hm0_ft ** 2 * Tp, 1),
             "type":          "swell",
         })
 
@@ -349,8 +356,8 @@ def _parse_spec(text: str) -> list:
       - Wind sea:       WWH (m), WWP (s), WWD (deg)
 
     Returns 0–1 items — the primary swell only (wind sea is intentionally
-    excluded), dropped when its period is under 6 s (same swell-band floor
-    as _spectral_components).
+    excluded), dropped when its period is under MIN_SWELL_PERIOD_S (the same
+    floor as _spectral_components and the wave models).
     """
     headers, data_lines = _split_ndbc(text)
     if not headers or not data_lines:
@@ -380,7 +387,7 @@ def _parse_spec(text: str) -> list:
         d   = _safe_dir(row.get(d_key))   # may be degrees or cardinal string e.g. "ESE"
         if not h_m or h_m <= 0.0:
             return
-        if not p or p < 6.0:          # < 6 s → FLAT noise, skip
+        if not p or p < MIN_SWELL_PERIOD_S:   # wind chop, skip
             return
         h_ft   = m_to_ft(h_m)
         energy = round(h_ft ** 2 * p, 1) if (h_ft and p) else None  # H² × T convention
@@ -427,6 +434,33 @@ def _parse_spectral_file_all_rows(text: str, value_offset: int) -> dict:
         if bins:
             result[ts.isoformat()] = bins
     return result
+
+
+SPECTRAL_MATCH_TOL = timedelta(minutes=30)
+# Inclusive: buoys logging stdmet every 10 min but spectra every 30 min leave
+# the newest obs exactly 30 min past the last spectrum. NOAA-owned buoys
+# publish stdmet and spectra on the same minute mark, but UCONN/USACE/UNH
+# buoys (44091/44097/44098) report stdmet at :26/:56 while their spectra
+# land on the hour, so exact-string matching never hits.
+
+
+def _nearest_spectral_key(spec_times: list[tuple[datetime, str]], ts: datetime) -> str | None:
+    """Key of the spectral row nearest `ts` within SPECTRAL_MATCH_TOL, or None.
+    `spec_times` is [(datetime, iso_key), …] sorted ascending. The ONE pairing
+    rule for stdmet ↔ spectrum, used by fetch_buoy (the BUOY NOW cell and the
+    CSC2 obs logger) and fetch_buoy_history (the modal / historical strip) so
+    the two can never show different decompositions for the same observation."""
+    if not spec_times:
+        return None
+    dts = [dt for dt, _ in spec_times]
+    i = bisect.bisect_left(dts, ts)
+    best = None
+    for j in (i - 1, i):
+        if 0 <= j < len(dts):
+            d = abs(dts[j] - ts)
+            if d <= SPECTRAL_MATCH_TOL and (best is None or d < best[0]):
+                best = (d, spec_times[j][1])
+    return best[1] if best else None
 
 
 def _fetch_historical_spectral(station_id: str, cutoff_dt: datetime) -> dict:
@@ -528,34 +562,18 @@ def fetch_buoy_history(station_id: str, days: int = 10) -> dict | None:
 
     records.reverse()  # oldest-first for charting
 
-    # Merge spectral components + raw spectrum bins.
-    # Match by nearest spectral timestamp within a tolerance rather than exact
-    # string equality: NOAA-owned buoys publish stdmet and spectra on the same
-    # minute mark, but UCONN/USACE/UNH buoys (44091/44097/44098) report stdmet
-    # at :26/:56 while their spectra land on the hour, so exact match never hits.
+    # Merge spectral components + raw spectrum bins, pairing each stdmet row
+    # with the nearest spectrum (_nearest_spectral_key — shared with fetch_buoy).
     try:
         spec_map = _fetch_historical_spectral(station_id, cutoff)
         spec_dts = sorted(
             (datetime.fromisoformat(k), k) for k in spec_map.keys()
         )
-        spec_times = [dt for dt, _ in spec_dts]
-        tol = timedelta(minutes=30)  # inclusive: buoys logging stdmet every 10 min
-                                     # but spectra every 30 min leave the newest
-                                     # obs exactly 30 min past the last spectrum
         for rec in records:
-            if not spec_times:
-                break
-            rec_dt = datetime.fromisoformat(rec["timestamp"])
-            i = bisect.bisect_left(spec_times, rec_dt)
-            best = None
-            for j in (i - 1, i):
-                if 0 <= j < len(spec_times):
-                    d = abs(spec_times[j] - rec_dt)
-                    if d <= tol and (best is None or d < best[0]):
-                        best = (d, spec_dts[j][1])
-            if best is None:
+            key = _nearest_spectral_key(spec_dts, datetime.fromisoformat(rec["timestamp"]))
+            if key is None:
                 continue
-            entry = spec_map[best[1]]
+            entry = spec_map[key]
             if entry.get("components"):
                 rec["components"] = entry["components"]
             if entry.get("spectrum"):
@@ -596,7 +614,11 @@ def fetch_buoy(station_id: str) -> dict | None:
         print(f"[buoy] {station_id} ({src}): OK — {wvht}ft @ {result.get('wave_period_s')}s")
 
         # ── Fetch individual swell components ─────────────────────────────
-        # Preferred: raw spectral files (.data_spec + .swdir) → Surfline-equivalent
+        # Preferred: raw spectral files (.data_spec + .swdir) → Surfline-equivalent,
+        #            the row nearest this stdmet row's timestamp. NDBC posts the
+        #            two files minutes apart, so "first line of each" could pair
+        #            a 17:20 stdmet reading with a 17:50 spectrum while the
+        #            history path paired it with 17:20 — cell ≠ modal.
         # Fallback:  spectral summary (.spec) → 1 swell only
         comps: list = []
         try:
@@ -605,12 +627,20 @@ def fetch_buoy(station_id: str) -> dict | None:
             rsw = requests.get(NDBC_SWDIR_URL.format(station_id=station_id),
                                timeout=15, headers={"User-Agent": "ColeSurfs/1.0"})
             if rds.status_code == 200 and rsw.status_code == 200:
-                spec_bins  = _parse_spectral_file(rds.text, value_offset=1)
-                swdir_bins = _parse_spectral_file(rsw.text, value_offset=0)
-                if spec_bins and swdir_bins:
-                    comps = _spectral_components(spec_bins, swdir_bins)
+                spec_all  = _parse_spectral_file_all_rows(rds.text, value_offset=1)
+                swdir_all = _parse_spectral_file_all_rows(rsw.text, value_offset=0)
+                spec_dts  = sorted((datetime.fromisoformat(k), k)
+                                   for k in spec_all if k in swdir_all)
+                key = None
+                if result.get("timestamp"):
+                    key = _nearest_spectral_key(spec_dts, datetime.fromisoformat(result["timestamp"]))
+                if key is not None:
+                    comps = _spectral_components(spec_all[key], swdir_all[key])
                     print(f"[buoy] {station_id} spectral: {len(comps)} component(s) "
-                          f"(data_spec+swdir)")
+                          f"(data_spec+swdir @ {key})")
+                elif spec_dts:
+                    print(f"[buoy] {station_id} no spectrum within "
+                          f"{SPECTRAL_MATCH_TOL} of {result.get('timestamp')}, trying .spec")
                 else:
                     print(f"[buoy] {station_id} spectral files empty, trying .spec")
             else:

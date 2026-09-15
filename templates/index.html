@@ -805,7 +805,7 @@
       /* Table cells for mobile */
       .swell-table th { padding: 3px 4px; font-size: 8px; letter-spacing: .1em; }
       .swell-table th { border-bottom-width: 2px; }
-      th.th-spot { min-width: 52px; max-width: 52px; }
+      th.th-spot { min-width: 52px; max-width: 52px; white-space: normal; line-height: 1.25; }
       th.th-time { min-width: 56px; }
       td.spot-cell {
         min-width: 52px; max-width: 52px; padding: 0 3px; font-size: 8.5px;
@@ -1494,7 +1494,7 @@
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.13.2</span>
+    <span class="info-modal-version">v1.13.3</span>
   </div>
 </div>
 
@@ -1518,7 +1518,7 @@
       <button class="info-modal-refresh toggle-history" id="pref-show-history" onclick="setShowHistory(localStorage['cs_show_history'] !== '1')">◷ SHOW HISTORICAL DATA</button>
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
     </div>
-    <span class="about-version">v1.13.2</span>
+    <span class="about-version">v1.13.3</span>
   </div>
 </div>
 
@@ -1554,7 +1554,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.13.2</span>
+    <span class="footer-version">v1.13.3</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -3094,7 +3094,7 @@ function buildTable() {
   const histTimes = historyOn ? _historicalTimes(resolution) : [];
   const histDayStarts = _dayStartSet(histTimes);
   let hrow = `<tr>
-    <th class="th-spot">SPOT</th>`;
+    <th class="th-spot">BUOY/<wbr>REGION</th>`;
   // Historical headers — same date/time format as forecast columns, with
   // night-column styling so the visual rhythm matches.
   histTimes.forEach(t => {

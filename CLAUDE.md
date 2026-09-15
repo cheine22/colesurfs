@@ -25,7 +25,27 @@ defs, metric tables).
   defaults to a 10-day range; each record carries a raw
   `spectrum: [[freq_hz, energy_density_m2/Hz, direction_deg | null], …]`
   field, sourced from the same `.data_spec` + `.swdir` bytes already parsed
-  for component decomposition (no extra HTTP)
+  for component decomposition (no extra HTTP). `_spectral_components`
+  (v1.13.3) partitions the WHOLE spectrum (valley watershed, peaks merged
+  when < 35° apart, the valley ≥ 70 % of the smaller peak AND within a
+  1.5× frequency ratio — without the ratio guard a small 10 s swell on a
+  5 s windsea's shoulder merges into it), reports each
+  partition's **peak period** and **peak-bin direction** (Surfline's
+  conventions — energy-weighted mean period / circular-mean direction read
+  ~0.3 s long and 10–15° off), then drops partitions under
+  `wave_common.MIN_SWELL_PERIOD_S` (5.0 s, same floor as the models) and
+  keeps the top 2 by H²·T. Never re-introduce a period cutoff BEFORE
+  partitioning: it deletes 5–6 s primaries outright and promotes a long-
+  period remnant (0.9 ft @ 9.3 s where Surfline read 2.2 ft @ 6 s). Peak
+  period is quantised to NDBC bins, so a reading can hop 5.6 ↔ 5.9 ↔ 6.3 s.
+  stdmet ↔ spectrum pairing is ONE rule, `_nearest_spectral_key` (≤ 30 min,
+  inclusive), used by both `fetch_buoy` (BUOY NOW cell, CSC2 obs logger)
+  and `fetch_buoy_history` (modal) — NDBC posts the two files minutes
+  apart, so "first line of each" once paired a 17:20 reading with a 17:50
+  spectrum and the cell disagreed with the modal. Golden test:
+  `development-assets/tests/test_buoy_decomposition.py`. Obs shards store
+  partitions only (no raw spectrum); live-log rows from 2026-04-24 to the
+  realtime window on NOAA-owned buoys are still the pre-v1.13.3 convention.
 - `waves.py` — Open-Meteo GFS-Wave partition fetch (EURO lives in CMEMS)
 - `waves_cmems.py` — Copernicus Marine ANFC EURO fetch + shared processing
   pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2)
@@ -272,7 +292,15 @@ Off-cycle retrain 2026-09-09 (`--version v6`, east + west) after the EURO
 cycle relabel, the H²·T partition re-ranking and the GFS fallback removal;
 everything trained earlier sits in `.csc2_models/<scope>/_pre-relabel/`
 (`list_models` only reads directories holding a `meta.json`, so the
-archive is invisible to the registry). Note the quarterly job still passes
+archive is invisible to the registry). Off-cycle retrain 2026-09-13 (`--version v7`, east + west) after the
+v1.13.3 buoy-decomposition change (full-spectrum partitions, peak period,
+5 s floor); v6 models were left in place, not archived, because east v7
+fails the SW1 height-skill floor (≈ 0 / −0.02) and the registry keeps
+`CSC2+baseline_260909_0.85_v6` as #1 — against the rebuilt obs the buoy's
+partition 1 is a sub-6 s windsea partition on ~15 % of hours, which the
+models file under wind sea rather than SW1, so raw-EURO primary-height MAE
+on the holdout rose 0.54 → 0.64 ft. West v7 baseline is #1 on its track.
+Note the quarterly job still passes
 `--version v1`; the date in the name is what orders models, so that is
 harmless, but bump the tag by hand whenever the data rules change.
 Consider an off-cycle retrain when: the top performer's live skill drops
