@@ -1,8 +1,8 @@
 """
 colesurfs — Open-Meteo Marine API Fetcher (GFS-Wave forecasts)
 
-Requests primary + secondary + tertiary swell partitions and falls back to
-the base variable set on a 400. GFS uses a fallback chain of model
+Requests primary + secondary + tertiary swell partitions plus the wind-sea
+partition and falls back to the base variable set on a 400. GFS uses a fallback chain of model
 identifiers (ncep_gfswave025 is current — the Marine API requires the
 resolution suffix). All spots go out in one multi-location call.
 
@@ -11,7 +11,7 @@ EURO is NOT served from here since v1.5 — it lives in waves_cmems.py.
 import requests
 from cache import ttl_cache, record_api_calls
 from config import FORECAST_DAYS, TIMEZONE, SPOTS, m_to_ft
-from wave_common import safe_float as _safe, build_swell_components, make_wave_record
+from wave_common import safe_float as _safe, rank_with_wind_sea, make_wave_record
 
 MARINE_API = "https://marine-api.open-meteo.com/v1/marine"
 
@@ -28,25 +28,30 @@ _WAVE_VARS_FULL = [
     "swell_wave_height",              "swell_wave_period",              "swell_wave_direction",
     "secondary_swell_wave_height",    "secondary_swell_wave_period",    "secondary_swell_wave_direction",
     "tertiary_swell_wave_height",     "tertiary_swell_wave_period",     "tertiary_swell_wave_direction",
+    "wind_wave_height",               "wind_wave_period",               "wind_wave_direction",
 ]
 
 # Fallback: primary swell only + combined (for models that don't expose secondary/tertiary)
 _WAVE_VARS_BASE = [
     "wave_height",       "wave_period",       "wave_peak_period",       "wave_direction",
     "swell_wave_height", "swell_wave_period", "swell_wave_direction",
+    "wind_wave_height",  "wind_wave_period",  "wind_wave_direction",
 ]
 
 
 def _build_components(sw_h,  sw_p,  sw_d,
                        sw_h2, sw_p2, sw_d2,
-                       sw_h3, sw_p3, sw_d3):
-    """Build swell component list (up to 2) from swell partition fields only;
-    combined-sea values ride along on the record for CSC2 only."""
-    return build_swell_components([
+                       sw_h3, sw_p3, sw_d3,
+                       ww_h=None, ww_p=None, ww_d=None):
+    """Rank the swell partitions with the wind-sea partition (see
+    wave_common.rank_with_wind_sea). Returns (components, wind_sea,
+    displaced_swell); combined-sea values ride along on the record for CSC2
+    only."""
+    return rank_with_wind_sea([
         {"h_m": sw_h,  "p": sw_p,  "d": sw_d,  "type": "swell"},
         {"h_m": sw_h2, "p": sw_p2, "d": sw_d2, "type": "swell2"},
         {"h_m": sw_h3, "p": sw_p3, "d": sw_d3, "type": "swell3"},
-    ])
+    ], {"h_m": ww_h, "p": ww_p, "d": ww_d})
 
 
 def _parse_response(data) -> list:
@@ -66,23 +71,25 @@ def _parse_response(data) -> list:
     sh  = col("swell_wave_height");           sp  = col("swell_wave_period");           sd  = col("swell_wave_direction")
     sh2 = col("secondary_swell_wave_height"); sp2 = col("secondary_swell_wave_period"); sd2 = col("secondary_swell_wave_direction")
     sh3 = col("tertiary_swell_wave_height");  sp3 = col("tertiary_swell_wave_period");  sd3 = col("tertiary_swell_wave_direction")
+    # Wind sea — WW3 files the whole sea here while the wind still drives it.
+    wwh = col("wind_wave_height");            wwp = col("wind_wave_period");            wwd = col("wind_wave_direction")
 
     records = []
     for i in range(n):
-        comps = _build_components(
+        comps, wind_sea, displaced = _build_components(
             sh[i],  sp[i],  sd[i],
             sh2[i], sp2[i], sd2[i],
             sh3[i], sp3[i], sd3[i],
+            wwh[i], wwp[i], wwd[i],
         )
         # Top-level fields come from the highest-energy swell component,
         # not the combined wave_height — consistent with what is displayed.
         primary = comps[0] if comps else None
 
-        # No combined-sea fallback (removed v1.13.1). Open-Meteo serves GFS
-        # partitions for the full 10 days, so an empty `comps` means every
-        # partition was 0 m — pure wind sea — and the old fallback rendered
-        # that as a FUN "primary swell" at the mean period. Honest-empty, as
-        # EURO has always been; csc2.train tags these rows "missing".
+        # No combined-sea fallback (removed v1.13.1). Since v1.13.4 the
+        # wind-sea partition is a ranked candidate, so an empty `comps` means
+        # nothing — swell or wind sea — cleared the 5 s floor. Honest-empty;
+        # csc2.train tags these rows "missing".
 
         # Raw direction: always include the best available swell direction even
         # when components are filtered out (period < 6s etc.), so the map can
@@ -100,6 +107,7 @@ def _parse_response(data) -> list:
         records.append(make_wave_record(
             times[i], comps, primary, raw_dir,
             wh[i], wp_peak[i] or wp[i], wd[i],
+            wind_sea=wind_sea, displaced_swell=displaced,
         ))
     return records
 
@@ -127,7 +135,7 @@ def fetch_wave_forecast(lat: float, lon: float, model_key: str) -> list | None:
                 r = requests.get(MARINE_API, params=params, timeout=25,
                                  headers={"User-Agent": "ColeSurfs/1.0"})
                 if r.status_code == 400:
-                    tag = 'full' if len(var_list) > 6 else 'base'
+                    tag = 'full' if var_list is _WAVE_VARS_FULL else 'base'
                     print(f"[models] {model_key}/{model_id} 400 with {tag} vars — next attempt…")
                     continue
                 r.raise_for_status()
@@ -194,7 +202,7 @@ def fetch_all_wave_forecasts(model_key: str) -> dict | None:
                 r = requests.get(MARINE_API, params=params, timeout=60,
                                  headers={"User-Agent": "ColeSurfs/1.0"})
                 if r.status_code == 400:
-                    tag = 'full' if len(var_list) > 7 else 'base'
+                    tag = 'full' if var_list is _WAVE_VARS_FULL else 'base'
                     print(f"[wave_batch] {model_key}/{model_id} 400 with {tag} vars — next attempt…")
                     continue
                 r.raise_for_status()

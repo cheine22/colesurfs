@@ -42,7 +42,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from csc2.schema import BUOYS, LOGS_DIR, ensure_dirs  # noqa: E402
-from csc2.logger import shard_path, records_to_rows, write_rows  # noqa: E402
+from csc2.logger import shard_path, records_to_rows, write_rows, _LOCAL_TZ  # noqa: E402
 
 
 S3_BUCKET = "noaa-gfs-bdp-pds"
@@ -56,9 +56,19 @@ GRID = "global.0p25"
 # We pull all three variables × levels 1/2/3 per lead file.
 IDX_SHORT_WANTED = {"SWELL", "SWPER", "SWDIR"}
 IDX_LEVEL_WANTED = {"1", "2", "3"}
+# Surface fields: the wind-sea partition, a ranked candidate since v1.13.4.
+# Level key "ww". (Combined sea — HTSGW/PERPW/DIRPW — is left out: +25 %
+# bytes per lead for columns nothing downstream trains on.)
+IDX_SURFACE_WANTED = {"WVHGT": "ww", "WVPER": "ww", "WVDIR": "ww"}
 
 # eccodes → canonical key used downstream (after GRIB parse).
 ECCODES_SHORT_TO_ROLE = {"shts": "HT", "mpts": "PR", "swdir": "DR"}
+ECCODES_SURFACE = {"shww": ("HT", "ww"), "mpww": ("PR", "ww"), "wvdir": ("DR", "ww")}
+
+# Nearest-gridpoint index per (lat, lon). The 0p25 grid is fixed, and
+# codes_grib_find_nearest costs ~0.4 s a call — per buoy per message it was
+# ~95 % of the backfill's wall clock. Resolve once, then index `values`.
+_NEAREST_IDX: dict[tuple[float, float], int] = {}
 
 
 def _s3() -> "boto3.client":
@@ -99,6 +109,9 @@ def _fetch_idx(s3, key: str) -> list[tuple[int, int, str, str]]:
     out: list[tuple[int, int, str, str]] = []
     for i, (start, short, level_tok) in enumerate(rows):
         end = rows[i + 1][0] - 1 if i + 1 < len(rows) else None
+        if short in IDX_SURFACE_WANTED and level_tok == "surface":
+            out.append((start, end, short, IDX_SURFACE_WANTED[short]))
+            continue
         if short not in IDX_SHORT_WANTED:
             continue
         # "1 in sequence (insta)" → "1"
@@ -150,15 +163,23 @@ def _extract_points(grib_path: Path,
                     level = str(int(ec.codes_get(h, "level")))
                 except Exception:
                     level = "0"
-                role = ECCODES_SHORT_TO_ROLE.get(short.lower())
-                if role is None or level not in IDX_LEVEL_WANTED:
-                    continue
+                if short.lower() in ECCODES_SURFACE:
+                    role, level = ECCODES_SURFACE[short.lower()]
+                else:
+                    role = ECCODES_SHORT_TO_ROLE.get(short.lower())
+                    if role is None or level not in IDX_LEVEL_WANTED:
+                        continue
+                values = None
                 for buoy_id, lat, lon in buoys:
-                    lon360 = lon % 360
                     try:
-                        nearest = ec.codes_grib_find_nearest(h, lat, lon360, is_lsm=0, npoints=1)
-                        val = float(nearest[0]["value"]) if nearest else None
-                        if val is not None and (val == 9999.0 or val != val):
+                        idx = _NEAREST_IDX.get((lat, lon))
+                        if idx is None:
+                            nearest = ec.codes_grib_find_nearest(h, lat, lon % 360, is_lsm=0, npoints=1)
+                            idx = _NEAREST_IDX[(lat, lon)] = int(nearest[0]["index"])
+                        if values is None:
+                            values = ec.codes_get_values(h)
+                        val = float(values[idx])
+                        if val == 9999.0 or val != val:
                             val = None
                     except Exception:
                         val = None
@@ -174,10 +195,13 @@ def _raw_row(utc: datetime, extracted: dict[tuple[str, str], float | None]) -> d
     def g(role, lvl):
         return extracted.get((role, str(lvl)))
     return {
-        "time": utc.strftime("%Y-%m-%dT%H:%M"),
+        # Local time, as records_to_rows expects. Until v1.13.4 this was the
+        # UTC string, which stamped every backfilled row 4-5 h late.
+        "time": utc.astimezone(_LOCAL_TZ).strftime("%Y-%m-%dT%H:%M"),
         "sw1_h_m": g("HT", 1), "sw1_p_s": g("PR", 1), "sw1_d": g("DR", 1),
         "sw2_h_m": g("HT", 2), "sw2_p_s": g("PR", 2), "sw2_d": g("DR", 2),
         "sw3_h_m": g("HT", 3), "sw3_p_s": g("PR", 3), "sw3_d": g("DR", 3),
+        "ww_h_m":  g("HT", "ww"), "ww_p_s": g("PR", "ww"), "ww_d": g("DR", "ww"),
     }
 
 
@@ -188,10 +212,11 @@ def _raw_rows_to_records(rows: list[dict]) -> list[dict]:
 
     out = []
     for r in rows:
-        comps = _build_components(
+        comps, wind_sea, displaced = _build_components(
             r.get("sw1_h_m"), r.get("sw1_p_s"), r.get("sw1_d"),
             r.get("sw2_h_m"), r.get("sw2_p_s"), r.get("sw2_d"),
             r.get("sw3_h_m"), r.get("sw3_p_s"), r.get("sw3_d"),
+            r.get("ww_h_m"),  r.get("ww_p_s"),  r.get("ww_d"),
         )
         primary = comps[0] if comps else None
         out.append({
@@ -205,6 +230,8 @@ def _raw_rows_to_records(rows: list[dict]) -> list[dict]:
             "combined_wave_height_m":      None,
             "combined_wave_period_s":      None,
             "combined_wave_direction_deg": None,
+            "wind_sea":                    wind_sea,
+            "displaced_swell":             displaced,
         })
     return out
 

@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 
 from cache import model_aware_cache, record_api_calls
 from config import FORECAST_DAYS, TIMEZONE, SPOTS
-from wave_common import safe_float as _safe, build_swell_components, make_wave_record
+from wave_common import safe_float as _safe, rank_with_wind_sea, make_wave_record
 
 # copernicusmarine logs every subset at INFO plus a WARNING about "subset
 # exceeds coords" when we pad the window past the forecast tail. Silence
@@ -41,6 +41,7 @@ CMEMS_VARS = [
     "VHM0", "VTPK", "VMDR",
     "VHM0_SW1", "VTM01_SW1", "VMDR_SW1",
     "VHM0_SW2", "VTM01_SW2", "VMDR_SW2",
+    "VHM0_WW",  "VTM01_WW",  "VMDR_WW",
 ]
 
 # Hard TTL is only the outage backstop — actual refresh is run-aware:
@@ -111,33 +112,40 @@ def _interpolate_to_hourly(raw: list[dict]) -> list[dict]:
 
 
 def _build_components(sw_h, sw_p, sw_d,
-                       sw_h2, sw_p2, sw_d2):
-    """Build up to 2 swell components from the SW1/SW2 partition fields.
+                       sw_h2, sw_p2, sw_d2,
+                       ww_h=None, ww_p=None, ww_d=None, wind_sea=True):
+    """Rank the SW1/SW2 partitions with the wind-sea (WW) partition — see
+    wave_common.rank_with_wind_sea. Returns (components, wind_sea,
+    displaced_swell). wind_sea=False keeps the ranking swell-only.
 
     CMEMS publishes partition period as VTM01_* (spectral mean period m1),
     while Windy / Surfline / buoy-DPD display peak period Tp. For typical
     ocean spectra Tp ≈ Tm01 × (1 / 0.83). We apply a fixed 1.20 scalar to
     the partition period before display so the output aligns with those
     references. The underlying partition Hs and direction are unchanged.
+    VTM01_WW takes the same scalar.
 
     The combined-sea fallback that used to populate this list when all
     partitions were filtered was removed in v1.5 — we display swell only.
     """
-    return build_swell_components([
+    return rank_with_wind_sea([
         {"h_m": sw_h,  "p": sw_p,  "d": sw_d,  "type": "swell"},
         {"h_m": sw_h2, "p": sw_p2, "d": sw_d2, "type": "swell2"},
-    ], period_scale=_TM01_TO_TP)
+    ], {"h_m": ww_h, "p": ww_p, "d": ww_d} if wind_sea else None,
+        period_scale=_TM01_TO_TP)
 
 
-def _rows_to_records(rows: list[dict]) -> list[dict]:
+def _rows_to_records(rows: list[dict], wind_sea: bool = True) -> list[dict]:
     records = []
     for r in rows:
         t_local = r["utc"].astimezone(_NY)
         time_str = t_local.strftime("%Y-%m-%dT%H:%M")
 
-        comps = _build_components(
+        comps, ws, displaced = _build_components(
             r.get("VHM0_SW1"), r.get("VTM01_SW1"), r.get("VMDR_SW1"),
             r.get("VHM0_SW2"), r.get("VTM01_SW2"), r.get("VMDR_SW2"),
+            r.get("VHM0_WW"),  r.get("VTM01_WW"),  r.get("VMDR_WW"),
+            wind_sea=wind_sea,
         )
         primary = comps[0] if comps else None
 
@@ -152,6 +160,7 @@ def _rows_to_records(rows: list[dict]) -> list[dict]:
         records.append(make_wave_record(
             time_str, comps, primary, raw_dir,
             _safe(r.get("VHM0")), _safe(r.get("VTPK")), _safe(r.get("VMDR")),
+            wind_sea=ws, displaced_swell=displaced,
         ))
     return records
 
@@ -220,7 +229,7 @@ def _extract_point_rows(ds, lat: float, lon: float) -> list[dict]:
     return rows
 
 
-def raw_rows_to_hourly_records(raw_rows: list[dict]) -> list[dict]:
+def raw_rows_to_hourly_records(raw_rows: list[dict], wind_sea: bool = True) -> list[dict]:
     """Convert raw 3-hourly CMEMS point-series rows into dashboard-format
     hourly records. Shared with csc2/gee_backfill.py so any historical pull
     from GEE flows through the same processing as the live logger.
@@ -228,16 +237,18 @@ def raw_rows_to_hourly_records(raw_rows: list[dict]) -> list[dict]:
     Each input row must carry a 'utc' datetime (UTC-aware) plus the
     CMEMS_VARS keys with raw meters / seconds / degrees values (or None).
     Output records carry the same keys as waves._parse_response.
+    wind_sea=False ranks the swell partitions alone (/gland).
     """
-    return _rows_to_records(_interpolate_to_hourly(raw_rows))
+    return _rows_to_records(_interpolate_to_hourly(raw_rows), wind_sea=wind_sea)
 
 
 # model_arg_index=99 exceeds the (lat, lon) args on purpose so the checker
 # always sees the default "EURO" — this cache is EURO-only.
 @model_aware_cache(hard_ttl=_CMEMS_TTL_SECONDS, model_arg_index=99, quiet=True)
-def fetch_cmems_point(lat: float, lon: float) -> list | None:
+def fetch_cmems_point(lat: float, lon: float, wind_sea: bool = True) -> list | None:
     """Pull CMEMS wave forecast at a single lat/lon; return per-hour records
-    in the waves._parse_response shape, or None on failure."""
+    in the waves._parse_response shape, or None on failure. wind_sea=False
+    (keyword — it is part of the cache key) ranks swell partitions only."""
     t0 = time.monotonic()
     record_api_calls("cmems_wave_forecast", 1)
     try:
@@ -258,7 +269,7 @@ def fetch_cmems_point(lat: float, lon: float) -> list | None:
     hourly = _interpolate_to_hourly(raw)
     start_utc, end_utc = _forecast_window_utc()
     hourly = [r for r in hourly if start_utc <= r["utc"] < end_utc]
-    records = _rows_to_records(hourly)
+    records = _rows_to_records(hourly, wind_sea=wind_sea)
     elapsed = time.monotonic() - t0
     print(f"[cmems] ({lat:.3f},{lon:.3f}) {len(records)} rows in {elapsed:.1f}s")
     return records

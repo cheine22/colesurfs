@@ -46,11 +46,17 @@ defs, metric tables).
   `development-assets/tests/test_buoy_decomposition.py`. Obs shards store
   partitions only (no raw spectrum); live-log rows from 2026-04-24 to the
   realtime window on NOAA-owned buoys are still the pre-v1.13.3 convention.
-- `waves.py` — Open-Meteo GFS-Wave partition fetch (EURO lives in CMEMS)
+- `waves.py` — Open-Meteo GFS-Wave partition fetch (EURO lives in CMEMS):
+  three swell partitions + the wind-sea partition (`wind_wave_*`)
 - `waves_cmems.py` — Copernicus Marine ANFC EURO fetch + shared processing
-  pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2)
+  pipeline (Tm01×1.20, 5 s filter, energy-sorted top-2) over SW1/SW2 + the
+  wind-sea partition (`V*_WW`). `wind_sea=False` (keyword on
+  `fetch_cmems_point` / `raw_rows_to_hourly_records`, part of the cache key)
+  ranks swell only — /gland uses it
 - `wave_common.py` — shared `_safe`/component-builder/record-schema used by
-  both wave modules. Behavior locked by `development-assets/tests/test_wave_identity.py`
+  both wave modules. `rank_with_wind_sea` (v1.13.4) ranks the model's
+  wind-sea partition as one more candidate (`type: "windsea"`), same 5 s
+  floor and H²·T order — see "Wind sea is a ranked candidate" below. Behavior locked by `development-assets/tests/test_wave_identity.py`
   (golden fixtures); regenerate goldens only for intentional changes via
   `development-assets/tests/regen_golden.py`
 - `fun_days.py` — observed fun+ ledger behind the "days since last fun+"
@@ -196,7 +202,9 @@ defs, metric tables).
 ## csc2/ package
 
 - `csc2/schema.py` — buoy scope (5 east + 3 west), path layout, forecast-row
-  columns. Every csc2 module imports `BUOYS` / paths from here
+  columns. Every csc2 module imports `BUOYS` / paths from here. The
+  `CSC2_DATA_DIR` env var redirects the whole tree, so a backfill can build a
+  parallel archive without touching the live one
 - `csc2/logger.py` — live forecast logger (`com.colesurfs.csc2-logger`,
   3 AM + 3 PM ET). Pulls CMEMS + GFS via `waves_cmems.fetch_cmems_point` /
   `waves.fetch_wave_forecast` and writes per-cycle parquet shards. **Cycle
@@ -257,6 +265,12 @@ defs, metric tables).
   Cycle-preserving archive back to 2025-04-28
 - `csc2/aws_gfs_backfill.py` — historical GFS backfill via AWS S3
   (`noaa-gfs-bdp-pds`) with byte-range GRIB2 fetches driven by `.idx` sidecars
+  (SWELL/SWPER/SWDIR levels 1–3 + surface WVHGT/WVPER/WVDIR). Nearest-gridpoint
+  indexes are resolved once and cached (`_NEAREST_IDX`) — per-message
+  `codes_grib_find_nearest` was ~95 % of the wall clock. **Until v1.13.4 the
+  row `time` was the UTC string, which `records_to_rows` reads as New York
+  local, so every AWS-backfilled GFS row was stamped 4–5 h late** (the f000
+  analysis landed at lead 4); fixed and the archive re-pulled
 - `csc2/ndbc_backfill.py` — historical buoy-obs backfill from NDBC stdmet
   yearly archives (partition=0 / combined sea only)
 - `csc2/ndbc_spectral_backfill.py` — historical buoy spectral decomposition
@@ -340,6 +354,32 @@ Consider an off-cycle retrain when: the top performer's live skill drops
   the identical convention under `.csc2_models/west/<full-name>/` and never
   surfaces on the dashboard until explicitly promoted.
 
+### Wind sea is a ranked candidate (v1.13.4)
+
+Both wave models file a sea under their *wind-wave* partition for as long as
+the local wind is still driving it (wave-age test), so during an onshore gale
+every swell partition reads exactly 0 m while the model's own combined sea is
+10 ft @ 10 s; the hour the wind drops, the same energy is relabelled swell.
+Until v1.13.4 the dashboard requested swell partitions only, so those hours
+were empty GFS cells (EURO usually kept a small stray partition and read 3 ft
+under an 11 ft sea). The buoy decomposition has no wind-sea concept — it
+reports that sea as partition 1 — so models and buoys disagreed on exactly
+the biggest days. Now the wind-sea partition competes with the swell
+partitions under the same rules and carries `type: "windsea"`; the frontend
+leads such a line with a wind glyph (`.ws-glyph`, `_WIND_SEA_GLYPH`).
+Known cost: an offshore blow's chop can take the primary slot (e.g. 8 ft @
+7 s NNE at Block Island Sound over a 3.8 ft @ 8 s E swell) — the glyph is
+what flags it, and the buoy reads the same thing. Direction gates were
+simulated and rejected: a shore-normal cone is a no-op for regions with
+east/north-facing spots and blocks a due-E gale sea at NY Harbor Entrance; a
+swell-coherence gate lets a 0.2 ft trace partition veto an 8 ft sea. Don't
+re-propose them without new evidence. Records also carry `wind_sea` (the
+candidate wherever it ranked) and `displaced_swell` (the swell it pushed out
+of the top 2), logged as `ww_*` / `displaced_*` / `sw{1,2}_type`, so a
+swell-only ranking is rebuildable from any shard without a re-pull.
+**/gland is opted out** (`wind_sea=False`): its window scoring needs both
+swell partitions, and the SE trade windsea would take a top-2 slot.
+
 ### GFS combined-sea fallback — removed (v1.13.1)
 
 `waves.py:_parse_response` used to synthesize a primary swell from the
@@ -348,9 +388,12 @@ partitions beyond ~5 days. Two facts killed it: Open-Meteo serves GFS-Wave
 partitions for the full 10 days (the archive's null-sw1 share is a flat
 4–5 % at every lead), and it never provides `wave_peak_period` for GFS, so
 the synthesized period was always the mean period. The only rows it ever
-touched were hours where every partition was 0 m — pure wind sea — which it
-rendered as a FUN "primary swell". Both models are now honest-empty: an
-empty component list is an empty cell. `csc2.train._apply_dashboard_fallback_gfs`
+touched were hours where every swell partition was 0 m, which it rendered as
+a FUN "primary swell" at the mean period. (The v1.13.1 reading of those hours
+as "pure wind sea, nothing to show" was wrong — see the section above; they
+include the largest seas of the year. The fallback was still the wrong fix.)
+Both models are honest-empty: an empty component list — now meaning nothing,
+swell or wind sea, cleared the 5 s floor — is an empty cell. `csc2.train._apply_dashboard_fallback_gfs`
 keeps its name and the `gfs_sw1_source` column but only tags rows
 ("partition" / "missing"); missing rows are excluded from training. The
 logger still writes the combined_* columns alongside the raw partitions.
@@ -387,6 +430,12 @@ logger still writes the combined_* columns alongside the raw partitions.
 - **The point map carries no live data.** Section markers and cards show
   *preferred* size/direction/period/tide only. Live rating and wind belong
   in the forecast table, not on the map.
+- **EURO is fetched swell-only** (`fetch_cmems_point(..., wind_sea=False)`,
+  and the same flag in `gland_euro_archive`). The dashboard ranks the wind-sea
+  partition with the swells since v1.13.4; here that would hand a top-2 slot
+  to the SE trade windsea and drop the long-period SSW line before
+  `pick_gland_swell` sees it. Verified byte-identical to the pre-change
+  output over 264 timeline hours.
 - **Swell-window filtering (`pick_gland_swell`)** — the reason this page
   exists as its own module. The dashboard's energy-sorted "primary swell"
   is *wrong* at G-Land: in the dry season the largest partition is

@@ -613,7 +613,10 @@ def fetch_euro_waves():
     """
     try:
         from waves_cmems import fetch_cmems_point
-        rows = fetch_cmems_point(SWELL_NODE_LAT, SWELL_NODE_LON)
+        # Swell-only: with the wind sea ranked in, the SE trade windsea and
+        # its swell fill the top 2 and the long-period SSW line never reaches
+        # pick_gland_swell.
+        rows = fetch_cmems_point(SWELL_NODE_LAT, SWELL_NODE_LON, wind_sea=False)
     except Exception as e:
         print(f"[gland] CMEMS {type(e).__name__}: {e}")
         return None

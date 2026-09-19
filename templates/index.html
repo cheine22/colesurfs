@@ -381,6 +381,14 @@
     .comp-line.p2 { font-size: 9.5px; font-weight: 500; opacity: .75; }
     .comp-line.p3 { font-size: 9.5px; font-weight: 400; opacity: .55; }
     .c-ht { font-weight: 700; font-variant-numeric: tabular-nums; }
+    /* Wind-sea glyph — leads a component the model filed under its wind-sea
+       partition (still driven by local wind) rather than a swell partition.
+       Sized in em so it follows the p1/p2 line it sits on. */
+    .ws-glyph {
+      width: .95em; height: .95em; flex: none; align-self: center;
+      fill: none; stroke: currentColor; stroke-width: 2.6;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
     /* FIRING / MONSTRO cells — heavier weight across all comp-lines */
     .cell-emphasis .comp-line.p1 { font-weight: 800; }
     .cell-emphasis .comp-line.p2 { font-weight: 700; opacity: .88; }
@@ -1494,7 +1502,7 @@
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.13.3</span>
+    <span class="info-modal-version">v1.13.4</span>
   </div>
 </div>
 
@@ -1518,7 +1526,7 @@
       <button class="info-modal-refresh toggle-history" id="pref-show-history" onclick="setShowHistory(localStorage['cs_show_history'] !== '1')">◷ SHOW HISTORICAL DATA</button>
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
     </div>
-    <span class="about-version">v1.13.3</span>
+    <span class="about-version">v1.13.4</span>
   </div>
 </div>
 
@@ -1554,7 +1562,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.13.3</span>
+    <span class="footer-version">v1.13.4</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -2686,6 +2694,10 @@ function computeModelOverview(spotName) {
 // arrow/cardinal), colored by swell category. Used by the buoy NOW cell
 // and the historical strip so the two can never drift apart visually.
 // Returns { inner, bg } or null when the record has no wave height.
+const _WIND_SEA_GLYPH = '<svg class="ws-glyph" viewBox="0 0 24 24" aria-label="wind sea"><title>wind sea</title>'
+  + '<path d="M5 8h8.5a2.5 2.5 0 1 0-2.34-3.24"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.34 3.24"/>'
+  + '<path d="M4 16h5.5a2.5 2.5 0 1 1-2.34 3.24"/></svg>';
+
 function _buildSwellInner(rec) {
   const comps = rec.components && rec.components.length > 0 ? rec.components : null;
   const primaryH = comps ? comps[0].height_ft : rec.wave_height_ft;
@@ -2702,8 +2714,9 @@ function _buildSwellInner(rec) {
     const cls   = ['p1','p2','p3'][ci] || 'p3';
     const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
     const arrow = ci === 0 && c.direction_deg != null ? toArrow(c.direction_deg) : '';
+    const ws    = c.type === 'windsea' ? _WIND_SEA_GLYPH : '';
     inner += `<div class="comp-line ${cls}">
-      <span class="c-ht">${c.height_ft}</span>
+      ${ws}<span class="c-ht">${c.height_ft}</span>
       <span>@${c.period_s ?? '?'}</span>
       <span>${arrow}${dir}</span>
     </div>`;
@@ -5046,6 +5059,13 @@ function _populateAboutLegends() {
     glyphChip('M', `background:${funCol};color:${funBg}`, "swell agreement — other model's rating");
     glyphChip('W', 'color:var(--text0);background:color-mix(in srgb, var(--text0) 13%, transparent)',
               'wind agreement — both models see clean wind');
+    const wsEl = document.createElement('span');
+    wsEl.className = 'legend-pill';
+    wsEl.style.background = dark ? 'var(--bg2)' : 'var(--bg1)';
+    wsEl.style.color = dark ? 'var(--text1)' : 'var(--text2)';
+    wsEl.style.border = '1px solid var(--border1)';
+    wsEl.innerHTML = `<span style="font-size:11px;margin-right:6px;display:inline-flex;vertical-align:middle">${_WIND_SEA_GLYPH}</span>wind sea — waves the local wind is still driving`;
+    swellEl.appendChild(wsEl);
   }
   const windEl = document.getElementById('about-wind-legend');
   if (windEl) {

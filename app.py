@@ -182,6 +182,10 @@ def _load_lkg() -> dict[str, dict]:
 
 
 _last_known_forecast: dict[str, dict] = _load_lkg()
+# 2026-09-19: serialised. The frontend requests /api/forecast/EURO and /GFS
+# together, so after a TTL rollover two threads wrote the same .tmp at once
+# and os.replace promoted a spliced, unparseable file (found 2026-09-18).
+_lkg_lock = threading.Lock()
 
 
 def _stash_lkg(model: str, fresh: dict) -> None:
@@ -189,15 +193,16 @@ def _stash_lkg(model: str, fresh: dict) -> None:
     # skip redundant disk writes on every request within a cache window.
     if fresh is _last_known_forecast.get(model):
         return
-    _last_known_forecast[model] = fresh
-    try:
-        _LKG_PATH.parent.mkdir(exist_ok=True)
-        tmp = str(_LKG_PATH) + ".tmp"
-        with open(tmp, "w") as f:
-            _json.dump(_last_known_forecast, f, separators=(',', ':'))
-        os.replace(tmp, _LKG_PATH)
-    except Exception as e:
-        print(f"[lkg] persist failed: {type(e).__name__}: {e}")
+    with _lkg_lock:
+        _last_known_forecast[model] = fresh
+        try:
+            _LKG_PATH.parent.mkdir(exist_ok=True)
+            tmp = str(_LKG_PATH) + ".tmp"
+            with open(tmp, "w") as f:
+                _json.dump(_last_known_forecast, f, separators=(',', ':'))
+            os.replace(tmp, _LKG_PATH)
+        except Exception as e:
+            print(f"[lkg] persist failed: {type(e).__name__}: {e}")
 
 
 def _is_populated(d: dict | None) -> bool:

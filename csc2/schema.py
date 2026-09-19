@@ -11,10 +11,13 @@ relocation of data dirs is a single-file edit.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CSC2_DATA_DIR = PROJECT_ROOT / ".csc2_data"
+# CSC2_DATA_DIR env override: lets a backfill build a parallel archive
+# without touching the one the live loggers and trainers read.
+CSC2_DATA_DIR = Path(os.environ.get("CSC2_DATA_DIR") or PROJECT_ROOT / ".csc2_data")
 CSC2_MODELS_DIR = PROJECT_ROOT / ".csc2_models"
 
 FORECASTS_DIR = CSC2_DATA_DIR / "forecasts"      # one parquet per cycle per buoy per model
@@ -67,6 +70,18 @@ FORECAST_COLUMNS = [
     "sw2_height_ft",                # secondary-swell Hs (ft)  (may be NaN)
     "sw2_period_s",
     "sw2_direction_deg",
+    # v1.13.4: the wind-sea partition is a ranked candidate for sw1/sw2.
+    # These columns make a swell-only ranking rebuildable from the row:
+    # swell-only top 2 = (sw1, sw2 minus the "windsea" one) + displaced_*.
+    # All null on shards written before the change.
+    "sw1_type",                     # "swell" | "swell2" | "swell3" | "windsea"
+    "sw2_type",
+    "ww_height_ft",                 # wind-sea candidate wherever it ranked
+    "ww_period_s",                  # (null when under the 5 s floor)
+    "ww_direction_deg",
+    "displaced_height_ft",          # swell pushed out of the top 2 by the wind sea
+    "displaced_period_s",
+    "displaced_direction_deg",
     # Combined-sea (informational only; not used as a "swell" per dashboard rules)
     "combined_height_m",
     "combined_period_s",

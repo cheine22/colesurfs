@@ -85,7 +85,7 @@ def _fetch_window(start_utc: datetime, end_utc: datetime):
         return None
     try:
         raw = _extract_point_rows(ds, lat, lon)
-        return raw_rows_to_hourly_records(raw)
+        return raw_rows_to_hourly_records(raw, wind_sea=False)
     except Exception as e:
         print(f"[gland-euro] processing {type(e).__name__}: {e}", file=sys.stderr)
         return None

@@ -171,6 +171,8 @@ def records_to_rows(records: list[dict], *, buoy_id: str, model: str,
         comps = r.get("components") or []
         c0 = comps[0] if len(comps) > 0 else {}
         c1 = comps[1] if len(comps) > 1 else {}
+        ww = r.get("wind_sea") or {}
+        dsp = r.get("displaced_swell") or {}
         rows.append({
             "buoy_id":             buoy_id,
             "model":               model,
@@ -183,6 +185,14 @@ def records_to_rows(records: list[dict], *, buoy_id: str, model: str,
             "sw2_height_ft":       c1.get("height_ft"),
             "sw2_period_s":        c1.get("period_s"),
             "sw2_direction_deg":   c1.get("direction_deg"),
+            "sw1_type":            c0.get("type"),
+            "sw2_type":            c1.get("type"),
+            "ww_height_ft":        ww.get("height_ft"),
+            "ww_period_s":         ww.get("period_s"),
+            "ww_direction_deg":    ww.get("direction_deg"),
+            "displaced_height_ft":     dsp.get("height_ft"),
+            "displaced_period_s":      dsp.get("period_s"),
+            "displaced_direction_deg": dsp.get("direction_deg"),
             "combined_height_m":   r.get("combined_wave_height_m"),
             "combined_period_s":   r.get("combined_wave_period_s"),
             "combined_direction_deg": r.get("combined_wave_direction_deg"),
