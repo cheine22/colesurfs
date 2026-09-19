@@ -270,7 +270,15 @@ defs, metric tables).
   `codes_grib_find_nearest` was ~95 % of the wall clock. **Until v1.13.4 the
   row `time` was the UTC string, which `records_to_rows` reads as New York
   local, so every AWS-backfilled GFS row was stamped 4–5 h late** (the f000
-  analysis landed at lead 4); fixed and the archive re-pulled
+  analysis landed at lead 4); fixed, and the whole archive re-pulled
+  2026-09-19 (every 00Z/12Z cycle from 2025-04-28, all with the v1.13.4
+  wind-sea columns): 3 h lead steps before 2026-04-21, 1 h steps to f120
+  after it so the live-logger era keeps its hourly rows. The pre-swap archive
+  is `.csc2_data/_backups/forecasts_pre-v1134_20260919.tar.gz`. EURO was
+  re-pulled from GEE the same day (00Z cycles, 7 buoys); the ~165 live-only
+  EURO cycles per buoy (mostly 12Z, 2026-04-21 → 2026-09-18) and all of
+  46268 have no historical source and stay swell-only-ranked with null
+  `ww_*` / `displaced_*` / `sw*_type`
 - `csc2/ndbc_backfill.py` — historical buoy-obs backfill from NDBC stdmet
   yearly archives (partition=0 / combined sea only)
 - `csc2/ndbc_spectral_backfill.py` — historical buoy spectral decomposition
@@ -314,6 +322,14 @@ fails the SW1 height-skill floor (≈ 0 / −0.02) and the registry keeps
 partition 1 is a sub-6 s windsea partition on ~15 % of hours, which the
 models file under wind sea rather than SW1, so raw-EURO primary-height MAE
 on the holdout rose 0.54 → 0.64 ft. West v7 baseline is #1 on its track.
+Off-cycle retrain 2026-09-19 (`--version v8`, east + west) after the v1.13.4
+wind-sea ranking and the GFS/EURO archive re-pull. Ranking the wind sea as a
+candidate closed the v7 gap: east raw-EURO primary-height MAE is back to
+0.58 ft and `CSC2+baseline_260919_0.85_v8` clears the floor (SW1 height skill
++0.07, composite 0.116) and is #1; west baseline v8 is #1 on its track. v6
+and v7 sit in `.csc2_models/<scope>/_pre-v1134/` — they learned late-stamped
+GFS rows and a swell-only SW1, and their composites were scored on a
+different holdout, so the registry would otherwise have kept v6 on top.
 Note the quarterly job still passes
 `--version v1`; the date in the name is what orders models, so that is
 harmless, but bump the tag by hand whenever the data rules change.
