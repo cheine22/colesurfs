@@ -1,0 +1,145 @@
+<!doctype html>
+{#- Single widget, rendered by headless Chrome into the PNG the Scriptable
+    widget displays. The CSS is the widget mockup's, verbatim — the artifact
+    is the spec and this is the only renderer, so they cannot drift. -#}
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Archivo:wght@800&display=swap">
+<style>
+:root { --font:'JetBrains Mono','Fira Code',ui-monospace,Menlo,monospace;
+  --font-zero:'Archivo','JetBrains Mono',ui-monospace,monospace; }
+* { box-sizing:border-box; }
+html, body { margin:0; width:{{ w }}px; height:{{ h }}px; overflow:hidden; font-family:var(--font); background:#000; }
+/* wallpaper band — the home screen the glass refracts */
+.band { border-radius:18px; padding:26px 22px; display:flex; flex-wrap:wrap; gap:26px 30px; justify-content:center; align-items:flex-end;
+  position:relative; overflow:hidden; border:1px solid var(--border1); }
+.band.dark { background:#07131f;
+  background-image:
+    radial-gradient(60% 80% at 12% 20%, #1c6b8a 0, transparent 60%),
+    radial-gradient(45% 60% at 80% 10%, #0f3f6a 0, transparent 60%),
+    radial-gradient(50% 50% at 70% 95%, #0a6e7c 0, transparent 60%),
+    radial-gradient(35% 45% at 35% 80%, #0b2e52 0, transparent 60%),
+    linear-gradient(180deg,#071a2c,#03101c); }
+.band.light { background:#cfe6f4;
+  background-image:
+    radial-gradient(60% 80% at 12% 20%, #ffffff 0, transparent 60%),
+    radial-gradient(45% 60% at 80% 10%, #6fbde6 0, transparent 60%),
+    radial-gradient(50% 50% at 70% 95%, #3fa9c4 0, transparent 60%),
+    radial-gradient(35% 45% at 35% 80%, #9ccbea 0, transparent 60%),
+    linear-gradient(180deg,#cfe8fb,#7dbbe0); }
+.band .spark { position:absolute; inset:0; pointer-events:none;
+  background:
+    radial-gradient(3px 3px at 20% 30%, rgba(255,255,255,.55), transparent 70%),
+    radial-gradient(2px 2px at 65% 60%, rgba(255,255,255,.4), transparent 70%),
+    radial-gradient(2px 2px at 48% 15%, rgba(255,255,255,.35), transparent 70%),
+    radial-gradient(3px 3px at 85% 80%, rgba(255,255,255,.45), transparent 70%); }
+
+
+/* ── the widget: restrained glass — thin rim, soft top sheen, mild blur ── */
+a.w { display:block; position:relative; overflow:hidden; text-decoration:none; border-radius:24px;
+  color:var(--ink); --ink:#e8e8f0; --tint:#131316;
+  background:color-mix(in srgb, var(--tint) 80%, transparent);
+  backdrop-filter:blur(14px) saturate(130%); -webkit-backdrop-filter:blur(14px) saturate(130%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.08), 0 10px 26px rgba(0,0,0,.35);
+  transition:transform .18s ease; }
+a.w.small { width:170px; height:170px; }
+a.w.medium { width:360px; height:170px; max-width:100%; }
+a.w.large { width:360px; height:376px; max-width:100%; }
+a.w:focus-visible { outline:2px solid #fff; outline-offset:3px; }
+a.w::before { content:""; position:absolute; inset:0; pointer-events:none; border-radius:inherit; z-index:2;
+  background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02) 45%, transparent 70%); }
+a.w::after { content:""; position:absolute; inset:0; pointer-events:none; border-radius:inherit; z-index:2;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.30), inset 0 0 0 1px rgba(255,255,255,.10), inset 0 -1px 0 rgba(191,239,255,.12); }
+.band.light a.w::after { box-shadow: inset 0 1px 0 rgba(255,255,255,.98), inset 0 0 0 1px rgba(255,255,255,.65), inset 0 -1px 0 rgba(255,255,255,.3); }
+.band.light a.w, .band.light .pane { background:color-mix(in srgb, color-mix(in srgb, var(--tint) 85%, var(--ink)) 87%, transparent);
+  box-shadow: 0 12px 28px rgba(20,60,90,.20), 0 2px 6px rgba(20,60,90,.10); }
+.band.light a.w { backdrop-filter:blur(16px) saturate(140%); -webkit-backdrop-filter:blur(16px) saturate(140%); }
+.band.light a.w::before { background:
+  linear-gradient(180deg, rgba(255,255,255,.36), rgba(255,255,255,.09) 40%, transparent 62%),
+  radial-gradient(55% 30% at 86% -2%, rgba(255,255,255,.45), transparent 70%),
+  linear-gradient(180deg, transparent 72%, rgba(20,70,110,.05)); }
+
+.w-in { position:relative; z-index:1; height:100%; display:flex; flex-direction:column; }
+.region { font-size:11.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; line-height:1.2; text-wrap:balance; color:var(--ink); }
+.numrow { display:flex; align-items:baseline; gap:6px; }
+.num { font-family:var(--font); font-weight:800; letter-spacing:-.04em; line-height:.86; font-variant-numeric:tabular-nums; }
+.num.has-zero { font-family:var(--font-zero); letter-spacing:-.03em; }
+.den { font-family:var(--font); }
+.den { font-weight:700; letter-spacing:0; color:color-mix(in srgb, var(--ink) 62%, var(--tint)); }
+.lbl { font-size:8px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); }
+.run { font-size:7.5px; font-weight:600; letter-spacing:.05em; white-space:nowrap; color:color-mix(in srgb, var(--ink) 70%, var(--tint)); }
+
+/* small: title up top, the reading anchored to the bottom */
+.small .w-in { padding:19px 17px 18px; }
+.small .region { font-size:10.8px; }   /* the longest title stays on one line at 169 pt */
+.small .numbox { flex:1; display:flex; align-items:center; }   /* number floats centred between title and label */
+.small .lbl { margin-top:0; }
+.small .run { margin-top:5px; }
+.small .num { font-size:100px; }
+.small .num .den { font-size:20px; }
+.small .read { display:flex; flex-direction:column; gap:6px; }
+.small .run { margin-top:3px; }
+
+/* medium / large: the widget itself is split; tints abut on a hairline seam */
+.medium .w-in, .large .w-in { padding:0; }
+.panes { flex:1; display:grid; gap:1px; background:rgba(255,255,255,.10); }
+.band.light .panes { background:rgba(10,40,60,.14); }
+.medium .panes { grid-template-columns:1fr 1fr; }
+.large .panes { grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; }
+.pane { --ink:var(--pink); --tint:var(--ptint); display:flex; flex-direction:column; justify-content:space-between; color:var(--ink); min-width:0;
+  background:color-mix(in srgb, var(--tint) 80%, transparent); }
+.medium .pane { padding:19px 19px 36px; }
+.large .pane { padding:20px 21px; }
+.large .panes > .pane:nth-child(n+3) { padding-bottom:40px; }
+.pane .read { display:flex; flex-direction:column; gap:6px; }
+.medium .pane .num { font-size:102px; }
+.medium .pane .num .den { font-size:20px; }
+.medium .pane .num .den { font-size:18px; }
+.large .pane .num { font-size:86px; }
+.large .pane .num .den { font-size:20px; }
+.large .pane .region { font-size:12.5px; }
+/* medium: one footer strip across both halves carries the label and the stamp */
+.foot { position:absolute; left:50%; bottom:11px; transform:translateX(-50%); z-index:3; display:flex; align-items:center; gap:7px;
+  font-size:7.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; white-space:nowrap; padding:2px 9px; border-radius:999px;
+  color:color-mix(in srgb, var(--ink) 55%, var(--tint)); background:rgba(255,255,255,.06);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+.foot .sep { color:color-mix(in srgb, var(--ink) 35%, var(--tint)); }
+.band.light .foot { color:color-mix(in srgb, var(--ink) 60%, var(--tint)); background:rgba(10,40,60,.05); }
+/* the stamp straddles the seam */
+.stamp { position:absolute; left:50%; bottom:11px; transform:translateX(-50%); z-index:3; white-space:nowrap;
+  font-size:7.5px; font-weight:600; letter-spacing:.05em; padding:2px 8px; border-radius:999px;
+  color:color-mix(in srgb, var(--ink) 48%, var(--tint)); background:rgba(255,255,255,.06);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+.band.light .stamp { color:color-mix(in srgb, var(--ink) 55%, var(--tint)); background:rgba(10,40,60,.05); }
+
+/* render overrides — after the mockup CSS so they win: the widget fills the
+   canvas edge to edge and iOS supplies the corner rounding */
+.band { width:{{ base_w }}px; height:{{ base_h }}px; padding:0; border:0; border-radius:0; display:block; zoom:{{ zoom }}; }
+a.w, a.w.small, a.w.medium, a.w.large { width:{{ base_w }}px; height:{{ base_h }}px; max-width:none; margin:0; border-radius:0; }
+</style></head>
+<body><div class="band {{ appearance }}"><div class="spark"></div>
+{%- set base = {'tint': '#131316', 'ink': '#e8e8f0'} if appearance == 'dark' else {'tint': '#ffffff', 'ink': '#1e1e21'} -%}
+{%- macro num(r) -%}
+<div class="numrow"><div class="num{{ ' has-zero' if '0' in (r.count|string) else '' }}">{{ r.count }}<span class="den">/{{ r.window_days }}</span></div></div>
+{%- endmacro -%}
+{%- if family == 'small' -%}
+{%- set r = regions[0] -%}
+<a class="w small" style="--tint:{{ r.tint }};--ink:{{ r.ink }}"><div class="w-in">
+  <div class="region">{{ r.name }}</div>
+  <div class="numbox">{{ num(r) }}</div>
+  <div class="lbl">fun+ days in forecast</div>
+  <div class="run">{{ stamp }}</div>
+</div></a>
+{%- else -%}
+<a class="w {{ family }}" style="--tint:{{ base.tint }};--ink:{{ base.ink }}"><div class="w-in"><div class="panes">
+{%- for r in regions -%}
+<div class="pane" style="--ptint:{{ r.tint }};--pink:{{ r.ink }}"><div class="region">{{ r.name }}</div><div class="read">{{ num(r) }}{% if family == 'large' %}<div class="lbl">fun+ days in forecast</div>{% endif %}</div></div>
+{%- endfor -%}
+</div></div>
+{%- if family == 'medium' -%}
+<div class="foot"><span>fun+ days in forecast</span><span class="sep">·</span><span>{{ stamp }}</span></div>
+{%- else -%}
+<div class="stamp">{{ stamp }}</div>
+{%- endif -%}
+</a>
+{%- endif -%}
+</div></body></html>

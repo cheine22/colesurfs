@@ -1327,6 +1327,26 @@
       white-space: nowrap;
     }
     .toast.show { opacity: 1; }
+
+    /* ── Mobile, Safari tab only (NOT the installed web app, which reports
+       display-mode: standalone and keeps every rule above untouched). In a
+       Safari tab 100vh is the toolbar-hidden height, so the 100vh layout
+       overflows under the toolbar and the map's 55 % share is of a box
+       taller than the screen. Here the content box is the small viewport
+       (svh) and the map absorbs the whole difference, so the table keeps
+       exactly the height it has in the web app: 45 % of (100vh − chrome).
+       The signature strip also loses the 21 px home-indicator reserve the
+       web app needs, closing the gap under the bottom bar. ── */
+    @media (max-width: 600px) and (display-mode: browser) {
+      .content {
+        height: calc(100svh - 38px - 34px - 46px - 12px) !important;
+      }
+      .map-section {
+        flex-basis: calc(100svh - 38px - 34px - 46px - 12px - 0.45 * (100vh - 38px - 34px - 46px - 21px)) !important;
+      }
+      .mobile-sig { height: 12px; padding-top: 0; align-items: center !important; }
+      .mobile-bottom-bar { bottom: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -1502,7 +1522,7 @@
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.13.4</span>
+    <span class="info-modal-version">v1.14.0</span>
   </div>
 </div>
 
@@ -1526,7 +1546,7 @@
       <button class="info-modal-refresh toggle-history" id="pref-show-history" onclick="setShowHistory(localStorage['cs_show_history'] !== '1')">◷ SHOW HISTORICAL DATA</button>
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
     </div>
-    <span class="about-version">v1.13.4</span>
+    <span class="about-version">v1.14.0</span>
   </div>
 </div>
 
@@ -1562,7 +1582,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.13.4</span>
+    <span class="footer-version">v1.14.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>

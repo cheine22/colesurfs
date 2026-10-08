@@ -178,6 +178,40 @@ defs, metric tables).
 - `development-assets/docs/gland-cheatsheet.md` — the researched forecasting
   notes behind the page's cheat-sheet panel, with sources
 - `csc2/` — CSC2 package (see below)
+- `widget/colesurfs.js` + `/api/widget` — the iOS home-screen widget
+  (Scriptable). `api_widget` in app.py is a server-side port of
+  `computeModelOverview` (the Fun+ Days cell: 3 h stride from now, night
+  skipped, min(EURO, GFS) category, EURO region-wind gate, ≥2 windows per
+  day) — change the JS rule and this together, they must agree exactly.
+  `last_update` is the OLDER of the two model runs, labelled "today 12Z" /
+  "yesterday 0Z" by the run's LOCAL day (a 00Z run is the previous evening
+  here). The phone holds a
+  two-line loader that `await eval`s `/widget/colesurfs.js` (served
+  `no-cache`; the script body is one async IIFE because `eval` parses a
+  classic script, where top-level await is a syntax error), so edits ship
+  through autopull. Widget parameter = region names; small = 1 region,
+  medium = 2, large = 4. **The widget is an image:** Scriptable can't load
+  the fonts or draw the glass, so `/widget/image.png` renders
+  `templates/widget_render.html` (the mockup's CSS verbatim, one widget at
+  the mockup's own px size, iOS rounds the corners) with headless Chrome
+  (`_CHROME`, writes the PNG then lingers — the route polls for the file
+  and kills it) at 3×, cached by content hash under `.cache/widget_png/`;
+  `/widget/render` serves the HTML for debugging. The script asks for the
+  PNG at the widget's point size × screen scale (`w`, `h`, `scale`; the
+  template zooms the mockup layout to that box) and, because Scriptable
+  recompresses any image a widget LOADS above ~500 k px (a 507² small
+  survived, a 1080×507 medium did not — on-phone slicing can't help), the
+  phone fetches `/widget/tile.png` tiles (≤290 px a side) that the server
+  crops from the one full render with `_png_decode` (own reader; Pillow
+  isn't a dependency and sips ignores a 0 crop offset) and lays them edge
+  to edge at 1:1. `_widget_render_lock` single-flights the Chrome run and
+  the decode since a widget's tiles arrive as 8–16 parallel requests. Point
+  sizes come from a
+  screen-width table; the parameter `size=WxH` pins them and `calibrate`
+  shows a point ruler to read a phone's real size. Numerals containing a 0
+  use Archivo (JetBrains Mono has no plain zero). Tap opens the site in
+  Safari: a home-screen web app has no URL scheme and Shortcuts' Open App
+  can't target one either (tried 2026-10), so `OPEN_SHORTCUT` stays empty
 - `favicon.svg` + `favicon-{16,32,192}.png` + `apple-touch-icon*.png` — the
   liquid-glass icon set (2026-07). The glass layers (edge refraction with
   chromatic fringe, convex sheen, lip highlight + tube caustic, foam frost,
@@ -645,6 +679,14 @@ logger still writes the combined_* columns alongside the raw partitions.
   with the same counter-translate — vertical sticky survives
   `overflow-x: hidden`, only the left anchor is lost. Demoting it to
   relative lets the SPOT header scroll away (v1.13.1 fix).
+- **Safari-tab-only mobile layout** — one block at the end of the stylesheet,
+  `@media (max-width: 600px) and (display-mode: browser)`. The installed web
+  app reports `display-mode: standalone` and must not change, so nothing
+  above that block is touched: in a Safari tab the content box uses `100svh`
+  (the `100vh` layout ran under the toolbar), the map's flex-basis absorbs
+  the whole toolbar difference so the table keeps the web app's height
+  (45 % of `100vh − chrome`), and the signature strip drops the 21 px
+  home-indicator reserve to 12 px.
 - **Touch-action lock** — `.table-scroll *` carries
   `touch-action: pan-y !important` so any descendant cell can't initiate
   a horizontal pan. Combined with `overscroll-behavior: contain`,

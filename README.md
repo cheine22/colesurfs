@@ -1,4 +1,4 @@
-# colesurfs · v1.13.1
+# colesurfs · v1.14.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -27,6 +27,7 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 - **Smart refresh** — refresh button checks for new model data before clearing caches; shows toast if no new data available
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
 - **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column.
+- **iOS home-screen widget (new in v1.14)** — Fun+ Days per region as a small (1 region), medium (2) or large (4) widget, in the dashboard's category colours, with a "Last update today 12Z" stamp from the older of the two model runs. Runs in [Scriptable](https://scriptable.app) from a two-line loader; the server renders the widget image from the design mockup's own CSS (`/api/widget`, `/widget/tile.png`, `widget/colesurfs.js`). Tapping opens the dashboard.
 
 ---
 
@@ -166,7 +167,8 @@ outside Git. `.gitignore` covers every directory below:
 ```
 colesurfs/
 ├── .cache/                    # TTL-cache write-through JSON + lkg_forecast.json
-│   └── bathy_tiles/<STYLE>/   # self-rendered basemap PNGs (bathy.py)
+│   ├── bathy_tiles/<STYLE>/   # self-rendered basemap PNGs (bathy.py)
+│   └── widget_png/            # rendered iOS-widget images + tiles, keyed by content hash
 ├── .csc_data/                 # observation archive (buoy-only, model-agnostic)
 │   ├── observations/          # NDBC stdmet + spectral / CDIP shards (2019 → today), per buoy/year
 │   ├── live_log/observations/ # 30-min live obs, written by csc2.obs_logger
@@ -210,6 +212,16 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.14.0
+- **iOS home-screen widget.** Fun+ Days per region on the phone: a small widget shows one region, a medium two, a large four, each pane tinted and inked in the dashboard's category colours (FLAT's ink lifted one step, since the table's value vanishes on a widget), with the count over the forecast window and a **Last update today 12Z** stamp — the *older* of the two model runs, so the stamp never claims freshness one model lacks, labelled by the run's local day. Built for [Scriptable](https://scriptable.app): the phone holds a two-line loader that fetches and runs `widget/colesurfs.js` from the server, so edits ship through autopull; the widget parameter picks regions (`Block Island Sound`), `size=WxH` pins a phone's widget point size and `calibrate` shows a point ruler to read it. Tapping opens the dashboard in Safari (a home-screen web app has no URL scheme, and Shortcuts can't target one either).
+- **`/api/widget`** — a server-side port of the dashboard's `computeModelOverview` rule (3 h stride from now, night skipped, min(EURO, GFS) category, EURO region-wind gate, ≥ 2 windows per day), verified to match the live Fun+ Days cells. The JS and the Python must change together.
+- **The widget is an image of the design.** Scriptable can't load JetBrains Mono / Archivo or draw the glass, so `/widget/tile.png` renders `templates/widget_render.html` — the widget mockup's CSS verbatim, at the widget's point size × screen scale — with headless Chrome and crops it with an in-repo PNG reader (Pillow isn't a dependency; sips ignores a 0 crop offset). Tiles stay under ~290 px a side because Scriptable recompresses any image a widget loads above ~500 k px; the script redraws each tile at screen scale so they meet without seams. Renders are cached by content hash under `.cache/widget_png/` and single-flighted, since a widget's tiles arrive as 8–16 parallel requests. Numerals containing a 0 are set in Archivo — JetBrains Mono ships only dotted and slashed zeros.
+- **Mobile site in a Safari tab** (the installed web app is untouched — the rule is gated on `display-mode: browser`): the content box uses the small viewport height so the layout no longer runs under Safari's toolbar; the map absorbs the whole difference and the table keeps exactly the height it has in the web app; the signature strip drops the web app's 21 px home-indicator reserve to 12 px.
+- **Fix: last-known-good persist race.** `_stash_lkg` writes through a per-writer `mkstemp` temp file; a second process sharing `.cache/` could interleave into the fixed `.tmp` name before `os.replace`.
+
+### v1.13.4
+- **Wind sea is a ranked candidate.** Both wave models file a sea under their wind-wave partition while the local wind still drives it, so during an onshore gale every swell partition read 0 m while the model's own combined sea was 10 ft. The wind-sea partition now competes with the swell partitions under the same 5 s floor and H²·T order and carries `type: "windsea"` (wind glyph on the dashboard); records also carry `wind_sea` and `displaced_swell`. `/gland` opts out. CSC2 archive re-pulled (GFS from AWS with the 4–5 h timestamp bug fixed, EURO from GEE) and retrained as v8.
 
 ### v1.13.3
 - **Buoy swells now match Surfline.** `buoy._spectral_components` partitions the **whole** NDBC spectrum first and filters afterwards, instead of discarding every bin shorter than 6 s *before* partitioning. The old pre-cut deleted any swell whose peak sat at 5–6 s (the standard summer SE windswell at NY Harbor Entrance) and promoted a small long-period remnant to "primary": on the 2026-09-13 17:20 UTC spectrum the dashboard read 0.9 ft @ 9.3 s while Surfline read 2.2 ft @ 6 s. Each partition now reports its **peak period** (period of the peak bin) and **peak-bin direction** — the conventions Surfline's numbers turn out to follow — instead of the energy-weighted mean period and circular-mean direction, which read ~0.3 s long and 10–15° off on broad partitions. The same spectrum now decomposes to 2.1 ft @ 5.6 s 124° / 0.9 ft @ 8.3 s 148° against Surfline's 2.2 ft @ 6 s 125° / 1.0 ft @ 8 s 150°; Long Island at 17:40 UTC reads 2.9 ft @ 5.9 s 144° / 0.9 ft @ 10.0 s 128° against Surfline's 2.8 ft @ 6 s 145° / 0.9 ft @ 10 s 130°. The peak-merge rule gained a **1.5× frequency-ratio guard**: the valley test is relative to the smaller peak, so a 0.7 ft 10 s swell on the shoulder of a 2.4 ft 5 s windsea used to vanish into it — Surfline lists the two separately, and now so does the dashboard. Partitions under **5.0 s** are dropped after the analysis — `wave_common.MIN_SWELL_PERIOD_S`, the floor the wave models already apply, so buoy and model rows are filtered alike for CSC2 (the `.spec` fallback uses the same floor). Note peak period is quantised to NDBC's bins (5.3 / 5.6 / 5.9 / 6.3 / 6.7 / 7.1 / 7.7 / 8.3 / 9.1 / 10.0 s …), so a broad partition's period can hop one bin between readings where the mean period used to glide.

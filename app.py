@@ -31,6 +31,7 @@ GFS waves from Open-Meteo.
 import ipaddress as _ipaddress
 import json as _json
 import os
+import tempfile as _tempfile
 import time
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -56,6 +57,7 @@ from fun_days import (all_summaries as _fun_days_all, review_payload as _review_
                       season_tables as _season_tables)
 import cache as _cache
 import bathy
+import numpy as np
 
 app = Flask(__name__)
 Compress(app)   # gzip/brotli compression for all responses > 500 bytes
@@ -195,14 +197,24 @@ def _stash_lkg(model: str, fresh: dict) -> None:
         return
     with _lkg_lock:
         _last_known_forecast[model] = fresh
+        # 2026-09-23: per-writer temp file. The splice recurred on 09-23 with
+        # the lock loaded, so a second process shares .cache/; a fixed ".tmp"
+        # name lets two processes interleave into one file before os.replace.
+        tmp = None
         try:
             _LKG_PATH.parent.mkdir(exist_ok=True)
-            tmp = str(_LKG_PATH) + ".tmp"
-            with open(tmp, "w") as f:
+            fd, tmp = _tempfile.mkstemp(dir=_LKG_PATH.parent,
+                                        prefix=_LKG_PATH.name + ".", suffix=".tmp")
+            with os.fdopen(fd, "w") as f:
                 _json.dump(_last_known_forecast, f, separators=(',', ':'))
             os.replace(tmp, _LKG_PATH)
         except Exception as e:
             print(f"[lkg] persist failed: {type(e).__name__}: {e}")
+            if tmp:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
 
 
 def _is_populated(d: dict | None) -> bool:
@@ -497,6 +509,401 @@ def api_fun_days():
     if data is None:
         return jsonify({"error": "data unavailable"}), 503
     return jsonify(data)
+
+
+# ─── Home-screen widget ───────────────────────────────────────────────────────
+# Server-side port of index.html's computeModelOverview (the Fun+ Days cell)
+# so a phone widget can read the same number the dashboard shows. Any change
+# to that JS rule must be mirrored here — the two are meant to agree exactly.
+_WIDGET_SITE = "https://surfreport.coleheine.com/"
+_SURFABLE_WIND = {"Glassy", "Groomed", "Clean", "Textured"}
+
+
+def _region_surfable_hours(region: str, wind: dict | None) -> set:
+    """Hours ('YYYY-MM-DDTHH:MM') where ≥1 wind spot in the region rates
+    Textured-or-better — the Fun+ Days gate (_regionCleanWind().surfable)."""
+    ok = set()
+    if not wind:
+        return ok
+    for ws in WIND_SPOTS:
+        if ws.get("buoy_region") != region or ws.get("shore_normal") is None:
+            continue
+        for rec in wind.get(ws["name"]) or []:
+            if not rec or rec.get("speed_mph") is None or rec["time"] in ok:
+                continue
+            cond = wind_rules.categorize(rec["speed_mph"], rec.get("direction_deg"),
+                                         ws["shore_normal"], rec.get("gust_mph"))
+            if cond in _SURFABLE_WIND:
+                ok.add(rec["time"])
+    return ok
+
+
+def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
+                     sun: dict, now) -> dict:
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from config import TIMEZONE
+    tz = ZoneInfo(TIMEZONE)
+    cats = swell_rules.CATEGORIES
+    fun_idx = cats.index("FUN")
+
+    def _hp(rec):
+        if not rec or rec.get("wave_height_ft") is None:
+            return None
+        comps = rec.get("components") or []
+        return (comps[0]["height_ft"], comps[0]["period_s"]) if comps \
+            else (rec["wave_height_ft"], rec["wave_period_s"])
+
+    def _ms(t):   # local wall-clock string → epoch ms, as JS `new Date('Y-m-d H:M')`
+        return datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=tz).timestamp() * 1000
+
+    e_by_t = {r["time"]: r for r in (euro.get(region) or [])}
+    g_by_t = {r["time"]: r for r in (gfs.get(region) or [])}
+    now_floor = now.astimezone(tz).replace(minute=0, second=0, microsecond=0)
+    times = sorted(t for t in set(e_by_t) | set(g_by_t) if _ms(t) >= now_floor.timestamp() * 1000)
+    sampled = []
+    if times:
+        t0 = _ms(times[0])
+        sampled = [t for t in times if ((_ms(t) - t0) / 3600000) % 3 == 0]
+
+    surfable = _region_surfable_hours(region, wind)
+    apply_wind = len(surfable) > 0          # honest-empty: no wind → swell only
+    three_h = 3 * 3600 * 1000
+    thirty = 30 * 60 * 1000
+    per_day, best_idx, best_hp = {}, -1, None
+    for t in sampled:
+        s = sun.get(t[:10])
+        if s:
+            t_ms = _ms(t)
+            if t_ms + three_h <= _ms(s["sunrise"]) - thirty or t_ms >= _ms(s["sunset"]) + thirty:
+                continue
+        e_hp, g_hp = _hp(e_by_t.get(t)), _hp(g_by_t.get(t))
+        if not e_hp or not g_hp:
+            continue
+        ei = cats.index(swell_rules.categorize(*e_hp))
+        gi = cats.index(swell_rules.categorize(*g_hp))
+        m = min(ei, gi)
+        if m > best_idx:
+            best_idx, best_hp = m, (e_hp if ei <= gi else g_hp)
+        if m >= fun_idx:
+            if apply_wind and t not in surfable:
+                continue
+            per_day[t[:10]] = per_day.get(t[:10], 0) + 1
+    count = sum(1 for v in per_day.values() if v >= 2)
+    window_days = round((_ms(sampled[-1]) - _ms(sampled[0])) / 86400000) if len(sampled) >= 2 else 0
+    cat = cats[best_idx] if best_idx >= 0 else None
+    return {
+        "count": count,
+        "window_days": window_days,
+        "category": cat,
+        "colors": dict(swell_rules.COLORS[cat]) if cat else None,
+        "best": {"height_ft": best_hp[0], "period_s": best_hp[1]} if best_hp else None,
+        "fun_days": sorted(d for d, v in per_day.items() if v >= 2),
+        "wind_gated": apply_wind,
+    }
+
+
+def _widget_regions_arg():
+    """(names, error_response) from `regions=` — comma-separated region names,
+    default every dashboard region in regions.yaml order."""
+    names = [n.strip() for n in (request.args.get("regions") or "").split(",") if n.strip()]
+    known = {s["name"]: s for s in SPOTS}
+    if not names:
+        names = list(known)
+    bad = [n for n in names if n not in known]
+    if bad:
+        return None, (jsonify({"error": f"unknown region(s): {', '.join(bad)}",
+                               "regions": list(known)}), 400)
+    return names, None
+
+
+def _widget_payload(names: list[str]) -> dict:
+    from datetime import datetime, timezone as _tz
+    known = {s["name"]: s for s in SPOTS}
+    euro = fetch_all_cmems_wave_forecasts() or _last_known_forecast.get("EURO") or {}
+    gfs = fetch_all_wave_forecasts("GFS") or _last_known_forecast.get("GFS") or {}
+    try:
+        wind = fetch_region_wind_forecasts("EURO")
+    except Exception:
+        wind = None
+    spot = SPOTS[0] if SPOTS else {"lat": 40.58, "lon": -73.63}
+    sun = compute_sun_data(spot["lat"], spot["lon"])
+    now = datetime.now(_tz.utc)
+
+    runs = {k: estimate_model_run(k) for k in ("EURO", "GFS")}
+    oldest = min(runs.values(), key=lambda r: r.get("run_time") or "")
+    rt = oldest.get("run_time") or ""
+    # "today 12Z" / "yesterday 0Z": the run's day in local time (a 00Z run is
+    # the previous evening here), hour without the leading zero.
+    label = "—"
+    if len(rt) >= 16:
+        from zoneinfo import ZoneInfo
+        from config import TIMEZONE
+        run_local = datetime.strptime(rt, "%Y-%m-%dT%H:%MZ").replace(tzinfo=_tz.utc).astimezone(ZoneInfo(TIMEZONE))
+        days_ago = (now.astimezone(ZoneInfo(TIMEZONE)).date() - run_local.date()).days
+        day = "today" if days_ago == 0 else "yesterday" if days_ago == 1 else f"{rt[5:7]}/{rt[8:10]}"
+        label = f"{day} {int(rt[11:13])}Z"
+
+    return {
+        "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "site": _WIDGET_SITE,
+        "last_update": {"model": oldest.get("model"), "run_time": rt, "label": label},
+        "runs": {k: {"run_time": v.get("run_time"), "run_utc": v.get("run_utc")} for k, v in runs.items()},
+        "regions": [{"name": n, "buoy_id": known[n]["buoy_id"],
+                     **_widget_overview(n, euro, gfs, wind, sun, now)} for n in names],
+    }
+
+
+@app.route("/api/widget")
+def api_widget():
+    """Fun+ Days per region for the iOS widget. `regions` = comma-separated
+    region names (default: every dashboard region, in regions.yaml order).
+    `last_update` is the OLDER of the two model runs, so the stamp never
+    claims freshness one model lacks."""
+    names, err = _widget_regions_arg()
+    if err:
+        return err
+    return jsonify(_widget_payload(names))
+
+
+# ── widget image ─────────────────────────────────────────────────────────────
+# The widget mockup is the spec. Scriptable can't load the fonts or draw the
+# glass, so the widget shows a PNG of templates/widget_render.html (the
+# mockup's CSS verbatim) rendered by headless Chrome at the mockup's own
+# dimensions and 3× scale; iOS scales it to the widget frame and rounds the
+# corners. PNGs are cached by content hash under .cache/widget_png/.
+_WIDGET_DIMS = {"small": (170, 170), "medium": (360, 170), "large": (360, 376)}
+_WIDGET_N = {"small": 1, "medium": 2, "large": 4}
+_WIDGET_PNG_DIR = Path(__file__).resolve().parent / ".cache" / "widget_png"
+_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+_FLAT_DARK_INK = "#7a7a95"   # FLAT's cell ink vanishes on a widget; the mockup lifts it
+_widget_render_lock = threading.Lock()   # single-flight: a widget's tiles arrive as 8–16 parallel requests
+
+
+def _widget_render_ctx():
+    """Template context for one widget from the query string, or an error response."""
+    family = (request.args.get("family") or "small").lower()
+    appearance = "light" if request.args.get("appearance") == "light" else "dark"
+    if family not in _WIDGET_DIMS:
+        return None, (jsonify({"error": "family must be small, medium or large"}), 400)
+    names, err = _widget_regions_arg()
+    if err:
+        return None, err
+    names = names[:_WIDGET_N[family]]
+    data = _widget_payload(names)
+    regions = []
+    for r in data["regions"]:
+        c = r["colors"]
+        if not c:
+            tint, ink = ("#131316", "#e8e8f0") if appearance == "dark" else ("#ffffff", "#1e1e21")
+        elif appearance == "dark":
+            tint, ink = c["dark_bg"], (_FLAT_DARK_INK if r["category"] == "FLAT" else c["dark_text"])
+        else:
+            tint, ink = c["light_bg"], c["light_text"]
+        regions.append({**r, "tint": tint, "ink": ink})
+    base_w, base_h = _WIDGET_DIMS[family]
+    # w/h = the widget's point size on the phone (Scriptable sends it); the
+    # mockup layout is zoomed to that box so the PNG is drawn 1:1, never
+    # resampled by iOS. Default = the mockup's own px size.
+    def _dim(k, default):
+        try:
+            return max(80, min(int(request.args.get(k, default)), 800))
+        except (TypeError, ValueError):
+            return default
+    w, h = _dim("w", base_w), _dim("h", base_h)
+    zoom = w / base_w
+    return {"family": family, "appearance": appearance, "regions": regions, "w": w, "h": h,
+            "base_w": base_w, "base_h": round(h / zoom, 2), "zoom": round(zoom, 5),
+            "stamp": f"Last update {data['last_update']['label']}"}, None
+
+
+@app.route("/widget/render")
+def widget_render():
+    ctx, err = _widget_render_ctx()
+    if err:
+        return err
+    return render_template("widget_render.html", **ctx)
+
+
+def _widget_scale_arg() -> int:
+    try:
+        return max(1, min(int(request.args.get("scale", 3)), 4))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _widget_full_png(ctx: dict, scale: int) -> Path | None:
+    """Render (or reuse) the full widget PNG for a template context."""
+    import hashlib, subprocess
+    html = render_template("widget_render.html", **ctx)
+    key = hashlib.sha1(f"{scale}:{html}".encode()).hexdigest()
+    _WIDGET_PNG_DIR.mkdir(parents=True, exist_ok=True)
+    out = _WIDGET_PNG_DIR / f"{key}.png"
+    vw, vh = ctx["w"], ctx["h"]
+    with _widget_render_lock:
+        if out.exists():
+            return out
+        with _tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "widget.html"
+            src.write_text(html)
+            tmp_png = Path(td) / "widget.png"
+            cmd = [_CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+                   f"--user-data-dir={td}/profile", f"--window-size={vw},{vh}",
+                   f"--force-device-scale-factor={scale}", "--virtual-time-budget=6000",
+                   f"--screenshot={tmp_png}", src.as_uri()]
+            # Chrome writes the PNG early and then lingers ~40 s before
+            # exiting; poll for the file and kill it (make_interface_guide.py
+            # hit the same thing).
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            deadline = time.time() + 30
+            while time.time() < deadline and not tmp_png.exists():
+                time.sleep(0.2)
+            time.sleep(0.3)
+            proc.kill()
+            proc.wait()
+            if not tmp_png.exists():
+                return None
+            os.replace(tmp_png, out)
+        # keep the cache small: anything older than a day is a stale model run
+        cutoff = time.time() - 86400
+        for f in _WIDGET_PNG_DIR.glob("*.png"):
+            if f.stat().st_mtime < cutoff:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+    return out
+
+
+def _widget_png_response(path: Path):
+    resp = send_from_directory(_WIDGET_PNG_DIR, path.name, mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/widget/image.png")
+def widget_image():
+    ctx, err = _widget_render_ctx()
+    if err:
+        return err
+    out = _widget_full_png(ctx, _widget_scale_arg())
+    if out is None:
+        return jsonify({"error": "render failed"}), 503
+    return _widget_png_response(out)
+
+
+def _png_decode(data: bytes):
+    """Minimal PNG reader for Chrome's screenshots (8-bit RGB/RGBA, not
+    interlaced) → (h, w, 3) uint8. Pillow isn't a dependency and sips drops
+    a 0 crop offset, so the tile crop is done here."""
+    import struct, zlib
+    import numpy as np
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    pos, idat, hdr = 8, [], None
+    while pos < len(data):
+        n = struct.unpack(">I", data[pos:pos + 4])[0]
+        tag, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + n]
+        if tag == b"IHDR":
+            hdr = struct.unpack(">IIBBBBB", body)
+        elif tag == b"IDAT":
+            idat.append(body)
+        elif tag == b"IEND":
+            break
+        pos += 12 + n
+    w, h, depth, ctype, _, _, interlace = hdr
+    if depth != 8 or ctype not in (2, 6) or interlace:
+        raise ValueError(f"unsupported PNG: depth {depth} type {ctype} interlace {interlace}")
+    bpp = 4 if ctype == 6 else 3
+    stride = w * bpp
+    raw = zlib.decompress(b"".join(idat))
+    out = np.zeros((h, stride), np.uint8)
+    prev = np.zeros(stride, np.int32)
+    for y in range(h):
+        f = raw[y * (stride + 1)]
+        line = np.frombuffer(raw, np.uint8, stride, y * (stride + 1) + 1).astype(np.int32)
+        if f == 0:
+            cur = line
+        elif f == 1:                       # Sub: cumulative per channel
+            cur = np.cumsum(line.reshape(-1, bpp), axis=0).reshape(-1) & 255
+        elif f == 2:                       # Up
+            cur = (line + prev) & 255
+        else:                              # Average / Paeth: sequential in x
+            cur = line.copy()
+            c = cur.tolist(); p = prev.tolist()
+            for x in range(stride):
+                a = c[x - bpp] if x >= bpp else 0
+                b = p[x]
+                if f == 3:
+                    c[x] = (c[x] + ((a + b) >> 1)) & 255
+                else:
+                    cc = p[x - bpp] if x >= bpp else 0
+                    pa, pb, pc = abs(b - cc), abs(a - cc), abs(a + b - 2 * cc)
+                    pred = a if (pa <= pb and pa <= pc) else (b if pb <= pc else cc)
+                    c[x] = (c[x] + pred) & 255
+            cur = np.array(c, np.int32)
+        out[y] = cur
+        prev = cur
+    return out.reshape(h, w, bpp)[:, :, :3]
+
+
+_widget_decoded: dict = {}      # full-PNG path → decoded array (one per render, tiny)
+
+
+def _widget_tile_png(full: Path, x: int, y: int, w: int, h: int) -> bytes:
+    with _widget_render_lock:
+        arr = _widget_decoded.get(full)
+        if arr is None:
+            arr = _png_decode(full.read_bytes())
+            _widget_decoded.clear()
+            _widget_decoded[full] = arr
+    return bathy._png(np.ascontiguousarray(arr[y:y + h, x:x + w]))
+
+
+def _split_pts(total: int, n: int) -> list[int]:
+    """Integer point widths summing to `total` — same rule as the script."""
+    base = total // n
+    return [base + (1 if i < total - base * n else 0) for i in range(n)]
+
+
+@app.route("/widget/tile.png")
+def widget_tile():
+    """One tile of the widget (`cols`×`rows` grid, zero-based `col`/`row`).
+    Scriptable recompresses any image it loads in a widget above ~500 k px,
+    so the phone fetches tiles and never the full image."""
+    ctx, err = _widget_render_ctx()
+    if err:
+        return err
+    try:
+        cols, rows = max(1, min(int(request.args["cols"]), 8)), max(1, min(int(request.args["rows"]), 8))
+        col, row = int(request.args["col"]), int(request.args["row"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "cols, rows, col, row required"}), 400
+    if not (0 <= col < cols and 0 <= row < rows):
+        return jsonify({"error": "tile out of range"}), 400
+    scale = _widget_scale_arg()
+    full = _widget_full_png(ctx, scale)
+    if full is None:
+        return jsonify({"error": "render failed"}), 503
+    out = _WIDGET_PNG_DIR / f"{full.stem}_{cols}x{rows}_{col}_{row}.png"
+    if not out.exists():
+        xs, ys = _split_pts(ctx["w"], cols), _split_pts(ctx["h"], rows)
+        png = _widget_tile_png(full, sum(xs[:col]) * scale, sum(ys[:row]) * scale,
+                               xs[col] * scale, ys[row] * scale)
+        tmp = out.with_suffix(".tmp.png")
+        tmp.write_bytes(png)
+        os.replace(tmp, out)
+    return _widget_png_response(out)
+
+
+_WIDGET_DIR = Path(__file__).resolve().parent / "widget"
+
+
+@app.route("/widget/<path:filename>")
+def widget_file(filename: str):
+    """The Scriptable widget script. A two-line stub on the phone fetches and
+    evals this, so edits ship through git/autopull without touching the phone."""
+    return send_from_directory(_WIDGET_DIR, filename, mimetype="application/javascript")
 
 
 def _review_inline_config() -> str:
@@ -1066,6 +1473,8 @@ def _add_cache_headers(response):
         return response
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif request.path.startswith("/widget/"):
+        response.headers["Cache-Control"] = "no-cache"
     elif request.path == "/favicon.svg" or request.path.startswith(("/favicon-", "/apple-touch-icon")):
         # Icons: always revalidate against origin (ETag) so an icon swap can
         # never get stuck in the Cloudflare edge / browser cache for hours.
