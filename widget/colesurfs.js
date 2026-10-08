@@ -10,11 +10,17 @@
 // `eval` parses a classic script, where top-level await is a syntax error, so
 // everything below runs inside one async function and the loader awaits it.
 //
-// Widget parameter (long-press → Edit Widget) = comma-separated region names,
-// e.g. "Block Island Sound". Small shows 1 region, medium 2, large 4; with no
-// parameter the regions.yaml order applies. Append "; size=169x169" to pin
-// the widget's point size when the built-in table guesses wrong for a phone,
-// and set the parameter to "calibrate" to show a point ruler to read it off.
+// Widget parameter (long-press → Edit Widget):
+//   (empty) or "forecast-nyc"  Fun+ Days, regions in regions.yaml order
+//   "forecast-bi"              Fun+ Days, Block Island Sound first, then the rest
+//                              (small shows 1 region, medium 2, large 4)
+//   "live-lido"                live widget: NY Harbor Entrance buoy + Lido Beach
+//   "live-landing"             live widget: Block Island Sound buoy + The Landing
+//   "live-southampton"         live widget: Block Island Sound buoy + Road G
+//                              (live widgets are medium only)
+//   "calibrate"                a point ruler to read the phone's widget size
+// Append "; size=169x169" to any of these to pin the widget's point size when
+// the built-in table guesses wrong for a phone.
 //
 // The widget shows a PNG the server renders from the mockup's own HTML/CSS
 // (/widget/tile.png → templates/widget_render.html via headless Chrome), so
@@ -27,10 +33,12 @@
 // loads the full PNG: the server renders it in tiles under that limit and the
 // widget fetches each tile and lays them edge to edge at 1:1.
 //
-// Tap target: the dashboard in Safari. iOS gives a home-screen web app no URL
-// scheme and Shortcuts' Open App won't target one either (tried 2026-10), so
-// a plain https URL is the only direct route; set OPEN_SHORTCUT to a Shortcut
-// name to run that instead.
+// Tap target: the server says where each widget opens (X-Tap-Url on every
+// tile): the Fun+ Days widget → the dashboard, live-lido → Lido Beach's
+// Surfline page, the same link as the spot name in the regional view. iOS
+// gives a home-screen web app no URL scheme and Shortcuts' Open App won't
+// target one either (tried 2026-10), so these open in Safari; set
+// OPEN_SHORTCUT to a Shortcut name to run that instead.
 
 (async () => {
 const SITE = "https://surfreport.coleheine.com";
@@ -53,7 +61,13 @@ const param = rawParam.split(";").map(s => s.trim()).filter(p => {
   if (m) { sizeOverride = { w: +m[1], h: +m[2] }; return false; }
   return true;
 }).join(";");
-let regions = param && !CALIBRATE ? param.split(",").map(s => s.trim()).filter(Boolean) : DEFAULT_REGIONS;
+const LIVE_SPOTS = { "live-lido": "Lido Beach", "live-landing": "The Landing", "live-southampton": "Road G" };
+const P = param.toLowerCase();
+const KIND = P in LIVE_SPOTS ? "live" : "forecast";
+const LIVE_SPOT = LIVE_SPOTS[P] || null;
+let regions = P === "forecast-bi"
+  ? ["Block Island Sound", ...DEFAULT_REGIONS.filter(r => r !== "Block Island Sound")]
+  : DEFAULT_REGIONS;                           // empty, forecast-nyc, anything unknown
 regions = regions.slice(0, N_BY_FAMILY[FAMILY] || 4);
 
 // ── geometry ────────────────────────────────────────────────────────────────
@@ -84,24 +98,31 @@ const XS = splitPts(SIZE.w, COLS), YS = splitPts(SIZE.h, ROWS);
 
 // ── tiles ───────────────────────────────────────────────────────────────────
 const fm = FileManager.local();
-const slug = regions.join("+").replace(/[^A-Za-z]+/g, "_");
+const slug = KIND === "live" ? "live-" + LIVE_SPOT.replace(/[^A-Za-z]+/g, "_") : regions.join("+").replace(/[^A-Za-z]+/g, "_");
 
 function tileUrl(col, row) {
-  return `${SITE}/widget/tile.png?family=${FAMILY}&appearance=${APPEARANCE}`
-       + `&regions=${encodeURIComponent(regions.join(","))}`
+  return `${SITE}/widget/tile.png?family=${FAMILY}&appearance=${APPEARANCE}&kind=${KIND}`
+       + (KIND === "live" ? `&spot=${encodeURIComponent(LIVE_SPOT)}` : `&regions=${encodeURIComponent(regions.join(","))}`)
        + `&w=${SIZE.w}&h=${SIZE.h}&scale=${SCALE}&cols=${COLS}&rows=${ROWS}&col=${col}&row=${row}`;
+}
+function tapPath() {
+  return fm.joinPath(fm.documentsDirectory(), `colesurfs-${FAMILY}-${slug}-tap.txt`);
 }
 function tilePath(col, row) {
   return fm.joinPath(fm.documentsDirectory(), `colesurfs-${FAMILY}-${slug}-${APPEARANCE}-${COLS}x${ROWS}-${col}-${row}.png`);
 }
 
 // All tiles in parallel; on any failure fall back to the last cached set.
+let tapUrl = null;                             // from the tiles' X-Tap-Url header
 async function fetchTiles() {
   const jobs = [];
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) jobs.push((async () => {
     const req = new Request(tileUrl(c, r)); req.timeoutInterval = 40;
     const img = await req.loadImage();
     if (!img || !img.size.width) throw new Error("no image");
+    const hdr = (req.response && req.response.headers) || {};
+    const u = hdr["X-Tap-Url"] || hdr["x-tap-url"];
+    if (u) { tapUrl = u; try { fm.writeString(tapPath(), u); } catch (e) {} }
     return { img, c, r };
   })());
   try {
@@ -137,7 +158,12 @@ function native(img, wPt, hPt) {
 
 function buildWidget(tiles, stale) {
   const w = new ListWidget();
-  w.url = openUrl;
+  let url = openUrl;
+  if (!OPEN_SHORTCUT) {
+    if (!tapUrl) { try { if (fm.fileExists(tapPath())) tapUrl = fm.readString(tapPath()); } catch (e) {} }
+    if (tapUrl) url = tapUrl;
+  }
+  w.url = url;
   w.refreshAfterDate = new Date(Date.now() + (stale ? 10 : REFRESH_MIN) * 60 * 1000);
   w.setPadding(0, 0, 0, 0); w.spacing = 0;
   w.backgroundColor = new Color(APPEARANCE === "dark" ? "#131316" : "#ffffff");
@@ -198,6 +224,8 @@ function errorWidget(msg) {
 let widget;
 if (CALIBRATE) {
   widget = calibrateWidget();
+} else if (KIND === "live" && FAMILY !== "medium") {
+  widget = errorWidget("the live widget is medium only");
 } else {
   const { tiles, stale } = await fetchTiles();
   widget = tiles ? buildWidget(tiles, stale) : errorWidget("no data yet — check the connection");

@@ -299,5 +299,11 @@ def _annotate(hourly: list, hilo: list,
         if best_key:
             result[best_key]["hilo_time"] = _fmt_time(ev_corr)
             result[best_key]["hilo_type"] = ev_type
+            # the event's own height and exact (corrected) time — the live widget's tide chart
+            result[best_key]["hilo_iso"] = ev_corr.strftime("%Y-%m-%dT%H:%M")
+            try:
+                result[best_key]["hilo_height_ft"] = round(float(event["v"]), 1)
+            except (KeyError, TypeError, ValueError):
+                pass
 
     return result

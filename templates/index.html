@@ -1289,6 +1289,19 @@
       font-size: 9px; font-weight: 700; color: var(--text2);
       letter-spacing: .12em; text-transform: uppercase; margin-top: 4px;
     }
+    .widget-modal { max-width: 440px; }
+    .widget-steps { margin: 0; padding-left: 18px; color: var(--text1); font-size: 11px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; }
+    .widget-steps b, .widget-notes b { color: var(--text0); }
+    .widget-code { margin: 6px 0 6px; padding: 8px 10px; background: var(--bg0); border: 1px solid var(--border1); border-radius: 6px;
+      font-family: var(--font); font-size: 9.5px; line-height: 1.45; color: var(--text0); white-space: pre-wrap; word-break: break-all; user-select: all; }
+    .widget-copy { font-size: 10px; padding: 4px 10px; }
+    .widget-table { width: 100%; border-collapse: collapse; font-size: 10.5px; color: var(--text1); }
+    .widget-table th { text-align: left; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--text2); padding: 0 6px 4px 0; }
+    .widget-table td { padding: 5px 6px 5px 0; border-top: 1px solid var(--border0); vertical-align: top; }
+    .widget-table code, .widget-notes code { font-family: var(--font); color: var(--text0); font-weight: 700; white-space: nowrap; }
+    .widget-table td:first-child { white-space: nowrap; padding-right: 10px; }
+    .widget-size { display: block; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); margin-top: 2px; }
+    .widget-notes { margin: 0; padding-left: 18px; color: var(--text1); font-size: 10.5px; line-height: 1.5; display: flex; flex-direction: column; gap: 5px; }
     .about-legend { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
     .about-legend .legend-pill { font-size: 8.5px; }
     .about-wind-tier {
@@ -1522,7 +1535,7 @@
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.14.0</span>
+    <span class="info-modal-version">v1.15.0</span>
   </div>
 </div>
 
@@ -1545,8 +1558,43 @@
       <button class="info-modal-refresh" id="theme-btn" onclick="toggleTheme()">◑ LIGHT</button>
       <button class="info-modal-refresh toggle-history" id="pref-show-history" onclick="setShowHistory(localStorage['cs_show_history'] !== '1')">◷ SHOW HISTORICAL DATA</button>
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
+      <button class="info-modal-refresh" onclick="openWidgetModal()">▣ IOS WIDGETS</button>
     </div>
-    <span class="about-version">v1.14.0</span>
+    <span class="about-version">v1.15.0</span>
+  </div>
+</div>
+
+<!-- ══ iOS widget configuration ═══════════════════════════════ -->
+<div class="about-modal-overlay" id="widget-modal-overlay" onclick="closeWidgetModalOutside(event)">
+  <div class="about-modal widget-modal">
+    <button class="about-modal-close" onclick="closeWidgetModal()">✕</button>
+    <div class="about-modal-title"><span class="wave-glyph">∿</span>colesurfs · iOS widgets</div>
+    <div class="about-section-title">setup</div>
+    <ol class="widget-steps">
+      <li>Install <b>Scriptable</b> from the App Store.</li>
+      <li>In Scriptable, make a new script named <b>colesurfs</b> and paste this loader:
+        <pre class="widget-code" id="widget-loader">const r = new Request("https://surfreport.coleheine.com/widget/colesurfs.js");
+await eval(await r.loadString());</pre>
+        <button class="info-modal-refresh widget-copy" onclick="copyWidgetLoader(this)">⎘ COPY LOADER</button>
+      </li>
+      <li>Add a <b>Scriptable</b> widget to the home screen, long-press it → <b>Edit Widget</b>, pick the <b>colesurfs</b> script and set the <b>Parameter</b> from the table.</li>
+    </ol>
+    <div class="about-section-title">parameters</div>
+    <table class="widget-table">
+      <tr><th>parameter</th><th>widget</th></tr>
+      <tr><td><code>forecast-nyc</code><br>or empty</td><td>Fun+ days in forecast, regions in site order <span class="widget-size">small · medium · large</span></td></tr>
+      <tr><td><code>forecast-bi</code></td><td>Fun+ days, Block Island Sound first <span class="widget-size">small · medium · large</span></td></tr>
+      <tr><td><code>live-lido</code></td><td>NY Harbor Entrance buoy now · Lido Beach tide &amp; wind <span class="widget-size">medium</span></td></tr>
+      <tr><td><code>live-landing</code></td><td>Block Island Sound buoy now · The Landing tide &amp; wind <span class="widget-size">medium</span></td></tr>
+      <tr><td><code>live-southampton</code></td><td>Block Island Sound buoy now · Road G tide &amp; wind <span class="widget-size">medium</span></td></tr>
+      <tr><td><code>calibrate</code></td><td>a point ruler to read your phone's widget size <span class="widget-size">any</span></td></tr>
+    </table>
+    <div class="about-section-title">notes</div>
+    <ul class="widget-notes">
+      <li>Small shows 1 region, medium 2, large 4. Live widgets are medium only.</li>
+      <li>Widgets refresh on iOS's schedule, about every 30 minutes. Tapping a forecast widget opens this site; a live widget opens the spot's Surfline page.</li>
+      <li>If the image shows margins, append <code>; size=WxH</code> with the numbers the <code>calibrate</code> ruler gives, e.g. <code>live-lido; size=360x169</code>.</li>
+    </ul>
   </div>
 </div>
 
@@ -1582,7 +1630,7 @@
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.14.0</span>
+    <span class="footer-version">v1.15.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -5246,6 +5294,22 @@ function closeAboutModal() {
 }
 function closeAboutModalOutside(e) {
   if (e.target === document.getElementById('about-modal-overlay')) closeAboutModal();
+}
+function openWidgetModal() {
+  closeAboutModal();
+  document.getElementById('widget-modal-overlay').classList.add('open');
+}
+function closeWidgetModal() {
+  document.getElementById('widget-modal-overlay').classList.remove('open');
+}
+function closeWidgetModalOutside(e) {
+  if (e.target === document.getElementById('widget-modal-overlay')) closeWidgetModal();
+}
+function copyWidgetLoader(btn) {
+  const text = document.getElementById('widget-loader').textContent;
+  const done = () => { btn.textContent = '✓ COPIED'; setTimeout(() => { btn.textContent = '⎘ COPY LOADER'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => {});
+  else { const r = document.createRange(); r.selectNodeContents(document.getElementById('widget-loader')); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
 }
 
 // ═══ BUOY HISTORY POPUP ══════════════════════════════════════

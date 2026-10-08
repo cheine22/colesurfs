@@ -1,4 +1,4 @@
-# colesurfs · v1.14.0
+# colesurfs · v1.15.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -27,7 +27,7 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 - **Smart refresh** — refresh button checks for new model data before clearing caches; shows toast if no new data available
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
 - **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column.
-- **iOS home-screen widget (new in v1.14)** — Fun+ Days per region as a small (1 region), medium (2) or large (4) widget, in the dashboard's category colours, with a "Last update today 12Z" stamp from the older of the two model runs. Runs in [Scriptable](https://scriptable.app) from a two-line loader; the server renders the widget image from the design mockup's own CSS (`/api/widget`, `/widget/tile.png`, `widget/colesurfs.js`). Tapping opens the dashboard.
+- **iOS home-screen widgets (v1.14–1.15)** — two widgets for [Scriptable](https://scriptable.app), one two-line loader on the phone, picked by the widget parameter (the More menu's ▣ IOS WIDGETS lists them). **Fun+ Days** (`forecast-nyc` / `forecast-bi`): the count per region as a small (1 region), medium (2) or large (4) widget in the dashboard's category colours, with a "Last update today 12Z" stamp from the older of the two model runs; tap opens the dashboard. **Live** (`live-lido`, `live-landing`, `live-southampton`; medium): the spot's buoy now in the BUOY NOW cell grammar with the day's swell trend, and the spot's tide now with today's curve and highs/lows, plus the wind outlook (dawn patrol ratings after sunset); tap opens the spot's Surfline page. The server renders each widget image from the design mockups' own CSS (`/api/widget`, `/api/widget/live`, `/widget/tile.png`, `widget/colesurfs.js`).
 
 ---
 
@@ -212,6 +212,12 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.15.0
+- **Live widget.** A second Scriptable widget (medium), parameters `live-lido`, `live-landing` and `live-southampton`: left half the spot's buoy now — primary swell with units and direction in the BUOY NOW cell grammar, the secondary beneath, FLAT shown as the word with the reading dropped to the small line, tinted by the primary's category — plus **Swell trending X**, the worst primary rating either model forecasts for the rest of today's daylight, floored at the buoy's current rating. Right half the spot's tide now with a full-width curve of today's CO-OPS predictions, every high and low labelled with time and height and a line at now, tinted by the better of the two models' current wind ratings, with a wind outlook sentence: tiers good (Glassy/Groomed/Clean) / Textured / bad (Messy/Blown Out); not good → first hour either model turns good ("Wind trending glassy at 4 PM"), good → first hour either model leaves good ("deteriorating at…" / "trending textured at…"), otherwise "holding for rest of day". After sunset (and before sunrise) the window is the coming daylight and the pane shows **dawn patrol wind** badges at the sunrise hour instead. Tap opens the spot's Surfline page (the regional view's spot link), sent with every tile as `X-Tap-Url`. Any `regions.yaml` spot with a tide station and shore normal works (`/api/widget/live?spot=`); the buoy is its region's.
+- **Parameters.** Empty or `forecast-nyc` = Fun+ Days in regions.yaml order; `forecast-bi` = Block Island Sound first; the live widgets above; `calibrate`. The More menu gains **▣ IOS WIDGETS** with the setup steps, a copyable loader and the parameter table.
+- **Tide.** `tide._annotate` also stamps each high/low event's exact corrected time and its own height (`hilo_iso`, `hilo_height_ft`), which the live chart labels use.
+- FLAT's ink in light mode is a darker charcoal on both widgets; the live widget's halves lean toward the seam (20 px outer / 10 px inner inset) so nothing crowds the rounded corners.
 
 ### v1.14.0
 - **iOS home-screen widget.** Fun+ Days per region on the phone: a small widget shows one region, a medium two, a large four, each pane tinted and inked in the dashboard's category colours (FLAT's ink lifted one step, since the table's value vanishes on a widget), with the count over the forecast window and a **Last update today 12Z** stamp — the *older* of the two model runs, so the stamp never claims freshness one model lacks, labelled by the run's local day. Built for [Scriptable](https://scriptable.app): the phone holds a two-line loader that fetches and runs `widget/colesurfs.js` from the server, so edits ship through autopull; the widget parameter picks regions (`Block Island Sound`), `size=WxH` pins a phone's widget point size and `calibrate` shows a point ruler to read it. Tapping opens the dashboard in Safari (a home-screen web app has no URL scheme, and Shortcuts can't target one either).

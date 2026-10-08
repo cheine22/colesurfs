@@ -189,8 +189,8 @@ defs, metric tables).
   two-line loader that `await eval`s `/widget/colesurfs.js` (served
   `no-cache`; the script body is one async IIFE because `eval` parses a
   classic script, where top-level await is a syntax error), so edits ship
-  through autopull. Widget parameter = region names; small = 1 region,
-  medium = 2, large = 4. **The widget is an image:** Scriptable can't load
+  through autopull. Small = 1 region, medium = 2, large = 4 (see the
+  parameter list below). **The widget is an image:** Scriptable can't load
   the fonts or draw the glass, so `/widget/image.png` renders
   `templates/widget_render.html` (the mockup's CSS verbatim, one widget at
   the mockup's own px size, iOS rounds the corners) with headless Chrome
@@ -211,7 +211,33 @@ defs, metric tables).
   shows a point ruler to read a phone's real size. Numerals containing a 0
   use Archivo (JetBrains Mono has no plain zero). Tap opens the site in
   Safari: a home-screen web app has no URL scheme and Shortcuts' Open App
-  can't target one either (tried 2026-10), so `OPEN_SHORTCUT` stays empty
+  can't target one either (tried 2026-10), so `OPEN_SHORTCUT` stays empty.
+  **live-lido** (parameter `live-lido`, medium only, `kind=live` on the
+  image/tile routes, `/api/widget/live` → `_live_payload`,
+  `templates/widget_live_render.html` = the live mockup's CSS + chart JS
+  verbatim): left = the NY Harbor Entrance buoy's partitions in the BUOY NOW
+  cell grammar, tinted by the primary's category (FLAT shows the word and
+  drops the reading to the small line) + "Swell trending X" = the worst
+  primary rating either model forecasts in the window, floored at the buoy;
+  right = Lido Beach tide now + today's curve with the CO-OPS highs/lows
+  (`tide._annotate` now also stamps `hilo_iso` / `hilo_height_ft`; the
+  payload rebuilds them from `hilo_time` while an older cached tide dict is
+  live) and wind, tinted by the better of the two models' current ratings.
+  Window = the rest of today's daylight; after sunset (or before sunrise)
+  it is the coming daylight and the pane shows "dawn patrol wind" badges at
+  the sunrise hour instead of the outlook sentence. Outlook tiers: good =
+  Glassy/Groomed/Clean, Textured, bad = Messy/Blown Out; not good → first
+  hour either model turns good ("trending glassy at 4 PM"), bad → first
+  textured hour; good → first hour either model leaves good
+  ("deteriorating at…" for bad, "trending textured at…"); else "holding for
+  rest of day" — `_live_wind_sentence`, mirrored in the mockup's JS.
+  Parameters: empty / `forecast-nyc` (regions in yaml order), `forecast-bi`
+  (Block Island Sound first; anything unrecognised = default), `live-lido` / `live-landing` /
+  `live-southampton` (`spot=` on `/api/widget/live` and the image routes;
+  any WIND_SPOTS entry with a tide station + shore normal works, the buoy
+  is its `buoy_region`), `calibrate`. The More modal's ▣ IOS WIDGETS button
+  (`#widget-modal-overlay`) carries the setup steps and this table — keep
+  it in step with the script's header comment
 - `favicon.svg` + `favicon-{16,32,192}.png` + `apple-touch-icon*.png` — the
   liquid-glass icon set (2026-07). The glass layers (edge refraction with
   chromatic fringe, convex sheen, lip highlight + tube caustic, foam frost,

@@ -1,0 +1,228 @@
+<!doctype html>
+{#- The live-lido widget, rendered by headless Chrome into the PNG the Scriptable
+    widget displays. CSS, chart and markup are the live-widget mockup's, verbatim —
+    the artifact is the spec. `data` is /api/widget/live's payload. -#}
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Archivo:wght@800&display=swap">
+<style>
+:root { --font:'JetBrains Mono','Fira Code',ui-monospace,Menlo,monospace;
+  --font-zero:'Archivo','JetBrains Mono',ui-monospace,monospace; }
+* { box-sizing:border-box; }
+html, body { margin:0; width:{{ w }}px; height:{{ h }}px; overflow:hidden; font-family:var(--font); background:#000; }
+/* wallpaper band */
+.band { border-radius:18px; padding:30px 22px; display:flex; flex-wrap:wrap; gap:26px 30px; justify-content:center; align-items:flex-end;
+  position:relative; overflow:hidden; border:1px solid var(--border1); }
+.band.dark { background:#07131f;
+  background-image:
+    radial-gradient(60% 80% at 12% 20%, #1c6b8a 0, transparent 60%),
+    radial-gradient(45% 60% at 80% 10%, #0f3f6a 0, transparent 60%),
+    radial-gradient(50% 50% at 70% 95%, #0a6e7c 0, transparent 60%),
+    radial-gradient(35% 45% at 35% 80%, #0b2e52 0, transparent 60%),
+    linear-gradient(180deg,#071a2c,#03101c); }
+.band.light { background:#cfe6f4;
+  background-image:
+    radial-gradient(60% 80% at 12% 20%, #ffffff 0, transparent 60%),
+    radial-gradient(45% 60% at 80% 10%, #6fbde6 0, transparent 60%),
+    radial-gradient(50% 50% at 70% 95%, #3fa9c4 0, transparent 60%),
+    radial-gradient(35% 45% at 35% 80%, #9ccbea 0, transparent 60%),
+    linear-gradient(180deg,#cfe8fb,#7dbbe0); }
+
+/* ── the widget (same recipe as the Fun+ Days mockup) ── */
+a.w { display:block; position:relative; overflow:hidden; text-decoration:none; border-radius:24px;
+  color:var(--ink); --ink:#e8e8f0; --tint:#131316;
+  background:color-mix(in srgb, var(--tint) 80%, transparent);
+  backdrop-filter:blur(14px) saturate(130%); -webkit-backdrop-filter:blur(14px) saturate(130%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.08), 0 10px 26px rgba(0,0,0,.35); }
+a.w.medium { width:360px; height:170px; max-width:100%; }
+a.w:focus-visible { outline:2px solid #fff; outline-offset:3px; }
+a.w::before { content:""; position:absolute; inset:0; pointer-events:none; border-radius:inherit; z-index:2;
+  background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02) 45%, transparent 70%); }
+a.w::after { content:""; position:absolute; inset:0; pointer-events:none; border-radius:inherit; z-index:2;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.30), inset 0 0 0 1px rgba(255,255,255,.10), inset 0 -1px 0 rgba(191,239,255,.12); }
+.band.light a.w, .band.light .pane { background:color-mix(in srgb, color-mix(in srgb, var(--tint) 85%, var(--ink)) 87%, transparent);
+  box-shadow: 0 12px 28px rgba(20,60,90,.20), 0 2px 6px rgba(20,60,90,.10); }
+.band.light a.w { backdrop-filter:blur(16px) saturate(140%); -webkit-backdrop-filter:blur(16px) saturate(140%); }
+.band.light a.w::before { background:
+  linear-gradient(180deg, rgba(255,255,255,.36), rgba(255,255,255,.09) 40%, transparent 62%),
+  radial-gradient(55% 30% at 86% -2%, rgba(255,255,255,.45), transparent 70%),
+  linear-gradient(180deg, transparent 72%, rgba(20,70,110,.05)); }
+.band.light a.w::after { box-shadow: inset 0 1px 0 rgba(255,255,255,.98), inset 0 0 0 1px rgba(255,255,255,.65), inset 0 -1px 0 rgba(255,255,255,.3); }
+
+.w-in { position:relative; z-index:1; height:100%; display:flex; flex-direction:column; }
+.panes { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:1px; background:rgba(255,255,255,.10); }
+.band.light .panes { background:rgba(10,40,60,.14); }
+.pane { --ink:var(--pink); --tint:var(--ptint); display:flex; flex-direction:column; color:var(--ink); min-width:0;
+  background:color-mix(in srgb, var(--tint) 80%, transparent); padding:19px 20px 16px; }
+/* content sits toward the seam: outer edge keeps the Fun+ Days inset, the seam side is tight */
+.pane.buoy { padding-right:10px; }
+.pane.lido { padding-left:11px; }
+.region { font-size:10.8px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; line-height:1.2; color:var(--ink); }
+.subt { font-size:7.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:color-mix(in srgb, var(--ink) 70%, var(--tint)); margin-top:2px; }
+.lbl { font-size:7.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--ink); }
+.mute { color:color-mix(in srgb, var(--ink) 62%, var(--tint)); }
+.num { font-family:var(--font); font-weight:800; letter-spacing:-.04em; line-height:.86; font-variant-numeric:tabular-nums; }
+.num.has-zero { font-family:var(--font-zero); letter-spacing:-.03em; }
+.den { font-family:var(--font); font-weight:700; letter-spacing:0; color:color-mix(in srgb, var(--ink) 62%, var(--tint)); }
+
+/* left: buoy — the BUOY NOW cell's content: primary, secondary, then the day's swell trend */
+.subt { font-size:10px; letter-spacing:.08em; }
+.buoy .hero { flex:1; display:flex; align-items:center; }
+.buoy .read { display:flex; flex-direction:column; gap:6px; font-size:19px; font-weight:800; letter-spacing:-.02em; line-height:1; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.buoy .read .dir { display:flex; align-items:center; gap:4px; }
+.unit { font-size:.72em; font-weight:700; color:color-mix(in srgb, var(--ink) 66%, var(--tint)); letter-spacing:0; margin-left:1px; }
+.second .unit { font-size:.85em; }
+.buoy .second { display:flex; align-items:center; gap:4px; font-size:12.5px; font-weight:700; letter-spacing:.01em; color:color-mix(in srgb, var(--ink) 84%, var(--tint)); white-space:nowrap; }
+.buoy .foot { display:flex; flex-direction:column; gap:4px; margin-top:auto; }
+.trend { font-size:8.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:color-mix(in srgb, var(--ink) 78%, var(--tint)); white-space:nowrap; }
+.ws-glyph { width:1em; height:1em; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
+.buoy .read .ws-glyph { width:.8em; height:.8em; margin-right:2px; }
+
+/* right: tide line, full-width tide chart, then wind */
+.lido .tideline { display:flex; align-items:baseline; gap:4px; white-space:nowrap; }
+.lido .tideline .region { margin-right:3px; }
+.lido .tideline .lbl { font-size:8px; color:color-mix(in srgb, var(--ink) 66%, var(--tint)); margin-left:1px; }
+.lido .tideline .num { font-size:17px; }
+.lido .tideline .num .den { font-size:8.5px; }
+.lido .tideline .trendarrow { font-size:12px; font-weight:800; }
+.lido .tideblk { flex:1; display:flex; align-items:center; margin-top:4px; }
+.lido svg.tide { width:149px; display:block; overflow:visible; }
+.lido .windblk { display:flex; flex-direction:column; gap:4px; margin-top:2px; }
+.lido .windblk .lbl { font-size:8.5px; color:color-mix(in srgb, var(--ink) 62%, var(--tint)); }
+.lido .badges { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+.lido .trend { font-size:10px; white-space:normal; line-height:1.25; }
+.lido .cond { font-size:8.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:999px; }
+
+/* render overrides — after the mockup CSS so they win: the widget fills the
+   canvas edge to edge and iOS supplies the corner rounding */
+.band { width:{{ base_w }}px; height:{{ base_h }}px; padding:0; border:0; border-radius:0; display:block; zoom:{{ zoom }}; }
+a.w, a.w.medium { width:{{ base_w }}px; height:{{ base_h }}px; max-width:none; margin:0; border-radius:0; }
+</style></head>
+<body><div class="band {{ appearance }}"><div class="spark"></div><div id="root"></div></div>
+<script>
+const DATA = {{ data|tojson }};
+const appearance = "{{ appearance }}";
+const CAT = {
+  FLAT:   { db:'#131316', dt:'#404055', lb:'#e2e2de', lt:'#52525f' },   // light ink darkened from the table's #70707c
+  WEAK:   { db:'#0d1520', dt:'#3d7ab5', lb:'#d8e8f8', lt:'#1a5a9a' },
+  FUN:    { db:'#0d1a0f', dt:'#3fb950', lb:'#ccecd4', lt:'#166028' },
+  SOLID:  { db:'#1a1800', dt:'#f5c518', lb:'#f5e6c0', lt:'#7a5500' },
+  FIRING: { db:'#220a0a', dt:'#ff5a4e', lb:'#f8d8d8', lt:'#a81010' },
+  HECTIC: { db:'#1c1240', dt:'#7c6af7', lb:'#e2dcf8', lt:'#3828b8' },
+  MONSTRO:{ db:'#1a0a30', dt:'#c084fc', lb:'#ecdcf8', lt:'#7010b8' },
+};
+// windCondColor(): clean teal / textured amber / messy periwinkle / blown-out taupe
+const WIND = {
+  Glassy:  { db:'#15252a', dt:'#7dd8c8', lb:'#e4f1ed', lt:'#196c60' },
+  Groomed: { db:'#15252a', dt:'#7dd8c8', lb:'#e4f1ed', lt:'#196c60' },
+  Clean:   { db:'#15252a', dt:'#7dd8c8', lb:'#e4f1ed', lt:'#196c60' },
+  Textured:{ db:'#27180c', dt:'#ffb057', lb:'#faeacd', lt:'#86530f' },
+  Messy:   { db:'#181c30', dt:'#8b94d1', lb:'#e4e6f3', lt:'#3e4390' },
+  'Blown Out': { db:'#1d1b1f', dt:'#8a8085', lb:'#e7e3e0', lt:'#6f656a' },
+};
+
+// the dashboard's wind-sea glyph (_WIND_SEA_GLYPH), for partitions typed "windsea"
+const WS = '<svg class="ws-glyph" viewBox="0 0 24 24" aria-label="wind sea"><path d="M5 8h8.5a2.5 2.5 0 1 0-2.34-3.24"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.34 3.24"/><path d="M4 16h5.5a2.5 2.5 0 1 1-2.34 3.24"/></svg>';
+
+
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const swellCol = cat => appearance === 'dark' ? { tint:CAT[cat].db, ink:cat === 'FLAT' ? '#7a7a95' : CAT[cat].dt } : { tint:CAT[cat].lb, ink:CAT[cat].lt };
+const windCol = cond => appearance === 'dark' ? { tint:WIND[cond].db, ink:WIND[cond].dt } : { tint:WIND[cond].lb, ink:WIND[cond].lt };
+const CARD = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+const toCard = d => CARD[Math.round(d / 22.5) % 16];
+const toArrow = d => { const a = ['↑','↗','→','↘','↓','↙','←','↖']; return a[Math.round(((d + 180) % 360) / 45) % 8]; }; // arrow points where the swell travels (from 192° → NNE → ↑)
+const numHtml = (v, den, cls = '') => { const t = Number(v).toFixed(1); return `<span class="num${t.includes('0') ? ' has-zero' : ''} ${cls}">${t}<span class="den">${den}</span></span>`; };
+
+
+function tideSvg(t, nowH, H = 70) {
+  const W = 149, top = 17, bot = 19;
+  const hs = t.hourly, min = Math.min(...hs) - 0.3, max = Math.max(...hs) + 0.3;
+  const x = h => (h / 24) * W, y = v => top + (1 - (v - min) / (max - min)) * (H - top - bot);
+  const pts = hs.map((v, i) => [x(i), y(v)]);
+  // Catmull-Rom → cubic Bézier for a smooth tide curve
+  let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  const area = `${d} L${W},${H - bot} L0,${H - bot} Z`;
+  // label anchors: clamp inside the plot, then push same-side neighbours apart so two
+  // highs (or two lows) ~12 h apart never overlap on their shared row
+  const LW = 50;   // ≈ the width of '11:27a 0.7' at 8 px
+  const anchors = t.hilo.map(p => ({ p, ax: Math.max(LW / 2, Math.min(W - LW / 2, x(p.t))), row: 0 }));
+  for (const side of ['H', 'L']) {
+    const row = anchors.filter(a => a.p.k === side).sort((a, b) => a.ax - b.ax);
+    for (let i = 1; i < row.length; i++) {
+      const gap = row[i].ax - row[i - 1].ax;
+      if (gap >= LW) continue;
+      const push = (LW - gap) / 2, lo = LW / 2, hi = W - LW / 2;
+      if (row[i - 1].ax - push >= lo && row[i].ax + push <= hi) { row[i - 1].ax -= push; row[i].ax += push; }
+      else row[i].row = 1;                                   // no room: second row, back at its own x
+    }
+  }
+  const labels = anchors.map(({ p, ax, row }) => {
+    const px = x(p.t), py = y(p.ft), up = p.k === 'H';
+    const ty = up ? py - 4.5 - row * 8 : py + 10 + row * 8;
+    const tx = row ? Math.max(LW / 2, Math.min(W - LW / 2, px)) : ax;
+    return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.6" fill="currentColor"/>
+      <text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" letter-spacing="0" fill="currentColor">${p.lbl} ${Number(p.ft).toFixed(1)}</text>`;
+  }).join('');
+  const nx = x(nowH), ny = y(t.nowFt);
+  const ticks = [3, 6, 9, 12, 15, 18, 21].map(h => `<line x1="${x(h)}" y1="${H - bot}" x2="${x(h)}" y2="${H - bot + 2.5}" stroke="currentColor" stroke-opacity=".5" stroke-width=".8"/>`).join('');
+  return `<svg class="tide" viewBox="0 0 ${W} ${H}" style="height:${H}px" aria-label="today's tide">
+    <path d="${area}" fill="currentColor" fill-opacity=".16"/>
+    <path d="${d}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+    <line x1="0" y1="${H - bot}" x2="${W}" y2="${H - bot}" stroke="currentColor" stroke-opacity=".35" stroke-width=".8"/>${ticks}
+    <line x1="${nx.toFixed(1)}" y1="2" x2="${nx.toFixed(1)}" y2="${H - bot}" stroke="currentColor" stroke-width="1.2" stroke-opacity=".85"/>
+    <circle cx="${nx.toFixed(1)}" cy="${ny.toFixed(1)}" r="2.4" fill="currentColor"/>
+    ${labels}</svg>`;
+}
+
+
+// FLAT's light ink is darker than the table's (#70707c) — same lift the forecast widget applies
+const swellColFor = cat => cat ? swellCol(cat) : (appearance === 'dark' ? { tint:'#131316', ink:'#e8e8f0' } : { tint:'#ffffff', ink:'#1e1e21' });
+const windColFor = cond => cond ? windCol(cond) : (appearance === 'dark' ? { tint:'#131316', ink:'#e8e8f0' } : { tint:'#ffffff', ink:'#1e1e21' });
+
+function widget(d) {
+  const b = d.buoy, l = d.lido, t = l.tide;
+  const sc = swellColFor(b.category), wc = windColFor(l.wind_category);
+  const base = appearance === 'dark' ? { tint:'#131316', ink:'#e8e8f0' } : { tint:'#ffffff', ink:'#1e1e21' };
+  const unit = u => `<span class="unit">${u}</span>`;
+  const line = x => `${x.type === 'windsea' ? WS : ''}${Number(x.height_ft).toFixed(1)}${unit('ft')} @${x.period_s}${unit('s')} ${x.direction_deg != null ? toArrow(x.direction_deg) + toCard(x.direction_deg) : ''}`;
+  const p = b.primary, hasSecond = !!b.secondary;
+  const flat = b.category === 'FLAT';
+  let hero, smalls;
+  if (!p) {
+    hero = `<div class="read"><div class="mute">no reading</div></div>`; smalls = '';
+  } else if (flat) {
+    hero = `<div class="read"><div>FLAT</div></div>`;
+    smalls = `<div class="second">${line(p)}</div>${hasSecond ? `<div class="second">${line(b.secondary)}</div>` : ''}`;
+  } else {
+    hero = `<div class="read"><div>${p.type === 'windsea' ? WS : ''}${Number(p.height_ft).toFixed(1)}${unit('ft')} @${p.period_s}${unit('s')}</div>` +
+           (p.direction_deg != null ? `<div class="dir"><span>${toArrow(p.direction_deg)}</span><span>${toCard(p.direction_deg)}</span></div>` : '') + `</div>`;
+    smalls = hasSecond ? `<div class="second">${line(b.secondary)}</div>` : `<div class="second mute">no secondary swell</div>`;
+  }
+  const left = `<div class="pane buoy" style="--ptint:${sc.tint};--pink:${sc.ink}">
+      <div class="region">${esc(b.region)}</div>
+      <div class="subt">last updated ${esc(b.time || '—')}</div>
+      <div class="hero">${hero}</div>
+      <div class="foot">${smalls}${b.swell_sentence ? `<div class="trend">${esc(b.swell_sentence)}</div>` : ''}</div>
+    </div>`;
+  const chip = (cond, x2) => { const c = windCol(cond); return `<span class="cond" style="background:color-mix(in srgb, ${c.ink} 18%, transparent);color:${c.ink};box-shadow:inset 0 0 0 .5px color-mix(in srgb, ${c.ink} 45%, transparent)">${cond}${x2 ? ' ×2' : ''}</span>`; };
+  const RANK = { Glassy:0, Groomed:1, Clean:2, Textured:3, Messy:4, 'Blown Out':5 };
+  const now = l.wind_now;
+  const badges = now ? (now.e === now.g ? chip(now.e, true) : [now.e, now.g].sort((a, b) => RANK[a] - RANK[b]).map(c => chip(c, false)).join('')) : '';
+  const windblk = l.after_sunset
+    ? `<div class="lbl">dawn patrol wind</div><div class="badges">${badges}</div>`
+    : (l.wind_sentence ? `<div class="trend">${esc(l.wind_sentence)}</div>` : '');
+  const tideSnap = { hourly: t.hourly, hilo: t.hilo, nowFt: t.now_ft };
+  const right = `<div class="pane lido" style="--ptint:${wc.tint};--pink:${wc.ink}">
+      <div class="tideline"><span class="region">${esc(l.spot)}</span><span class="trendarrow">${t.trend === 'rising' ? '↑' : '↓'}</span>${numHtml(t.now_ft, 'ft')}<span class="lbl">tide</span></div>
+      <div class="tideblk">${tideSvg(tideSnap, t.now_h, 70)}</div>
+      <div class="windblk">${windblk}</div>
+    </div>`;
+  return `<a class="w medium" style="--tint:${base.tint};--ink:${base.ink}"><div class="w-in"><div class="panes">${left}${right}</div></div></a>`;
+}
+document.getElementById('root').innerHTML = widget(DATA);
+</script></body></html>

@@ -666,6 +666,210 @@ def api_widget():
     return jsonify(_widget_payload(names))
 
 
+# ── live-lido widget ─────────────────────────────────────────────────────────
+# Medium widget, Scriptable parameters live-lido / live-landing /
+# live-southampton: the spot's buoy now (left, swell tint) and the spot's tide /
+# wind (right, wind tint). Any WIND_SPOTS entry with a tide station and a shore
+# normal works; the buoy is the spot's buoy_region. The trend rules below are
+# the ones the mockup page implements in JS.
+_LIVE_DEFAULT_SPOT = "Lido Beach"
+
+
+def _live_spot_arg():
+    """(spot dict, error response) from `spot=` (default Lido Beach)."""
+    name = (request.args.get("spot") or _LIVE_DEFAULT_SPOT).strip()
+    spot = next((ws for ws in WIND_SPOTS if ws["name"].lower() == name.lower()), None)
+    if not spot or not spot.get("tide_station") or spot.get("shore_normal") is None:
+        ok = [ws["name"] for ws in WIND_SPOTS if ws.get("tide_station") and ws.get("shore_normal") is not None]
+        return None, (jsonify({"error": f"unknown live spot: {name}", "spots": ok}), 400)
+    return spot, None
+_WIND_GOOD = {"Glassy", "Groomed", "Clean"}
+_WIND_RANK = {"Glassy": 0, "Groomed": 1, "Clean": 2, "Textured": 3, "Messy": 4, "Blown Out": 5}
+
+
+def _wind_tier(c):
+    return "good" if c in _WIND_GOOD else "mid" if c == "Textured" else "bad"
+
+
+def _wind_better(a, b):
+    return a if _WIND_RANK.get(a, 9) <= _WIND_RANK.get(b, 9) else b
+
+
+def _wind_worse(a, b):
+    return a if _WIND_RANK.get(a, -1) >= _WIND_RANK.get(b, -1) else b
+
+
+def _fmt_hour(h: int) -> str:
+    return f"{h % 12 or 12} {'AM' if h < 12 else 'PM'}"
+
+
+def _fmt_clock(dt) -> str:
+    return f"{dt.hour % 12 or 12}:{dt.minute:02d} {'AM' if dt.hour < 12 else 'PM'}"
+
+
+def _live_wind_sentence(now: dict, ahead: list, after_sunset: bool) -> str:
+    """now = {t, e, g} (EURO / GFS rating at Lido this hour), ahead = the hours after it."""
+    cur = _wind_better(now["e"], now["g"])
+    t0 = _wind_tier(cur)
+    at = lambda h: f"at {_fmt_hour(h)}{' tomorrow' if after_sunset else ''}"
+    if t0 != "good":
+        for w in ahead:                      # improving: first hour EITHER model rates good
+            b = _wind_better(w["e"], w["g"])
+            if b in _WIND_GOOD:
+                return f"Wind trending {b.lower()} {at(w['t'])}"
+        if t0 == "bad":
+            for w in ahead:
+                if _wind_tier(_wind_better(w["e"], w["g"])) == "mid":
+                    return f"Wind trending textured {at(w['t'])}"
+    else:
+        for w in ahead:                      # worsening: first hour EITHER model leaves good
+            x = _wind_worse(w["e"], w["g"])
+            if x not in _WIND_GOOD:
+                return (f"Wind deteriorating {at(w['t'])}" if _wind_tier(x) == "bad"
+                        else f"Wind trending textured {at(w['t'])}")
+    return "Wind holding tomorrow" if after_sunset else "Wind holding for rest of day"
+
+
+def _live_payload(spot: dict) -> dict:
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from config import TIMEZONE
+    import math
+    tz = ZoneInfo(TIMEZONE)
+    now = datetime.now(tz)
+    today = now.date()
+    _LIVE_BUOY_REGION = spot["buoy_region"]
+    _LIVE_SPOT = spot["name"]
+    region = next(sp for sp in SPOTS if sp["name"] == _LIVE_BUOY_REGION)
+    cats = swell_rules.CATEGORIES
+
+    # ── buoy ──
+    raw = fetch_buoy(region["buoy_id"]) or {}
+    comps = [c for c in (raw.get("components") or []) if c.get("height_ft") is not None]
+    if not comps and raw.get("wave_height_ft") is not None:
+        comps = [{"height_ft": raw["wave_height_ft"], "period_s": raw.get("wave_period_s"),
+                  "direction_deg": raw.get("wave_direction_deg"), "type": "swell"}]
+    primary = comps[0] if comps else None
+    buoy_cat = swell_rules.categorize(primary["height_ft"], primary["period_s"]) if primary and primary.get("period_s") else None
+    try:
+        obs_time = _fmt_clock(datetime.fromisoformat(raw["timestamp"]).astimezone(tz))
+    except Exception:
+        obs_time = None
+
+    # ── sun / window: the rest of today's daylight, or tomorrow's (dawn patrol) after sunset ──
+    sun = compute_sun_data(spot["lat"], spot["lon"], days=2)
+    def _sun(d):
+        r = sun.get(d.isoformat()) or {}
+        p = lambda k: datetime.strptime(r[k], "%Y-%m-%dT%H:%M").replace(tzinfo=tz) if r.get(k) else None
+        return p("sunrise"), p("sunset")
+    sr_today, ss_today = _sun(today)
+    if ss_today and now > ss_today:
+        after_sunset, day = True, today + timedelta(days=1)
+    elif sr_today and now < sr_today:
+        after_sunset, day = True, today          # pre-dawn: today's dawn patrol
+    else:
+        after_sunset, day = False, today
+    sr, ss = _sun(day)
+    sunset_hour = ss.hour if ss else 18
+    now_hour = (math.ceil(sr.hour + sr.minute / 60) if sr else 7) if after_sunset else now.hour
+    hours = list(range(now_hour, sunset_hour + 1))
+    key = lambda h: f"{day.isoformat()}T{h:02d}:00"
+
+    # ── wind ratings per hour, both models ──
+    def _ratings(model):
+        try:
+            recs = (fetch_region_wind_forecasts(model) or {}).get(_LIVE_SPOT) or []
+        except Exception:
+            recs = []
+        return {r["time"]: wind_rules.categorize(r["speed_mph"], r.get("direction_deg"),
+                                                 spot["shore_normal"], r.get("gust_mph"))
+                for r in recs if r.get("speed_mph") is not None}
+    we, wg = _ratings("EURO"), _ratings("GFS")
+    wind_hours = [w for w in ({"t": h, "e": we.get(key(h)), "g": wg.get(key(h))} for h in hours) if w["e"] and w["g"]]
+    wind_now = wind_hours[0] if wind_hours and wind_hours[0]["t"] == now_hour else None
+    ahead = [w for w in wind_hours if w["t"] > now_hour]
+    wind_sentence = _live_wind_sentence(wind_now, ahead, after_sunset) if wind_now else None
+    wind_tint_cat = _wind_better(wind_now["e"], wind_now["g"]) if wind_now else None
+
+    # ── swell trend: worst primary rating either model forecasts in the window, floored at the buoy ──
+    euro = fetch_all_cmems_wave_forecasts() or _last_known_forecast.get("EURO") or {}
+    gfs = fetch_all_wave_forecasts("GFS") or _last_known_forecast.get("GFS") or {}
+    def _cat(rec):
+        c = ((rec or {}).get("components") or [None])[0]
+        return swell_rules.categorize(c["height_ft"], c["period_s"]) if c and c.get("height_ft") is not None and c.get("period_s") else None
+    e_by = {r["time"]: r for r in (euro.get(_LIVE_BUOY_REGION) or [])}
+    g_by = {r["time"]: r for r in (gfs.get(_LIVE_BUOY_REGION) or [])}
+    swell_hours = [{"t": h, "e": _cat(e_by.get(key(h))), "g": _cat(g_by.get(key(h)))}
+                   for h in hours if after_sunset or h > now_hour]
+    worst = cats.index(buoy_cat) if buoy_cat else None
+    for h in swell_hours:
+        for m in ("e", "g"):
+            if h[m]:
+                worst = cats.index(h[m]) if worst is None else min(worst, cats.index(h[m]))
+    swell_sentence = f"Swell trending {cats[worst].lower()}" if worst is not None else None
+
+    # ── tide: today's curve, its highs and lows, the height now ──
+    tides = (fetch_tide_predictions() or {}).get(_LIVE_SPOT) or {}
+    midnight = datetime.combine(today, datetime.min.time())
+    hourly = [tides.get((midnight + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M"), {}).get("height_ft") for h in range(25)]
+    for i, v in enumerate(hourly):
+        if v is None:
+            hourly[i] = hourly[i - 1] if i else 0.0
+    hilo = []
+    for slot, rec in tides.items():
+        if not rec.get("hilo_type"):
+            continue
+        iso = rec.get("hilo_iso")
+        if not iso:
+            # tide payload cached before hilo_iso existed: rebuild from the label
+            # (an event stamped on a 00:00 slot that reads "pm" belongs to the day before)
+            try:
+                hm = datetime.strptime(rec["hilo_time"], "%I:%M%p")
+            except (KeyError, ValueError):
+                continue
+            ev_day = datetime.strptime(slot[:10], "%Y-%m-%d").date()
+            if slot[11:13] == "00" and hm.hour >= 12:
+                ev_day -= timedelta(days=1)
+            iso = f"{ev_day.isoformat()}T{hm.hour:02d}:{hm.minute:02d}"
+        if not iso.startswith(today.isoformat()):
+            continue
+        dt = datetime.strptime(iso, "%Y-%m-%dT%H:%M")
+        hilo.append({"t": dt.hour + dt.minute / 60, "ft": rec.get("hilo_height_ft", rec.get("height_ft")),
+                     "k": rec["hilo_type"], "lbl": rec.get("hilo_time", "").replace("am", "a").replace("pm", "p")})
+    hilo.sort(key=lambda x: x["t"])
+    now_h = now.hour + now.minute / 60
+    i = min(now.hour, 23)
+    frac = now_h - i
+    tide_now = round(hourly[i] + (hourly[i + 1] - hourly[i]) * frac, 1)
+    later = hourly[i] + (hourly[i + 1] - hourly[i]) * min(1.0, frac + 0.5)
+    tide_trend = "rising" if later >= tide_now else "falling"
+
+    return {
+        "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "site": _WIDGET_SITE,
+        "buoy": {"region": _LIVE_BUOY_REGION, "buoy_id": region["buoy_id"], "time": obs_time,
+                 "category": buoy_cat, "colors": dict(swell_rules.COLORS[buoy_cat]) if buoy_cat else None,
+                 "primary": primary, "secondary": comps[1] if len(comps) > 1 else None,
+                 "swell_sentence": swell_sentence},
+        "tap_url": spot.get("surfline_url") or _WIDGET_SITE,
+        "lido": {"spot": _LIVE_SPOT, "after_sunset": after_sunset, "window_day": day.isoformat(),
+                 "sunrise": _fmt_clock(sr) if sr else None, "sunset": _fmt_clock(ss) if ss else None,
+                 "wind_now": wind_now, "wind_hours": wind_hours, "wind_sentence": wind_sentence,
+                 "wind_category": wind_tint_cat, "swell_hours": swell_hours,
+                 "tide": {"now_ft": tide_now, "trend": tide_trend, "now_h": round(now_h, 2),
+                          "hourly": hourly, "hilo": hilo}},
+    }
+
+
+@app.route("/api/widget/live")
+def api_widget_live():
+    """`spot=` (default Lido Beach) picks the tide/wind spot; the buoy is its region's."""
+    spot, err = _live_spot_arg()
+    if err:
+        return err
+    return jsonify(_live_payload(spot))
+
+
 # ── widget image ─────────────────────────────────────────────────────────────
 # The widget mockup is the spec. Scriptable can't load the fonts or draw the
 # glass, so the widget shows a PNG of templates/widget_render.html (the
@@ -680,10 +884,34 @@ _FLAT_DARK_INK = "#7a7a95"   # FLAT's cell ink vanishes on a widget; the mockup 
 _widget_render_lock = threading.Lock()   # single-flight: a widget's tiles arrive as 8–16 parallel requests
 
 
+_FLAT_LIGHT_INK = "#52525f"   # the table's #70707c is too faint on the light tint
+
+
+def _widget_dims_arg(base_w, base_h):
+    def _dim(k, default):
+        try:
+            return max(80, min(int(request.args.get(k, default)), 800))
+        except (TypeError, ValueError):
+            return default
+    w, h = _dim("w", base_w), _dim("h", base_h)
+    zoom = w / base_w
+    return {"w": w, "h": h, "base_w": base_w, "base_h": round(h / zoom, 2), "zoom": round(zoom, 5)}
+
+
 def _widget_render_ctx():
-    """Template context for one widget from the query string, or an error response."""
+    """Template context for one widget from the query string, or an error response.
+    `kind=live` is the live-lido widget (medium only); default is the Fun+ Days widget."""
     family = (request.args.get("family") or "small").lower()
     appearance = "light" if request.args.get("appearance") == "light" else "dark"
+    kind = (request.args.get("kind") or "forecast").lower()
+    if kind == "live":
+        if family != "medium":
+            return None, (jsonify({"error": "the live widget is medium only"}), 400)
+        spot, err = _live_spot_arg()
+        if err:
+            return None, err
+        return {"kind": "live", "family": "medium", "appearance": appearance, "data": _live_payload(spot),
+                **_widget_dims_arg(*_WIDGET_DIMS["medium"])}, None
     if family not in _WIDGET_DIMS:
         return None, (jsonify({"error": "family must be small, medium or large"}), 400)
     names, err = _widget_regions_arg()
@@ -699,22 +927,18 @@ def _widget_render_ctx():
         elif appearance == "dark":
             tint, ink = c["dark_bg"], (_FLAT_DARK_INK if r["category"] == "FLAT" else c["dark_text"])
         else:
-            tint, ink = c["light_bg"], c["light_text"]
+            tint, ink = c["light_bg"], (_FLAT_LIGHT_INK if r["category"] == "FLAT" else c["light_text"])
         regions.append({**r, "tint": tint, "ink": ink})
-    base_w, base_h = _WIDGET_DIMS[family]
     # w/h = the widget's point size on the phone (Scriptable sends it); the
     # mockup layout is zoomed to that box so the PNG is drawn 1:1, never
     # resampled by iOS. Default = the mockup's own px size.
-    def _dim(k, default):
-        try:
-            return max(80, min(int(request.args.get(k, default)), 800))
-        except (TypeError, ValueError):
-            return default
-    w, h = _dim("w", base_w), _dim("h", base_h)
-    zoom = w / base_w
-    return {"family": family, "appearance": appearance, "regions": regions, "w": w, "h": h,
-            "base_w": base_w, "base_h": round(h / zoom, 2), "zoom": round(zoom, 5),
+    return {"kind": "forecast", "family": family, "appearance": appearance, "regions": regions,
+            **_widget_dims_arg(*_WIDGET_DIMS[family]),
             "stamp": f"Last update {data['last_update']['label']}"}, None
+
+
+def _widget_template(ctx: dict) -> str:
+    return "widget_live_render.html" if ctx.get("kind") == "live" else "widget_render.html"
 
 
 @app.route("/widget/render")
@@ -722,7 +946,7 @@ def widget_render():
     ctx, err = _widget_render_ctx()
     if err:
         return err
-    return render_template("widget_render.html", **ctx)
+    return render_template(_widget_template(ctx), **ctx)
 
 
 def _widget_scale_arg() -> int:
@@ -735,7 +959,7 @@ def _widget_scale_arg() -> int:
 def _widget_full_png(ctx: dict, scale: int) -> Path | None:
     """Render (or reuse) the full widget PNG for a template context."""
     import hashlib, subprocess
-    html = render_template("widget_render.html", **ctx)
+    html = render_template(_widget_template(ctx), **ctx)
     key = hashlib.sha1(f"{scale}:{html}".encode()).hexdigest()
     _WIDGET_PNG_DIR.mkdir(parents=True, exist_ok=True)
     out = _WIDGET_PNG_DIR / f"{key}.png"
@@ -775,9 +999,13 @@ def _widget_full_png(ctx: dict, scale: int) -> Path | None:
     return out
 
 
-def _widget_png_response(path: Path):
+def _widget_png_response(path: Path, ctx: dict | None = None):
     resp = send_from_directory(_WIDGET_PNG_DIR, path.name, mimetype="image/png")
     resp.headers["Cache-Control"] = "no-cache"
+    # where a tap on this widget should go: the live widget opens the Lido
+    # Surfline page (the regional view's spot link), the Fun+ Days widget the site
+    tap = (ctx or {}).get("data", {}).get("tap_url") if (ctx or {}).get("kind") == "live" else None
+    resp.headers["X-Tap-Url"] = tap or _WIDGET_SITE
     return resp
 
 
@@ -789,7 +1017,7 @@ def widget_image():
     out = _widget_full_png(ctx, _widget_scale_arg())
     if out is None:
         return jsonify({"error": "render failed"}), 503
-    return _widget_png_response(out)
+    return _widget_png_response(out, ctx)
 
 
 def _png_decode(data: bytes):
@@ -893,7 +1121,7 @@ def widget_tile():
         tmp = out.with_suffix(".tmp.png")
         tmp.write_bytes(png)
         os.replace(tmp, out)
-    return _widget_png_response(out)
+    return _widget_png_response(out, ctx)
 
 
 _WIDGET_DIR = Path(__file__).resolve().parent / "widget"
