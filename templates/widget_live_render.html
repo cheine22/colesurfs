@@ -195,13 +195,15 @@ function widget(d) {
   let hero, smalls;
   if (!p) {
     hero = `<div class="read"><div class="mute">no reading</div></div>`; smalls = '';
-  } else if (flat) {
-    hero = `<div class="read"><div>FLAT</div></div>`;
-    smalls = `<div class="second">${line(p)}</div>${hasSecond ? `<div class="second">${line(b.secondary)}</div>` : ''}`;
-  } else {
+  } else if (!b.category) {
     hero = `<div class="read"><div>${p.type === 'windsea' ? WS : ''}${Number(p.height_ft).toFixed(1)}${unit('ft')} @${p.period_s}${unit('s')}</div>` +
            (p.direction_deg != null ? `<div class="dir"><span>${toArrow(p.direction_deg)}</span><span>${toCard(p.direction_deg)}</span></div>` : '') + `</div>`;
     smalls = hasSecond ? `<div class="second">${line(b.secondary)}</div>` : `<div class="second mute">no secondary swell</div>`;
+  } else {
+    // v1.15.1: every category reads the way FLAT did — the word, then the
+    // swells beneath it. FLAT keeps only the primary.
+    hero = `<div class="read"><div>${esc(b.category)}</div></div>`;
+    smalls = `<div class="second">${line(p)}</div>${hasSecond && !flat ? `<div class="second">${line(b.secondary)}</div>` : ''}`;
   }
   const left = `<div class="pane buoy" style="--ptint:${sc.tint};--pink:${sc.ink}">
       <div class="region">${esc(b.region)}</div>

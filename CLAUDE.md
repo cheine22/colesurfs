@@ -215,10 +215,13 @@ defs, metric tables).
   **live-lido** (parameter `live-lido`, medium only, `kind=live` on the
   image/tile routes, `/api/widget/live` → `_live_payload`,
   `templates/widget_live_render.html` = the live mockup's CSS + chart JS
-  verbatim): left = the NY Harbor Entrance buoy's partitions in the BUOY NOW
-  cell grammar, tinted by the primary's category (FLAT shows the word and
-  drops the reading to the small line) + "Swell trending X" = the worst
-  primary rating either model forecasts in the window, floored at the buoy;
+  verbatim): left = the NY Harbor Entrance buoy's partitions, tinted by the
+  primary's category — the category word is the hero line and the swells
+  sit beneath it in the BUOY NOW cell grammar (v1.15.1: every category
+  reads the way FLAT did; FLAT keeps only the primary; a reading with no
+  period keeps the reading-as-hero layout) + "Swell trending X" = the worst
+  primary rating either model forecasts in the window, floored at the buoy
+  ("Swell staying X" when that is the buoy's own rating);
   right = Lido Beach tide now + today's curve with the CO-OPS highs/lows
   (`tide._annotate` now also stamps `hilo_iso` / `hilo_height_ft`; the
   payload rebuilds them from `hilo_time` while an older cached tide dict is

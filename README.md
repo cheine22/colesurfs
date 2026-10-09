@@ -1,4 +1,4 @@
-# colesurfs · v1.15.0
+# colesurfs · v1.15.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -212,6 +212,10 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v1.15.1
+- **Live widget: the rating leads.** The buoy pane now reads the way FLAT already did for every category — the category word (FUN, SOLID, …) as the hero line, the primary swell beneath it in the small line and the secondary under that. FLAT shows the primary only. A buoy reading with no period (no category) keeps the old reading-as-hero layout.
+- The swell line says **Swell staying X** when the worst rating either model forecasts for the rest of the window is the buoy's own current rating, and **Swell trending X** otherwise.
 
 ### v1.15.0
 - **Live widget.** A second Scriptable widget (medium), parameters `live-lido`, `live-landing` and `live-southampton`: left half the spot's buoy now — primary swell with units and direction in the BUOY NOW cell grammar, the secondary beneath, FLAT shown as the word with the reading dropped to the small line, tinted by the primary's category — plus **Swell trending X**, the worst primary rating either model forecasts for the rest of today's daylight, floored at the buoy's current rating. Right half the spot's tide now with a full-width curve of today's CO-OPS predictions, every high and low labelled with time and height and a line at now, tinted by the better of the two models' current wind ratings, with a wind outlook sentence: tiers good (Glassy/Groomed/Clean) / Textured / bad (Messy/Blown Out); not good → first hour either model turns good ("Wind trending glassy at 4 PM"), good → first hour either model leaves good ("deteriorating at…" / "trending textured at…"), otherwise "holding for rest of day". After sunset (and before sunrise) the window is the coming daylight and the pane shows **dawn patrol wind** badges at the sunrise hour instead. Tap opens the spot's Surfline page (the regional view's spot link), sent with every tile as `X-Tap-Url`. Any `regions.yaml` spot with a tide station and shore normal works (`/api/widget/live?spot=`); the buoy is its region's.

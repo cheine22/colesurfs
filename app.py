@@ -806,7 +806,10 @@ def _live_payload(spot: dict) -> dict:
         for m in ("e", "g"):
             if h[m]:
                 worst = cats.index(h[m]) if worst is None else min(worst, cats.index(h[m]))
-    swell_sentence = f"Swell trending {cats[worst].lower()}" if worst is not None else None
+    # "staying" when the worst forecast rating matches the buoy's current one
+    swell_sentence = (None if worst is None else
+                      f"Swell staying {cats[worst].lower()}" if buoy_cat and worst == cats.index(buoy_cat)
+                      else f"Swell trending {cats[worst].lower()}")
 
     # ── tide: today's curve, its highs and lows, the height now ──
     tides = (fetch_tide_predictions() or {}).get(_LIVE_SPOT) or {}
