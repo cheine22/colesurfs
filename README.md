@@ -1,4 +1,4 @@
-# colesurfs · v2.0.0
+# colesurfs · v2.0.1
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
@@ -76,7 +76,7 @@ Sun times are computed locally (`sun.py`, astral). How the live data flows from 
 
 **Colour field.** Wind speed is painted per screen pixel (exact Web Mercator, bilinear in the grid, 2 CSS px per sample) on the site's own Obsidian palette made continuous — calm in the page's navy (slate blue in light mode), through the indigo and purple accent, then the green / amber / red the rest of the site uses, lightening past gale force, 0–50+ mph, at ~80 % opacity. The ramp is purely wind speed and has no relationship to the swell or wind-rating palettes. Particles are dark strokes in both themes, trails batched so a few thousand run at the display's frame rate.
 
-**Legend.** A Leaflet control at the map's bottom-right, directly under the `⊙ RECENTER` button and dressed like it: the colour bar and mph ticks only, rebuilt per theme. A small "loading wind…" / "wind unavailable" line appears beneath it only while there is nothing on the map. There is no overview button — regional mode is left by clicking the active region's name again.
+**Legend.** One control at the map's bottom-right: the displayed time (NOW, or the hovered column) above the colour bar and mph ticks, rebuilt per theme; a small "loading wind…" / "wind unavailable" line appears beneath it only while there is nothing on the map. `⊙ RECENTER` sits above it, dressed the same, and appears only once the view has left the default for the overview or the current region (zoom changed, or the default centre more than a few pixels off). There is no overview button — regional mode is left by clicking the active region's name again.
 
 **Basemap and coastline.** `bathy.py` renders every tile itself from NOAA NCEI elevation (no key, no third-party raster): the base paints land flat and shades the sea by depth (half the ramp across the shelf 0–200 m, half down the slope to 4 km) in the theme palette; the coastline styles are transparent except a black line on the land/sea boundary plus a translucent land wash, drawn *above* the colour field so wind shows over land and the coast stays a clean edge. The land mask is cleaned in metres before tracing (specks and hairlines under ~40 m, creeks under ~120 m, enclosed ponds under 0.25 km², islands under 1.5 km²), the base tiles paint land from that same mask, and the retina coastline variant ships the full 512 px render so phones get a crisp ~1 CSS px line. One NOAA request renders a 2 × 2 group of tiles in every style; tiles persist on disk, serve with immutable cache headers, and the default + regional views and then the whole NY/New England core box (zooms 6–11) pre-render at startup so panning and zooming never wait on NOAA. The page retries a tile that errors and warms the browser cache around the viewport on every move.
 
@@ -267,6 +267,10 @@ Why not Git?
 ---
 
 ## Changelog
+
+### v2.0.1
+- **One legend box.** The map's time label (NOW, or the hovered column) moved into the legend, above the wind-speed bar; the separate top-right time box is gone on desktop and phone.
+- **RECENTER only when you've moved.** The button appears once the view leaves the default for the overview or the current region (zoom changed, or the default centre more than a few pixels off) and hides again at home. One `_defaultView()` defines that home for both restoring and comparing, phone variants included.
 
 ### v2.0.0
 - **The wind map is rebuilt around the models' own grids.** The map used to animate a 144-point Open-Meteo grid at 4° spacing (one API call's worth); fronts and lows were blurs. It now draws the **0.25° 10 m wind straight from the model output**: GFS from NOMADS' grib filter (a subregion cut of UGRD/VGRD per step, ~23 KB; AWS `noaa-gfs-bdp-pds` byte ranges as the fallback) and ECMWF IFS from the open-data index files + HTTP byte ranges (one global 10u/10v field per step; `data.ecmwf.int`, AWS mirror as fallback) — no API keys, no quotas, CC BY 4.0 / public domain. New `wind_field.py` decodes each run with eccodes, cuts it to a 30–48° N × 82–55° W envelope (73 × 109 points), quantises to 0.05 m/s int16, keeps each run for four days under `.cache/wind_field/<MODEL>/`, and composites a time series — the newest run for every valid hour (older runs fill the past three days and, behind a short 06/18Z ECMWF run, the tail): hourly from now to +48 h, three-hourly to +240 h. A background thread probes both sources every 10 minutes and tops up a run while it is still publishing, so a new cycle reaches the map within minutes of its first steps. `/api/wind_field/meta` carries the grid, the steps (local time + epoch), the chunk layout and the runs; `/api/wind_field/data` streams the series as gzip'd int16 x-delta byte planes (~14 KB a step) — the step nearest now first (first paint in one small request), then now → +48 h, the tail, the past. The dashboard interpolates between steps, so a hovered column shows that hour's wind, and both models' series stay in memory so the EURO/GFS toggle is instant after the first switch.

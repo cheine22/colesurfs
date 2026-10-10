@@ -364,18 +364,29 @@ tiles (380) → particles / SVG vectors (overlayPane) → markers.
 
 ### Legend and controls (§ 8, § 16)
 
-The wind-speed legend is a Leaflet control (`LegendControl`, bottomright)
-added BEFORE `RecenterControl` (Leaflet inserts later bottom controls above
+The legend is one Leaflet control (`LegendControl`, bottomright) added
+BEFORE `RecenterControl` (Leaflet inserts later bottom controls above
 earlier ones), so it sits directly under `⊙ RECENTER` and wears the
 button's clothes: `background var(--bg1)`, `1px solid var(--border1)`,
-5 px radius, the same shadow; 150 px wide (118 px on phones). `buildWindScale`
-fills `#wind-speed-scale` with the colour bar (0–50 mph from `windRampColor`)
+5 px radius, the same shadow; 150 px wide (118 px on phones). It holds the
+displayed time (`#map-time-overlay`, set by `_setWindTimeLabel` — NOW or the
+hovered column; there is no separate time badge) above `#wss-body`, which
+`buildWindScale` fills with the colour bar (0–50 mph from `windRampColor`)
 and the mph ticks, once per theme (`dataset.built`). `_setWindRunTag` only
-surfaces `#wind-status` — "loading wind…" / "wind unavailable" — beneath the
-bar while there is nothing on the map. There is no OVERVIEW button:
+surfaces `#wind-status` — "loading wind…" / "wind unavailable" — beneath
+the bar while there is nothing on the map.
+
+`⊙ RECENTER` is offered only off the default view: `_defaultView()` is the
+one definition of where the map rests for the overview or the current
+region (desktop/phone centre + zoom from `MAP_CENTER*` / `REGION_VIEWS`, or
+`_getBoundsCenterZoom` for a region without a view — exactly what
+`fitBounds` would do); `recenterMap()` sets it; `_syncRecenter()` on
+moveend/zoomend/resize (and after entering/leaving a region) adds
+`.is-home` (display none) when the zoom matches and the default centre is
+within 6 px of the map's middle. There is no OVERVIEW button:
 `enterRegionMode(name)` on the already-active region calls
 `exitRegionMode()`, i.e. regional mode is left by clicking the active
-region's name again. The time badge (`map-time-overlay`) is top-right.
+region's name again.
 
 ## Data & caching
 

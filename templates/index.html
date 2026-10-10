@@ -193,16 +193,6 @@
 
     /* ─── Wind Map ────────────────────────────────────────── */
     #wind-time-display { font-size: 10px; color: var(--accent); letter-spacing: .04em; }
-    .map-time-overlay {
-      display: none;
-      font-size: 11px; color: var(--accent); letter-spacing: .04em;
-      font-family: var(--font); font-weight: 600;
-      background: var(--bg1); padding: 4px 9px; border-radius: 5px;
-      border: 1px solid var(--border1); pointer-events: none;
-      box-shadow: 0 1px 4px rgba(0,0,0,.35);
-      white-space: nowrap;
-    }
-    body.sbs .map-time-overlay { display: block; }
     .map-wrapper {
       width: 100%; height: 420px;
       border-radius: 8px; border: 1px solid var(--border1);
@@ -228,6 +218,8 @@
       box-shadow: 0 1px 4px rgba(0,0,0,.35);
       pointer-events: none; font-family: var(--font);
     }
+    .wss-time { font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--accent); line-height: 1.2; white-space: nowrap; }
+    .wss-body { display: flex; flex-direction: column; gap: 4px; }
     .wss-status { font-size: 8.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text1); }
     .wss-bar { height: 7px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
     .wss-ticks { position: relative; height: 11px; font-size: 8.5px; color: var(--text1); }
@@ -496,6 +488,7 @@
       box-shadow: 0 1px 4px rgba(0,0,0,.35);
     }
     .map-recenter-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .map-recenter-btn.is-home { display: none; }   /* only offered once the view has left its default */
 
     /* ─── Loading overlay ────────────────────────────────────── */
     .loading-overlay {
@@ -713,6 +706,8 @@
 
       /* Wind speed legend: compact on mobile */
       .wind-speed-scale { width: 118px !important; padding: 5px 7px 4px !important; gap: 3px !important; }
+      .wss-body { gap: 3px; }
+      .wss-time { font-size: 9px; }
       .wss-bar { height: 5px !important; }
 
       /* ── Table: fill remaining 60% ── */
@@ -1039,13 +1034,6 @@
         line-height: 26px !important; font-size: 14px !important;
       }
       .map-recenter-btn { font-size: 9px !important; padding: 3px 7px !important; }
-
-      /* Map time overlay — match button style */
-      .map-time-overlay {
-        display: block !important;
-        font-size: 9px !important;
-        padding: 3px 7px !important;
-      }
 
       /* Loading overlay: smaller */
       .loading-logo { font-size: 18px; }
@@ -1509,7 +1497,7 @@
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v2.0.0</span>
+    <span class="info-modal-version">v2.0.1</span>
   </div>
 </div>
 
@@ -1534,7 +1522,7 @@
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
       <button class="info-modal-refresh" onclick="openWidgetModal()">▣ IOS WIDGETS</button>
     </div>
-    <span class="about-version">v2.0.0</span>
+    <span class="about-version">v2.0.1</span>
   </div>
 </div>
 
@@ -1604,7 +1592,7 @@ await eval(await r.loadString());</pre>
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v2.0.0</span>
+    <span class="footer-version">v2.0.1</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -2353,7 +2341,7 @@ WindField.onUpdate(model => {
   _setWindRunTag(field);
 });
 
-// Update wind time label in both the section header and the SBS map overlay.
+// Update wind time label in both the section header and the map legend.
 function _setWindTimeLabel(label) {
   const el = document.getElementById('wind-time-display');
   if (el) el.textContent = label;
@@ -2682,7 +2670,7 @@ async function loadWindForecast(model) {
 // ═══ 8. LEGEND & WIND SCALE ═════════════════════════════════
 
 function buildWindScale() {
-  const el = document.getElementById('wind-speed-scale');
+  const el = document.getElementById('wss-body');
   if (!el) return;
   const MPH = 2.23694, MAX = 50, theme = _isDark() ? 'dark' : 'light';
   if (el.dataset.built !== theme) {
@@ -4423,26 +4411,16 @@ function initMap() {
     el.addEventListener('touchcancel', () => { _lastT = 0; }, { passive: true });
   }
 
-  // Time badge — always top-right
-  const TimeOverlayControl = L.Control.extend({
-    options: { position: 'topright' },
-    onAdd() {
-      const el = L.DomUtil.create('div', 'map-time-overlay');
-      el.id = 'map-time-overlay';
-      el.textContent = 'NOW';
-      return el;
-    },
-  });
-  window._timeOverlayCtrl = new TimeOverlayControl().addTo(map);
-
   // Bottom-right stack, bottom first (Leaflet inserts later bottom controls
-  // above earlier ones): the wind-speed legend, then RECENTER on top of it.
-  // Regional mode is left by clicking the active region's name again.
+  // above earlier ones): the legend — the displayed time over the wind-speed
+  // bar — then RECENTER on top of it, shown only once the view has left its
+  // default. Regional mode is left by clicking the active region's name again.
   const LegendControl = L.Control.extend({
     options: { position: 'bottomright' },
     onAdd() {
       const el = L.DomUtil.create('div', 'wind-speed-scale');
       el.id = 'wind-speed-scale';
+      el.innerHTML = `<div class="wss-time" id="map-time-overlay">${_savedLabel || 'NOW'}</div><div class="wss-body" id="wss-body"></div>`;
       return el;
     },
   });
@@ -4460,6 +4438,8 @@ function initMap() {
     },
   });
   new RecenterControl().addTo(map);
+  map.on('moveend zoomend resize', _syncRecenter);
+  _syncRecenter();
 
   // Test hooks — expose map + rebuild helpers for the loop-test harness.
   window._map = map;
@@ -4470,27 +4450,39 @@ function initMap() {
   };
 }
 
-function recenterMap() {
-  if (!map) return;
+// The view the map rests in for the current page / region — what RECENTER
+// restores and what decides whether RECENTER is offered at all.
+function _defaultView() {
   const mob = _isMobile();
-  if (!regionMode) {
-    map.setView(mob ? MAP_CENTER_MOBILE : MAP_CENTER, mob ? MAP_ZOOM_MOBILE : MAP_ZOOM);
-    return;
-  }
+  if (!regionMode)
+    return { center: L.latLng(mob ? MAP_CENTER_MOBILE : MAP_CENTER), zoom: mob ? MAP_ZOOM_MOBILE : MAP_ZOOM };
   const rv = REGION_VIEWS[regionMode];
   if (rv) {
     const c = (mob && rv.mobile_center) ? rv.mobile_center : rv.center;
     const z = (mob && rv.mobile_zoom)   ? rv.mobile_zoom   : rv.zoom;
-    map.setView(c, z);
-    return;
+    return { center: L.latLng(c), zoom: z };
   }
   const spots = (CFG && CFG.wind_spots || []).filter(ws => ws.buoy_region === regionMode);
-  if (!spots.length) { map.setView(MAP_CENTER, MAP_ZOOM); return; }
-  const lats   = spots.map(s => s.lat);
-  const lons   = spots.map(s => s.lon);
-  const bounds = [[Math.min(...lats), Math.min(...lons)],
-                  [Math.max(...lats), Math.max(...lons)]];
-  map.fitBounds(bounds, { padding: [60, 60] });
+  if (!spots.length) return { center: L.latLng(MAP_CENTER), zoom: MAP_ZOOM };
+  const lats = spots.map(s => s.lat), lons = spots.map(s => s.lon);
+  const bounds = L.latLngBounds([[Math.min(...lats), Math.min(...lons)], [Math.max(...lats), Math.max(...lons)]]);
+  return map._getBoundsCenterZoom(bounds, { padding: [60, 60] });   // exactly what fitBounds would do
+}
+
+function recenterMap() {
+  if (!map) return;
+  const v = _defaultView();
+  map.setView(v.center, v.zoom);
+}
+
+// RECENTER only while the view differs from its default: zoom changed, or
+// the default centre more than a few pixels from the middle of the map.
+function _syncRecenter() {
+  const btn = document.querySelector('.map-recenter-btn');
+  if (!btn || !map) return;
+  const v = _defaultView(), s = map.getSize(), p = map.latLngToContainerPoint(v.center);
+  const home = Math.abs(map.getZoom() - v.zoom) < 0.01 && Math.hypot(p.x - s.x / 2, p.y - s.y / 2) < 6;
+  btn.classList.toggle('is-home', home);
 }
 
 
@@ -4531,6 +4523,7 @@ async function enterRegionMode(spotName) {
   if (map) {
     map.invalidateSize();
     recenterMap();
+    _syncRecenter();
     buildSwellArrows(null, 'buoy');
     buildCoastAngleLines();
 
@@ -4554,10 +4547,7 @@ function exitRegionMode() {
   document.querySelector('.map-section').classList.remove('region-active');
   if (regionWindLayer) regionWindLayer.clearLayers();
   if (coastAngleLayer) coastAngleLayer.clearLayers();
-  if (map) {
-    const mob = _isMobile();
-    map.setView(mob ? MAP_CENTER_MOBILE : MAP_CENTER, mob ? MAP_ZOOM_MOBILE : MAP_ZOOM);
-  }
+  if (map) { recenterMap(); _syncRecenter(); }
   const scrollAnchor = _getScrollAnchor();
   buildTable();
   _scrollTableToTime(scrollAnchor);
