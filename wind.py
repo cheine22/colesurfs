@@ -1,7 +1,5 @@
 """
 colesurfs — Wind Data Fetcher
-  • fetch_wind_grid(model_key)              → current snapshot for map init
-  • fetch_wind_forecast_grid(model_key)     → full hourly time series for hover-sync
   • fetch_spot_wind()                       → per-spot current wind for table
   • fetch_spot_wind_forecasts()             → per-spot hourly wind for WIND table row
   • fetch_region_wind_forecasts(model_key)  → hourly wind for all WIND_SPOTS (regional mode)
@@ -11,35 +9,23 @@ Wind model is matched to the active wave model:
   EURO → ecmwf_ifs atmospheric model
   GFS  → gfs atmospheric model
 
-Smart caching: each fetch checks whether a new model run is likely available
-since the last fetch.  If not, the cached value is returned even if the TTL
-has expired (up to a hard max of 6 hours).  This avoids burning API calls
-when the underlying model data hasn't changed.
+The map's gridded wind field is NOT fetched here — see wind_field.py (0.25°
+GRIB straight from NOMADS / ECMWF open data).
 """
 import time
 import requests
 from datetime import datetime, timezone, timedelta
-from cache import ttl_cache, model_aware_cache, record_api_calls
+from cache import ttl_cache, record_api_calls
 from config import (
-    GRID_LATS, GRID_LONS, GRID_NY, GRID_NX,
-    GRID_LA1, GRID_LO1, GRID_DX, GRID_DY,
     TIMEZONE, FORECAST_DAYS, WIND_MODELS, MODEL_UPDATE_HOURS_UTC,
-    WIND_UPDATE_HOURS_UTC,
-    wind_to_uv, ms_to_kts, ms_to_mph, degrees_to_cardinal, SPOTS, WIND_SPOTS,
+    ms_to_kts, ms_to_mph, degrees_to_cardinal, SPOTS, WIND_SPOTS,
 )
 
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 
-# Grid point order is fixed (flat N→S row-major); precompute once.
-_GRID_POINTS = [(lat, lon) for lat in reversed(GRID_LATS) for lon in GRID_LONS]
-_GRID_LATS_STR = ",".join(str(p[0]) for p in _GRID_POINTS)
-_GRID_LONS_STR = ",".join(str(p[1]) for p in _GRID_POINTS)
-
 # Negative cache: when a request fails, don't retry for this many seconds.
 _NEGATIVE_CACHE_SEC = 1800  # 30 min cooldown after API failure (e.g. 429 rate limit)
 
-# Sentinel returned by _single_query when rate-limited (vs. mode-not-supported).
-_RATE_LIMITED = object()
 _negative_cache: dict[str, float] = {}   # key → monotonic time of failure
 
 
@@ -136,197 +122,10 @@ def _new_run_available_since(model_key: str, cache_age_sec: float,
     return False
 
 
-# ─── Single-query helper (1 retry only) ─────────────────────────────────────
-
-def _single_query(params: dict, model_id: str | None,
-                  label: str = "wind", n_points: int = 1) -> list | None:
-    """
-    One Open-Meteo request for all grid points (≤100).
-    Tries with model_id first, then without.  1 attempt per param set (no retry).
-    Records API call count for usage tracking.
-    Returns list of per-point dicts, or None.
-    """
-    param_sets = []
-    if model_id:
-        param_sets.append({**params, "models": model_id})
-    param_sets.append(params)
-
-    for p in param_sets:
-        try:
-            record_api_calls(label, n_points)
-            r = requests.get(FORECAST_API, params=p, timeout=60,
-                             headers={"User-Agent": "ColeSurfs/1.0"})
-            r.raise_for_status()
-            raw = r.json()
-        except Exception as e:
-            print(f"[{label}] ({p.get('models','default')}): {e}")
-            # On rate limit (429), return sentinel so callers can distinguish
-            # "rate limited" from "mode not supported" and skip fallback requests.
-            if "429" in str(e):
-                return _RATE_LIMITED
-            continue
-
-        if isinstance(raw, dict):
-            raw = [raw]
-        if not raw or not isinstance(raw, list):
-            continue
-        if raw[0].get("error"):
-            print(f"[{label}] API error ({p.get('models','default')}): "
-                  f"{raw[0].get('reason','?')}")
-            break  # try next param set (without model)
-        return raw
-    return None
-
-
-# ─── Current wind snapshot (for map init) ────────────────────────────────────
-@model_aware_cache(hard_ttl=21600, model_arg_index=0)
-def fetch_wind_grid(model_key: str = "EURO") -> dict | None:
-    """
-    Returns dict with CURRENT wind at all grid points.
-    Single Open-Meteo call (grid ≤100 points).
-    {u, v (flat N→S row-major), la1, lo1, nx, ny, dx, dy}
-    """
-    neg_key = f"wind_grid:{model_key}"
-    if _is_negative_cached(neg_key):
-        print("[wind_grid] skipping — negative cached (rate limit cooldown)")
-        return None
-
-    model_id = WIND_MODELS.get(model_key)
-    n_pts = len(_GRID_POINTS)
-    lats_str, lons_str = _GRID_LATS_STR, _GRID_LONS_STR
-
-    # Try 'current' mode first (fastest), fall back to hourly
-    data = _single_query({
-        "latitude": lats_str, "longitude": lons_str,
-        "current": "wind_speed_10m,wind_direction_10m",
-        "wind_speed_unit": "ms", "timezone": TIMEZONE,
-    }, model_id, label="wind_grid", n_points=n_pts)
-
-    if data is _RATE_LIMITED:
-        # Rate-limited — don't fire a second request; let negative cache handle retry.
-        print("[wind_grid] rate limited, skipping hourly fallback")
-        _set_negative_cache(neg_key)
-        return None
-
-    # If 'current' mode genuinely unsupported (None or missing 'current' key),
-    # try hourly fallback.
-    if not data or not data[0].get("current"):
-        print("[wind_grid] 'current' mode unavailable, trying hourly fallback…")
-        hourly_data = _single_query({
-            "latitude": lats_str, "longitude": lons_str,
-            "hourly": "wind_speed_10m,wind_direction_10m",
-            "wind_speed_unit": "ms", "timezone": TIMEZONE,
-            "forecast_days": 1,
-        }, model_id, label="wind_grid_hourly", n_points=n_pts)
-        if hourly_data is _RATE_LIMITED:
-            print("[wind_grid] hourly fallback also rate limited")
-            _set_negative_cache(neg_key)
-            return None
-        if hourly_data:
-            data = []
-            for pt in hourly_data:
-                h = pt.get("hourly", {})
-                spds = h.get("wind_speed_10m", [None])
-                dirs = h.get("wind_direction_10m", [None])
-                data.append({"current": {
-                    "wind_speed_10m": spds[0] if spds else None,
-                    "wind_direction_10m": dirs[0] if dirs else None,
-                }})
-
-    if not data:
-        print("[wind_grid] failed")
-        _set_negative_cache(neg_key)
-        return None
-
-    u_arr, v_arr = [], []
-    for pt in data:
-        cur = pt.get("current", {})
-        u, v = wind_to_uv(cur.get("wind_speed_10m"), cur.get("wind_direction_10m"))
-        u_arr.append(u)
-        v_arr.append(v)
-
-    print(f"[wind_grid] OK model={model_key}, {n_pts} pts")
-    return {"u": u_arr, "v": v_arr,
-            "la1": GRID_LA1, "lo1": GRID_LO1,
-            "nx": GRID_NX,   "ny": GRID_NY,
-            "dx": GRID_DX,   "dy": GRID_DY}
-
-
-# ─── Full hourly wind forecast for the grid (for hover time-sync) ─────────────
-
-@model_aware_cache(hard_ttl=21600, model_arg_index=0)
-def fetch_wind_forecast_grid(model_key: str = "EURO") -> dict | None:
-    """
-    Single Open-Meteo call for all grid points (≤100 points).
-    model_key selects the atmospheric model.
-    Uses smart caching: skips fetch if no new model run is available.
-    Negative caching: on failure, waits _NEGATIVE_CACHE_SEC before retrying.
-
-    Returns:
-      {
-        "times":       ["2026-03-23T12:00", ...],
-        "u_by_time":   [[u_p0, u_p1, ..., u_pN], ...],
-        "v_by_time":   [[v_p0, ...], ...],
-        "grid":        {la1, lo1, nx, ny, dx, dy}
-      }
-    """
-    neg_key = f"wind_forecast:{model_key}"
-    if _is_negative_cached(neg_key):
-        print("[wind_forecast] skipping — negative cached (rate limit cooldown)")
-        return None
-
-    model_id = WIND_MODELS.get(model_key)
-    n_pts = len(_GRID_POINTS)
-    lats_str, lons_str = _GRID_LATS_STR, _GRID_LONS_STR
-
-    print(f"[wind_forecast] fetching {n_pts} pts in 1 query…")
-    data = _single_query({
-        "latitude": lats_str, "longitude": lons_str,
-        "hourly": "wind_speed_10m,wind_direction_10m",
-        "wind_speed_unit": "ms",
-        "forecast_days": FORECAST_DAYS,
-        "timezone": TIMEZONE,
-    }, model_id, label="wind_forecast", n_points=n_pts)
-
-    if data is _RATE_LIMITED or not data:
-        print("[wind_forecast] failed — no wind data")
-        _set_negative_cache(neg_key)
-        return None
-
-    times = data[0].get("hourly", {}).get("time", [])
-    if not times:
-        print("[wind_forecast] no time steps in response")
-        return None
-
-    n_times = len(times)
-    print(f"[wind_forecast] OK model={model_key}, "
-          f"{n_times} timesteps × {len(data)} grid points")
-
-    u_by_time, v_by_time = [], []
-    for t_idx in range(n_times):
-        u_row, v_row = [], []
-        for p_data in data:
-            h      = p_data.get("hourly", {})
-            speeds = h.get("wind_speed_10m",     [None] * n_times)
-            dirs   = h.get("wind_direction_10m", [None] * n_times)
-            spd  = speeds[t_idx] if t_idx < len(speeds) else None
-            dirn = dirs[t_idx]   if t_idx < len(dirs)   else None
-            u, v = wind_to_uv(spd, dirn)
-            u_row.append(u)
-            v_row.append(v)
-        u_by_time.append(u_row)
-        v_by_time.append(v_row)
-
-    return {
-        "times":     times,
-        "u_by_time": u_by_time,
-        "v_by_time": v_by_time,
-        "grid": {
-            "la1": GRID_LA1, "lo1": GRID_LO1,
-            "nx":  GRID_NX,  "ny":  GRID_NY,
-            "dx":  GRID_DX,  "dy":  GRID_DY,
-        },
-    }
+def make_new_run_checker(hours_map: dict):
+    """Checker bound to a specific publication schedule (wave vs wind hours)
+    for cache.model_aware_cache — waves_cmems binds the CMEMS hours."""
+    return lambda model_key, age: _new_run_available_since(model_key, age, hours_map)
 
 
 # ─── Per-spot current wind ────────────────────────────────────────────────────
@@ -596,18 +395,3 @@ def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> 
         result[spot["name"]] = unique_records[uid]
 
     return result
-
-
-# ─── Wire model-run-aware caching ────────────────────────────────────────────
-# Set the checker on model_aware_cache-decorated functions so they can
-# decide whether to re-fetch based on model run availability.
-
-def make_new_run_checker(hours_map: dict):
-    """Checker bound to a specific publication schedule (wind vs wave hours)."""
-    return lambda model_key, age: _new_run_available_since(model_key, age, hours_map)
-
-
-# Wind caches follow the 4x/day wind schedule (EURO wind updates every 6 h
-# on Open-Meteo even though the CMEMS wave product is 2x/day).
-fetch_wind_grid._new_run_checker = make_new_run_checker(WIND_UPDATE_HOURS_UTC)
-fetch_wind_forecast_grid._new_run_checker = make_new_run_checker(WIND_UPDATE_HOURS_UTC)

@@ -217,22 +217,24 @@
 
     /* ─── Wind speed scale ────────────────────────────────── */
     .map-section { position: relative; }
+    .map-wrapper { position: relative; }
+    /* Wind speed legend — a Leaflet control under the RECENTER button, in the
+       button's own clothes (same surface, border, radius, shadow) */
     .wind-speed-scale {
-      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-      position: absolute; bottom: 10px; right: 10px; z-index: 600;
-      background: none; padding: 0;
-      border: none; border-radius: 0;
-      pointer-events: none;
+      width: 150px; padding: 6px 8px 5px;
+      display: flex; flex-direction: column; gap: 4px;
+      background: var(--bg1);
+      border: 1px solid var(--border1); border-radius: 5px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.35);
+      pointer-events: none; font-family: var(--font);
     }
-    .wind-speed-scale .wss-label:first-child { display: none; }
-    .wss-label { font-size: 9px; color: var(--text2); letter-spacing: .07em; text-transform: uppercase; }
-    .wss-band {
-      display: inline-flex; align-items: center; justify-content: center;
-      padding: 2px 8px; border-radius: 100px;
-      font-size: 9px; font-weight: 600; letter-spacing: .04em;
-      white-space: nowrap;
-      border: 1px solid transparent;
-    }
+    .wss-status { font-size: 8.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--text1); }
+    .wss-bar { height: 7px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.25); }
+    .wss-ticks { position: relative; height: 11px; font-size: 8.5px; color: var(--text1); }
+    .wss-ticks span { position: absolute; top: 0; transform: translateX(-50%); }
+    .wss-ticks span:first-child { transform: none; }
+    .wss-ticks span:last-child { transform: translateX(-100%); }
+    .wind-raster { pointer-events: none; }
 
     /* ─── Table ───────────────────────────────────────────── */
     .table-scroll { width: 100%; overflow-x: auto;
@@ -256,11 +258,9 @@
       border: 1px solid transparent;
     }
     /* Light-mode: add subtle border so pills/bands don't dissolve into the bg */
-    html[data-theme="light"] .legend-pill,
-    html[data-theme="light"] .wss-band { border-color: rgba(0,0,0,.12); }
+    html[data-theme="light"] .legend-pill { border-color: rgba(0,0,0,.12); }
     @media (prefers-color-scheme: light) {
-      html:not([data-theme="dark"]) .legend-pill,
-      html:not([data-theme="dark"]) .wss-band { border-color: rgba(0,0,0,.12); }
+      html:not([data-theme="dark"]) .legend-pill { border-color: rgba(0,0,0,.12); }
     }
 
     .swell-table {
@@ -405,9 +405,12 @@
       position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
       background: var(--bg1); border-top: 1px solid var(--border0);
       padding: 0 24px; height: 38px;
-      display: flex; align-items: center; justify-content: space-between;
+      /* three cells: the version sits on the true centre line whatever the
+         signature and the MORE button measure */
+      display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
       user-select: none;
     }
+    .app-footer .footer-btns { justify-self: end; }
     .footer-btns { display: flex; align-items: center; gap: 10px; }
     .footer-divider { color: var(--text3); font-size: 12px; }
     .footer-sig {
@@ -464,14 +467,12 @@
     .region-wind-sep td { padding: 0; }
     .wind-cell { min-width: 66px; }
     .wind-cell-inner { padding: 3px 5px; }
-    .wind-line { font-size: 10px; line-height: 1.45; color: var(--text1); white-space: nowrap; }
-    .wind-gust { color: var(--text2); font-size: 9.5px; }
-    .wind-tide { color: var(--accent); font-size: 9.5px; margin-bottom: 2px; border-bottom: 1px solid var(--border0); padding-bottom: 2px; }
+    .wind-line { font-size: 10px; line-height: 1.45; color: var(--wc-text, var(--text1)); white-space: nowrap; }
+    .wind-gust { color: var(--wc-sub, var(--text2)); font-size: 9.5px; }
+    .wind-tide { color: var(--wc-tide, var(--accent)); font-size: 9.5px; margin-bottom: 2px; border-bottom: 1px solid var(--border0); padding-bottom: 2px; }
     .wind-tide.tide-null { color: var(--text3); }
     .wind-cond { display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: .06em;
                  text-transform: uppercase; padding: 1px 6px; border-radius: 3px; margin-top: 3px; }
-    td.cell.wind-clean .wind-speed,
-    td.cell.wind-clean .wind-gust  { font-weight: 700; color: var(--text0); }
 
     /* ─── Night columns ───────────────────────────────────── */
     th.th-time.night-col { color: var(--text3); }
@@ -495,17 +496,6 @@
       box-shadow: 0 1px 4px rgba(0,0,0,.35);
     }
     .map-recenter-btn:hover { color: var(--accent); border-color: var(--accent); }
-    .map-overview-btn {
-      display: none; padding: 4px 9px;
-      background: var(--bg1); color: var(--accent);
-      border: 1px solid var(--accent); border-radius: 5px;
-      font-family: var(--font); font-size: 11px; font-weight: 600;
-      cursor: pointer; white-space: nowrap;
-      transition: color .15s, border-color .15s;
-      box-shadow: 0 1px 4px rgba(0,0,0,.35);
-    }
-    .map-overview-btn.visible { display: block; }
-    .map-overview-btn:hover { color: var(--text1); border-color: var(--text1); }
 
     /* ─── Loading overlay ────────────────────────────────────── */
     .loading-overlay {
@@ -656,17 +646,6 @@
       content: 'SWELL'; font-size: 9px; color: var(--text2);
       letter-spacing: .07em; margin-right: 4px;
     }
-    body.sbs .wind-speed-scale {
-      position: static;
-      flex-shrink: 0;
-      background: none; padding: 0; border: none;
-      border-radius: 0; pointer-events: auto;
-    }
-    body.sbs .wind-speed-scale .wss-label:first-child { display: none; }
-    body.sbs .wind-speed-scale::before {
-      content: 'WIND'; font-size: 9px; color: var(--text2);
-      letter-spacing: .07em; margin-right: 4px;
-    }
     /* Active state for side-by-side button */
     #sbs-btn.sbs-active {
       color: var(--accent); border-color: var(--accent); background: var(--accent-glow);
@@ -732,8 +711,9 @@
       }
       #map { border-radius: 8px !important; }
 
-      /* Wind speed scale: hidden on mobile */
-      .wind-speed-scale { display: none !important; }
+      /* Wind speed legend: compact on mobile */
+      .wind-speed-scale { width: 118px !important; padding: 5px 7px 4px !important; gap: 3px !important; }
+      .wss-bar { height: 5px !important; }
 
       /* ── Table: fill remaining 60% ── */
       .table-section {
@@ -1059,7 +1039,6 @@
         line-height: 26px !important; font-size: 14px !important;
       }
       .map-recenter-btn { font-size: 9px !important; padding: 3px 7px !important; }
-      .map-overview-btn { font-size: 9px !important; padding: 3px 7px !important; }
 
       /* Map time overlay — match button style */
       .map-time-overlay {
@@ -1441,12 +1420,6 @@
     <div class="map-wrapper">
       <div id="map"></div>
     </div>
-    <!-- Wind speed colour scale — rendered from CFG.wind_bands -->
-    <div class="wind-speed-scale" id="wind-speed-scale">
-      <span class="wss-label">Wind</span>
-      <!-- bands injected by buildWindScale() -->
-      <span class="wss-label">mph</span>
-    </div>
   </div>
 
   <!-- Swell Table — 1 row per spot -->
@@ -1521,7 +1494,7 @@
     <div class="about-legend" id="about-wind-legend"></div>
     <div class="about-section-title">tips</div>
     <ul class="about-tips">
-      <li>tap on a buoy name to reveal associated spot data for that buoy</li>
+      <li>tap on a buoy name to reveal associated spot data for that buoy; tap it again to return to the overview</li>
       <li>tap on the name of a spot to link to Surfline's live camera</li>
       <li>compare the GFS and Euro models to get a sense of how reliable the forecast is: model agreement = more reliable forecast</li>
       <li>this site works best as a web app: tap 3 dot menu, then share, then add to homescreen</li>
@@ -1530,12 +1503,13 @@
     <dl class="info-modal-sources">
       <dt>Swell — EURO</dt><dd>Copernicus Marine (CMEMS) · ECMWF WAM ANFC</dd>
       <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
-      <dt>Wind</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
+      <dt>Wind — spots</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
+      <dt>Wind — map</dt><dd>NOAA NCEP GFS 0.25° via NOMADS · ECMWF IFS 0.25° open data (CC BY 4.0)</dd>
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v1.15.1</span>
+    <span class="info-modal-version">v2.0.0</span>
   </div>
 </div>
 
@@ -1560,7 +1534,7 @@
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
       <button class="info-modal-refresh" onclick="openWidgetModal()">▣ IOS WIDGETS</button>
     </div>
-    <span class="about-version">v1.15.1</span>
+    <span class="about-version">v2.0.0</span>
   </div>
 </div>
 
@@ -1630,7 +1604,7 @@ await eval(await r.loadString());</pre>
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v1.15.1</span>
+    <span class="footer-version">v2.0.0</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -1642,12 +1616,17 @@ await eval(await r.loadString());</pre>
 /* ═══════════════════════════════════════════════════════════
    colesurfs v3
    Architecture:
-   ─ WindRenderer: custom canvas particle system. No Leaflet
-     layer lifecycle — canvas appended directly to overlayPane.
-     setData() is fully synchronous: stop→clear→resize→init→
-     start. No internal timers, no zombie layers.
-   ─ WindScheduler: thin 30 ms debounce wrapper around
-     WindRenderer.setData(). Prevents rapid-hover races.
+   ─ WindField: each model's gridded 10 m wind series from
+     /api/wind_field (0.25° GRIB, wind_field.py), decoded into
+     Int16Arrays and interpolated between time steps.
+   ─ WindRaster: Leaflet layer painting wind speed as a continuous
+     colour field in screen space (exact Mercator, bilinear).
+   ─ WindRenderer: custom canvas particle system over the raster.
+     No Leaflet layer lifecycle — canvas appended directly to
+     overlayPane. setData() is fully synchronous: stop→clear→
+     resize→init→start. No internal timers, no zombie layers.
+   ─ WindScheduler: thin 30 ms debounce wrapper that feeds one
+     field to raster + particles. Prevents rapid-hover races.
    ─ _requestWind / _resubmitWind: track current wind target
      so zoom/drag events re-render without recalculating.
    ─ _displayTime: tracks the user's current time selection
@@ -1657,7 +1636,7 @@ await eval(await r.loadString());</pre>
 // ═══ 0. LOADING PROGRESS ════════════════════════════════════
 const _loader = {
   _done: 0,
-  _total: 10,  // interface, buoys, euro, gfs, wind, regionWind, altWind, tides, table, windForecast
+  _total: 10,  // interface, buoys, euro, gfs, spot winds, regionWind, altWind, tides, table, wind field
   step(label) {
     this._done = Math.min(this._done + 1, this._total);
     const pct = Math.round((this._done / this._total) * 100);
@@ -1687,10 +1666,8 @@ const _loader = {
 let CFG          = null;
 let buoyData     = {};
 let forecastData = {};     // { EURO:{spotName:[...]}, GFS:{spotName:[...]} }
-let windCurrent  = null;   // { u, v, la1, lo1, nx, ny, dx, dy } — "NOW" snapshot
-let windForecast = null;   // full forecast structure from /api/wind_forecast
-let windByTime   = {};     // { timeStr: { u:[], v:[] } }
 let sunData      = {};     // { dateStr: { first_light_ms, last_light_ms } }
+// The map's wind (0.25° model grid, every hour, both models) lives in WindField.
 
 let activeModel     = 'EURO';
 let resolution      = 3;
@@ -1711,20 +1688,12 @@ let regionTideData  = {};     // { spot_name: { "YYYY-MM-DDTHH:MM": {height_ft, 
 let sbsMode = false;
 let _lastModelRun = null;   // run_time from /api/status — used by smart refresh
 
-// Tile layer reference (for theme switching)
+// Tile layers (for theme switching): bathymetry base + coastline overlay
 let tileLayer = null;
+let coastLayer = null;
 
 // Diagnostic flag — set true to draw coast-angle lines on map
 const DIAG_COAST_ANGLES = false;
-
-// Light-mode wind color table (index matches CFG.wind_bands)
-const LIGHT_WIND_COLORS = [
-  ['#ececf0', '#606074'],
-  ['#d8d4f5', '#4030c0'],
-  ['#c6eacc', '#14702a'],
-  ['#f2e2b4', '#7a5510'],
-  ['#f5cfcf', '#b01515'],
-];
 
 
 // ═══ 3. THEME HELPERS ═══════════════════════════════════════
@@ -1736,63 +1705,411 @@ function _isDark() {
 // Basemap is rendered by our own server (bathy.py): flat land, depth-shaded
 // sea, nothing else. CARTO began watermarking key-less tiles in 2026-08 and
 // every key-free alternative bakes labels or land relief into the raster.
+// The tile style version comes from the server (bathy.STYLE via /api/config):
+// a hard-coded version here once 404'd every tile after a style bump.
+function _tileStyle() { return (CFG && CFG.tile_style) || 'v4'; }
+
 function _tileUrl() {
-  return `/tiles/bathy/v1/${_isDark() ? 'dark' : 'light'}/{z}/{x}/{y}.png`;
+  return `/tiles/bathy/${_tileStyle()}/${_isDark() ? 'dark' : 'light'}/{z}/{x}/{y}.png`;
 }
 
-function _tileOpts() {
-  return { maxZoom: 12, detectRetina: true };
+// Coastline + land-wash tiles (bathy.py COAST) drawn above the wind colour
+// field, so the coast stays a clean edge while wind shows over land and sea alike.
+function _coastUrl() {
+  return `/tiles/bathy/${_tileStyle()}/coast-${_isDark() ? 'dark' : 'light'}/{z}/{x}/{y}.png?dpr=${L.Browser.retina ? 2 : 1}`;
 }
 
-function _colorScale() {
-  return _isDark()
-    ? ['#1a1a2e','#2e2e4e','#4a3faa','#7c6af7','#3fb950','#d29922','#f85149']
-    : ['#5a6898','#4a50a0','#4a3faa','#7c6af7','#3fb950','#d29922','#f85149'];
+function _tileOpts(extra) {
+  return Object.assign({ maxZoom: 12, detectRetina: true }, extra || {});
+}
+
+// A tile that errors (a NOAA hiccup behind the server) is retried a few
+// times with backoff instead of staying blank until the next reload — Leaflet
+// itself never retries. The retry URL carries a counter so the browser can't
+// hand back the failed response.
+function _tileRetries(layer) {
+  layer.on('tileerror', e => {
+    const img = e.tile, n = (img._csRetry || 0) + 1;
+    if (n > 4 || !img.src) return;
+    img._csRetry = n;
+    setTimeout(() => {
+      if (!img.isConnected) return;
+      const base = img.src.replace(/([?&])r=\d+/, '$1').replace(/[?&]$/, '');
+      img.src = base + (base.includes('?') ? '&' : '?') + 'r=' + n;
+    }, 700 * n);
+  });
+  return layer;
+}
+
+// Warm the browser cache ahead of the user: the ring of tiles just outside
+// the viewport at this zoom (a pan), the viewport one zoom in and a wider
+// ring one zoom out (a zoom), both layers. Low priority, four at a time, a
+// fresh queue on every move — the visible tiles Leaflet asks for must never
+// queue behind these. Immutable caching makes the real request free.
+let _prefetchTimer = null, _prefetchQueue = [], _prefetchLive = 0, _prefetchGen = 0;
+function _prefetchPump(gen) {
+  while (_prefetchLive < 4 && _prefetchQueue.length && gen === _prefetchGen) {
+    const u = _prefetchQueue.shift(), im = new Image();
+    _prefetchLive++;
+    im.fetchPriority = 'low';
+    im.onload = im.onerror = () => { _prefetchLive--; _prefetchPump(gen); };
+    im.src = u;
+  }
+}
+function _prefetchTiles() {
+  clearTimeout(_prefetchTimer);
+  _prefetchTimer = setTimeout(() => {
+    if (!map || !tileLayer || !coastLayer) return;
+    const gen = ++_prefetchGen;
+    _prefetchQueue = [];
+    const zt = Math.round(map.getZoom()) + (L.Browser.retina ? 1 : 0);
+    const add = (z, pad) => {
+      if (z < 5 || z > 13) return;
+      const b = map.getBounds().pad(pad), n = 1 << z;
+      const t = ll => L.point(Math.floor((ll.lng + 180) / 360 * n),
+        Math.floor((1 - Math.log(Math.tan(ll.lat * Math.PI / 180) + 1 / Math.cos(ll.lat * Math.PI / 180)) / Math.PI) / 2 * n));
+      const a = t(b.getNorthWest()), c = t(b.getSouthEast());
+      for (let x = a.x; x <= c.x; x++) for (let y = a.y; y <= c.y; y++) {
+        if (y < 0 || y >= n) continue;
+        for (const tpl of [_tileUrl(), _coastUrl()]) _prefetchQueue.push(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y));
+      }
+    };
+    add(zt, 0.6); add(zt + 1, 0); add(zt - 1, 0.5);
+    if (_prefetchQueue.length > 260) _prefetchQueue.length = 0;   // a wild zoom-out: not worth it
+    _prefetchPump(gen);
+  }, 600);
 }
 
 
-// ═══ 4. WIND RENDERER ═══════════════════════════════════════
-// Custom canvas particle system. Replaces leaflet-velocity
-// entirely. Canvas lives directly in overlayPane — no Leaflet
-// layer lifecycle, no internal timers, no zombie states.
+// ═══ 4. WIND FIELD · RASTER · PARTICLES ═════════════════════
+// The map shows the models' own 0.25° 10 m wind (wind_field.py, straight
+// from the GRIB sources): WindField holds each model's time series and
+// interpolates between steps; WindRaster paints speed as a continuous
+// colour field in screen space (exact Web Mercator, bilinear in the grid);
+// WindRenderer runs the particles that show direction and flow.
+
+// Speed → colour, m/s stops: the site's own Obsidian palette (the v1
+// particle scale made continuous) — calm in the page's navy, through the
+// indigo and purple accent, then the green / amber / red the rest of the
+// site uses, lightening past gale force. One ramp per theme drives the
+// raster and the legend. It is purely wind speed — no relation to the
+// swell / wind RATING palettes.
+const WIND_RAMP = {
+  dark: [
+    [ 0, [0x1a, 0x1a, 0x2e]],
+    [ 2.5, [0x2e, 0x2e, 0x4e]],
+    [ 5, [0x4a, 0x3f, 0xaa]],
+    [ 8, [0x7c, 0x6a, 0xf7]],
+    [11, [0x3f, 0xb9, 0x50]],
+    [15, [0xd2, 0x99, 0x22]],
+    [20, [0xf8, 0x51, 0x49]],
+    [28, [0xff, 0x9a, 0x8a]],
+    [40, [0xff, 0xe0, 0xdc]],
+  ],
+  light: [
+    [ 0, [0x5a, 0x68, 0x98]],
+    [ 2.5, [0x4a, 0x50, 0xa0]],
+    [ 5, [0x4a, 0x3f, 0xaa]],
+    [ 8, [0x7c, 0x6a, 0xf7]],
+    [11, [0x3f, 0xb9, 0x50]],
+    [15, [0xd2, 0x99, 0x22]],
+    [20, [0xf8, 0x51, 0x49]],
+    [28, [0xff, 0x9a, 0x8a]],
+    [40, [0xff, 0xe0, 0xdc]],
+  ],
+};
+function windRampColor(ms, dark = _isDark()) {
+  const R = WIND_RAMP[dark ? 'dark' : 'light'];
+  if (ms <= R[0][0]) return R[0][1];
+  for (let i = 1; i < R.length; i++) {
+    if (ms <= R[i][0]) {
+      const [s0, c0] = R[i - 1], [s1, c1] = R[i], f = (ms - s0) / (s1 - s0);
+      return [c0[0] + (c1[0] - c0[0]) * f, c0[1] + (c1[1] - c0[1]) * f, c0[2] + (c1[2] - c0[2]) * f];
+    }
+  }
+  return R[R.length - 1][1];
+}
+
+const WindField = (() => {
+  const _models = {};
+  const _listeners = [];
+  let _lastField = null;
+
+  function _rec(model) {
+    return _models[model] || (_models[model] = { meta: null, steps: [], n: 0, loading: null, failed: 0, stale: false, err: null });
+  }
+  function onUpdate(fn) { _listeners.push(fn); }
+  function _emit(model) { for (const fn of _listeners) { try { fn(model); } catch (e) { console.warn('[windField]', e); } } }
+
+  async function _meta(model) {
+    const r = await fetch(`/api/wind_field/meta?model=${model}`);
+    if (!r.ok) throw new Error(`meta HTTP ${r.status}`);
+    return r.json();
+  }
+  async function _data(model, rec, query) {
+    const r = await fetch(`/api/wind_field/data?model=${model}&series=${encodeURIComponent(rec.meta.series)}&${query}`);
+    if (r.status === 409) { rec.stale = true; throw new Error('series changed'); }
+    if (!r.ok) throw new Error(`data HTTP ${r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  // Wire format (wind_field._encode): per field, the high bytes of every
+  // int16 x-delta then the low bytes; prefix-sum each row back.
+  function _decode(bytes, off, n, nx) {
+    const out = new Int16Array(n);
+    for (let k = 0; k < n; k++) out[k] = (bytes[off + k] << 8) | bytes[off + n + k];
+    for (let r = 0; r < n; r += nx) for (let c = 1; c < nx; c++) out[r + c] += out[r + c - 1];
+    return out;
+  }
+  function _store(rec, bytes, i0, i1) {
+    const n = rec.n, nx = rec.meta.grid.nx;
+    for (let i = i0, off = 0; i < i1; i++, off += 4 * n) {
+      const st = rec.steps[i];
+      if (st.u) continue;
+      st.u = _decode(bytes, off, n, nx);
+      st.v = _decode(bytes, off + 2 * n, n, nx);
+    }
+  }
+  // Load a model's series. Resolves once the step nearest now is in (one
+  // ~15 KB request → first paint); the chunks — now → +48 h, the tail, the
+  // past — stream in behind it and fire onUpdate as they land.
+  function load(model) {
+    const rec = _rec(model);
+    if (rec.loading && !rec.stale) return rec.loading;
+    if (rec.meta && !rec.stale && rec.steps.every(st => st.u)) return Promise.resolve(rec);
+    // A generation token lets a superseded stream (invalidate / 409 / a
+    // second load) exit silently instead of writing into the new series.
+    const gen = rec.gen = (rec.gen || 0) + 1;
+    clearTimeout(rec.retry);
+    rec.loading = (async () => {
+      try {
+        if (!rec.meta || rec.stale) {
+          const meta = await _meta(model);
+          if (gen !== rec.gen) return rec;
+          if (!rec.meta || rec.meta.series !== meta.series) {
+            Object.assign(rec, { meta, n: meta.grid.nx * meta.grid.ny,
+              steps: meta.steps.map(st => ({ ms: st.ms, t: st.t, run: st.run, lead: st.lead, u: null, v: null })) });
+          } else {
+            rec.meta = meta;
+          }
+          rec.stale = false; rec.err = null; _lastField = null;
+        }
+        const ni = rec.meta.now_index;
+        if (!rec.steps[ni].u) {
+          const bytes = await _data(model, rec, `step=${ni}`);
+          if (gen !== rec.gen) return rec;
+          _store(rec, bytes, ni, ni + 1);
+        }
+        rec.failed = 0;
+        _emit(model);
+        _loadRest(model, rec, gen);
+      } catch (e) {
+        if (gen === rec.gen) _fail(model, rec, e);
+      }
+      return rec;
+    })();
+    return rec.loading;
+  }
+  async function _loadRest(model, rec, gen) {
+    try {
+      for (let k = 0; k < rec.meta.chunks.length; k++) {
+        const c = rec.meta.chunks[k];
+        if (gen !== rec.gen) return;
+        if (rec.stale) throw new Error('series changed');
+        if (rec.steps.slice(c.i0, c.i1).every(st => st.u)) continue;
+        const bytes = await _data(model, rec, `chunk=${k}`);
+        if (gen !== rec.gen) return;
+        _store(rec, bytes, c.i0, c.i1);
+        _emit(model);
+      }
+      if (gen === rec.gen) rec.loading = null;
+    } catch (e) {
+      if (gen === rec.gen) _fail(model, rec, e);
+    }
+  }
+  function _fail(model, rec, e) {
+    if (rec.stale) {
+      // The series moved on (409 from the server, or invalidate() during a
+      // refresh): not an error — re-read it right away.
+      rec.meta = null; rec.steps = []; rec.loading = null; _lastField = null;
+      rec.retry = setTimeout(() => load(model), 250);
+      return;
+    }
+    rec.err = e; rec.failed++;
+    console.warn(`[windField] ${model}:`, (e && e.message) || e);
+    _emit(model);
+    // retry with backoff; `loading` stays set meanwhile so callers don't pile on
+    rec.retry = setTimeout(() => { rec.loading = null; load(model); }, Math.min(60000 * rec.failed, 300000));
+  }
+  function state(model) {
+    const r = _models[model];
+    if (!r) return 'idle';
+    if (r.steps.some(st => st.u)) return 'ok';
+    return r.err ? 'error' : 'loading';
+  }
+  function meta(model) { const r = _models[model]; return r ? r.meta : null; }
+  // The field at `ms` (clamped to the loaded range), linear between the two
+  // nearest loaded steps. `key` names the pair so callers can skip a
+  // re-render when nothing changed.
+  function fieldAt(model, ms) {
+    const rec = _models[model];
+    if (!rec || !rec.meta) return null;
+    let a = null, b = null;
+    for (const st of rec.steps) {
+      if (!st.u) continue;
+      if (st.ms <= ms) a = st;
+      else { b = st; break; }
+    }
+    if (!a && !b) return null;
+    if (!a) a = b;
+    if (!b) b = a;
+    const pair = `${model}:${a.ms}:${b.ms}`, key = `${pair}:${ms}`;
+    if (_lastField && _lastField.key === key) return _lastField;
+    const n = rec.n, inv = 1 / rec.meta.scale;
+    const u = new Float32Array(n), v = new Float32Array(n);
+    const f = b.ms > a.ms ? Math.min(1, Math.max(0, (ms - a.ms) / (b.ms - a.ms))) : 0;
+    if (f === 0 || a === b) {
+      for (let k = 0; k < n; k++) { u[k] = a.u[k] * inv; v[k] = a.v[k] * inv; }
+    } else {
+      const g = 1 - f;
+      for (let k = 0; k < n; k++) { u[k] = (a.u[k] * g + b.u[k] * f) * inv; v[k] = (a.v[k] * g + b.v[k] * f) * inv; }
+    }
+    const near = f < 0.5 ? a : b;
+    // clamped + pending: the hovered hour's step hasn't streamed in yet, so
+    // this is the nearest loaded field standing in (the run tag says so).
+    const clamped = ms < a.ms || ms > b.ms;
+    _lastField = { key, pair, u, v, grid: rec.meta.grid, ms, run: near.run, lead: near.lead, stepMs: near.ms,
+                   clamped, pending: clamped && rec.steps.some(st => !st.u) };
+    return _lastField;
+  }
+  function clear() { for (const r of Object.values(_models)) clearTimeout(r.retry); for (const m of Object.keys(_models)) delete _models[m]; _lastField = null; }
+  function invalidate() { for (const r of Object.values(_models)) { r.stale = true; clearTimeout(r.retry); } _lastField = null; }
+  return { load, fieldAt, state, meta, onUpdate, clear, invalidate };
+})();
+
+
+// Wind speed as a continuous colour field. A canvas in its own pane
+// ('windRaster', under the coastline tiles and the particles), sized to the
+// viewport plus a margin and positioned in layer space so it pans with the
+// tiles; on zoom it scales with the map like an image overlay and repaints
+// at the new zoom. Sampling is exact: each canvas row maps to one latitude,
+// each column to one longitude, the grid is read bilinearly.
+const WindRaster = (() => {
+  const RES = 2;                              // CSS px per sample
+  const PAD = 0.25;                           // viewport fraction rendered beyond each edge
+  const LUT_N = 512, LUT_MAX = 40;            // m/s covered by the lookup table
+  let _map = null, _canvas = null, _ctx = null;
+  let _field = null, _bounds = null, _zoom = 0, _lut = null, _alpha = 0.78, _dark = true;
+
+  function _buildLut() {
+    _lut = new Uint8ClampedArray(LUT_N * 4);
+    for (let i = 0; i < LUT_N; i++) {
+      const c = windRampColor(i / (LUT_N - 1) * LUT_MAX, _dark);
+      _lut[i * 4] = c[0]; _lut[i * 4 + 1] = c[1]; _lut[i * 4 + 2] = c[2]; _lut[i * 4 + 3] = 255;
+    }
+  }
+  const Layer = L.Layer.extend({
+    options: { pane: 'windRaster' },
+    onAdd() {
+      if (!_canvas) {
+        _canvas = L.DomUtil.create('canvas', 'wind-raster leaflet-zoom-animated');
+        _ctx = _canvas.getContext('2d');
+      }
+      this.getPane().appendChild(_canvas);
+      render();
+    },
+    onRemove() { L.DomUtil.remove(_canvas); },
+    getEvents() { return { zoomanim: this._animateZoom, zoom: this._onZoom, zoomend: render, moveend: render, resize: render }; },
+    // A pinch (leaflet-rotate's touch handler) moves the map through
+    // fractional zooms with only `zoom` events, no zoomanim: keep the canvas
+    // fitted to its bounds, scaled from the zoom it was painted at.
+    _onZoom() {
+      if (!_bounds) return;
+      L.DomUtil.setTransform(_canvas, _map.latLngToLayerPoint(_bounds.getNorthWest()),
+                             _map.getZoomScale(_map.getZoom(), _zoom));
+    },
+    _animateZoom(e) {
+      if (!_bounds) return;
+      const scale = _map.getZoomScale(e.zoom, _zoom);
+      const offset = _map._latLngBoundsToNewLayerBounds(_bounds, e.zoom, e.center).min;
+      L.DomUtil.setTransform(_canvas, offset, scale);
+    },
+  });
+
+  function init(map) { _map = map; _dark = _isDark(); _buildLut(); new Layer().addTo(map); }
+  function setField(field) { if (field === _field) return; _field = field; render(); }   // re-submits of the same field are no-ops; the layer repaints itself on map events
+  function setTheme(dark) { _dark = dark; _alpha = dark ? 0.78 : 0.8; _buildLut(); render(); }
+  function clear() { _field = null; _bounds = null; if (_canvas) { _canvas.width = 0; _canvas.height = 0; } }
+
+  function render() {
+    if (!_map || !_canvas) return;
+    const size = _map.getSize();
+    if (!_field || !size.x || !size.y) { clear(); return; }
+    const padX = Math.round(size.x * PAD), padY = Math.round(size.y * PAD);
+    const tl = _map.containerPointToLayerPoint([-padX, -padY]);
+    const W = size.x + 2 * padX, H = size.y + 2 * padY;
+    const cw = Math.ceil(W / RES), ch = Math.ceil(H / RES);
+    if (_canvas.width !== cw || _canvas.height !== ch) { _canvas.width = cw; _canvas.height = ch; }
+    _canvas.style.width = W + 'px';
+    _canvas.style.height = H + 'px';
+    L.DomUtil.setPosition(_canvas, tl);
+    _bounds = L.latLngBounds(_map.layerPointToLatLng(tl), _map.layerPointToLatLng(L.point(tl.x + W, tl.y + H)));
+    _zoom = _map.getZoom();
+
+    const { la1, lo1, nx, ny, dx, dy } = _field.grid;
+    const fi = new Float32Array(ch), fj = new Float32Array(cw);
+    for (let r = 0; r < ch; r++) fi[r] = (la1 - _map.layerPointToLatLng(L.point(tl.x, tl.y + (r + 0.5) * RES)).lat) / dy;
+    for (let c = 0; c < cw; c++) fj[c] = (_map.layerPointToLatLng(L.point(tl.x + (c + 0.5) * RES, tl.y)).lng - lo1) / dx;
+    const img = _ctx.createImageData(cw, ch), px = img.data;
+    const u = _field.u, v = _field.v, lut = _lut, alpha = Math.round(_alpha * 255);
+    const kmax = (LUT_N - 1) / LUT_MAX, kcap = LUT_N - 1;
+    let p = 0;
+    for (let r = 0; r < ch; r++) {
+      const y = fi[r];
+      if (!(y >= 0 && y <= ny - 1)) { p += cw * 4; continue; }
+      const i0 = Math.min(y | 0, ny - 2), di = y - i0, row0 = i0 * nx, row1 = row0 + nx;
+      for (let c = 0; c < cw; c++, p += 4) {
+        const x = fj[c];
+        if (!(x >= 0 && x <= nx - 1)) continue;
+        const j0 = Math.min(x | 0, nx - 2), dj = x - j0, a = row0 + j0, b = row1 + j0;
+        const uu = (u[a] + (u[a + 1] - u[a]) * dj) * (1 - di) + (u[b] + (u[b + 1] - u[b]) * dj) * di;
+        const vv = (v[a] + (v[a + 1] - v[a]) * dj) * (1 - di) + (v[b] + (v[b + 1] - v[b]) * dj) * di;
+        let k = (Math.sqrt(uu * uu + vv * vv) * kmax) | 0;
+        if (k > kcap) k = kcap;
+        k *= 4;
+        px[p] = lut[k]; px[p + 1] = lut[k + 1]; px[p + 2] = lut[k + 2]; px[p + 3] = alpha;
+      }
+    }
+    _ctx.putImageData(img, 0, 0);
+  }
+  return { init, setField, setTheme, clear, render };
+})();
+
+
+// Particles — direction and flow over the colour field (Windy's grammar:
+// neutral strokes, length and speed proportional to the wind). Canvas lives
+// directly in overlayPane, viewport-sized plus a margin, restarted on
+// zoomend / moveend by _resubmitWind.
 //
 // Public API:
-//   init(map)           — create canvas, register with map
-//   setData(u, v, grid) — synchronous: stop→clear→resize→start
-//   setColors(arr)      — update color scale (call on theme change)
-//   stop()              — halt animation + clear canvas
-//   reset()             — halt + clear + discard data
-
+//   init(map)        — create canvas, register with map
+//   setData(field)   — synchronous: stop→clear→resize→start on {u, v, grid}
+//   setTheme(dark)   — stroke colour for the theme
+//   stop()           — halt animation + clear canvas
+//   reset()          — halt + clear + discard data
 const WindRenderer = (() => {
-  const MAX_AGE   = 80;
-  const TRAIL_LEN = 12;   // positions kept per particle for trail rendering
-  const VEL_SCALE = 0.008;
-  const PART_MUL  = 0.0018;
-  const LINE_W    = 1.6;
-  const MAX_VEL   = 20;   // m/s — both grid and spot data use m/s
+  const MAX_AGE   = 90;
+  const TRAIL_LEN = 11;    // positions kept per particle for trail rendering
+  const VEL_SCALE = 0.012;
+  const PART_MUL  = 0.0012;
+  const PAD       = 0.25;
+  const LINE_W    = 1.3;
 
-  let _map  = null, _canvas = null, _ctx = null;
+  let _map = null, _canvas = null, _ctx = null;
   let _W = 0, _H = 0;
-  let _particles = [], _animId = null, _running = false;
-  let _ready = false;
-  let _colors = [];
-
-  // Grid mode state (overview)
-  let _uData = null, _vData = null, _grid = null;
-
-  // Spot mode state (regional) — [{lat, lon, u, v}] in m/s
-  // Particles use inverse-distance-squared (IDW) interpolation from these points,
-  // which are derived from the same regionWindData records shown in the table.
-  let _spots = null;
-
-  // Layer-point origin of the canvas — set in _resize().
-  // Canvas pixel (px, py) maps to layer point (_origin.x + px, _origin.y + py).
+  let _particles = [], _animId = null, _running = false, _ready = false;
+  let _u = null, _v = null, _grid = null;
   let _origin = { x: 0, y: 0 };
-  // True when the canvas covers the full grid extent (pan needs no restart).
-  // False when we fell back to viewport-sized (moveend must restart).
-  let _fullExtent = false;
-
-  // ── Public ────────────────────────────────────────────────
+  let _stroke = 'rgba(255,255,255,';
 
   function init(leafletMap) {
     _map = leafletMap;
@@ -1805,89 +2122,29 @@ const WindRenderer = (() => {
     _resize();
   }
 
-  // Grid mode — used in overview.
   // Always does a full restart: stop → clear → resize → init → start.
-  function setData(uData, vData, grid) {
+  function setData(field) {
     _stop();
-    _spots = null; _spotBox = null;
-    _uData = uData; _vData = vData; _grid = grid;
-    _ready = !!(uData && vData && grid && uData.length > 0);
+    _u = field ? field.u : null; _v = field ? field.v : null; _grid = field ? field.grid : null;
+    _ready = !!(_u && _v && _grid);
     _clear();
     if (_ready) { _resize(); _initParticles(); _start(); }
   }
 
-  // Spot mode — used in regional view. spots = [{lat, lon, u, v}] in m/s.
-  // Always does a full restart so particles reflect the new data and canvas position.
-  function setSpotData(spots) {
-    const newSpots = (spots && spots.length) ? spots : null;
-    _stop();
-    _uData = null; _vData = null; _grid = null;
-    _spots = newSpots;
-    _ready = !!_spots;
-    _clear();
-    _computeSpotBox();
-    if (_ready) { _resize(); _initParticles(); _start(); }
+  function setTheme(dark) {
+    _stroke = dark ? 'rgba(26,26,36,' : 'rgba(14,14,30,';   // dark strokes in both themes: quiet over the field
   }
 
-  function setColors(colors) {
-    _colors = colors || [];
-  }
-
-  // Stop animation and clear canvas (call on zoomstart).
-  function stop() {
-    _stop();
-    _clear();
-  }
-
-  // Stop, clear, and discard all data (call on refresh / theme change / mode exit).
-  function reset() {
-    _stop();
-    _clear();
-    _uData = null; _vData = null; _grid = null; _spots = null; _spotBox = null; _ready = false;
-  }
-
-  // ── Private ───────────────────────────────────────────────
+  function stop() { _stop(); _clear(); }
+  function reset() { _stop(); _clear(); _u = _v = _grid = null; _ready = false; }
 
   function _resize() {
     if (!_map || !_canvas) return;
-
-    // In grid mode, try to size the canvas to cover the ENTIRE wind-data extent
-    // so particles exist everywhere and panning is fully seamless.
-    // If the extent is too large at the current zoom (> MAX_DIM pixels), fall
-    // back to viewport-based sizing — moveend will restart to cover new areas.
-    const MAX_DIM = 4096;
-    let topLeft, w, h;
-    _fullExtent = false;
-
-    if (_grid) {
-      const { la1, lo1, nx, ny, dx, dy } = _grid;
-      const southLat = la1 - (ny - 1) * dy;
-      const eastLon  = lo1 + (nx - 1) * dx;
-      const nw = _map.latLngToLayerPoint([la1, lo1]);
-      const se = _map.latLngToLayerPoint([southLat, eastLon]);
-      const PAD = 40;
-      const gw = (se.x - nw.x) + PAD * 2;
-      const gh = (se.y - nw.y) + PAD * 2;
-
-      if (gw <= MAX_DIM && gh <= MAX_DIM) {
-        // Full extent fits — use it for seamless panning
-        topLeft = L.point(nw.x - PAD, nw.y - PAD);
-        w = gw;
-        h = gh;
-        _fullExtent = true;
-      }
-    }
-
-    if (!_fullExtent) {
-      // Viewport-based sizing (spot mode, no data, or grid too large at this zoom)
-      const size = _map.getSize();
-      topLeft = _map.containerPointToLayerPoint([0, 0]);
-      w = size.x;
-      h = size.y;
-    }
-
-    _W = Math.round(w);
-    _H = Math.round(h);
+    const size = _map.getSize();
+    const padX = Math.round(size.x * PAD), padY = Math.round(size.y * PAD);
+    const topLeft = _map.containerPointToLayerPoint([-padX, -padY]);
+    _W = size.x + 2 * padX;
+    _H = size.y + 2 * padY;
     const dpr = window.devicePixelRatio || 1;
     _canvas.width  = Math.round(_W * dpr);
     _canvas.height = Math.round(_H * dpr);
@@ -1920,204 +2177,116 @@ const WindRenderer = (() => {
   }
 
   function _initParticles() {
-    // Use full canvas area for particle count so density is uniform everywhere.
-    // The full-extent canvas is typically only ~2–4× the viewport at normal zoom,
-    // so performance is fine.  Cap at 25 000 particles as an absolute safety net.
-    const n = Math.min(Math.round(_W * _H * PART_MUL), 25000);
+    const n = Math.min(Math.round(_W * _H * PART_MUL), 6000);
     _particles = Array.from({ length: n }, () => {
       const x = Math.random() * _W, y = Math.random() * _H;
-      return {
-        x, y,
-        age: Math.floor(Math.random() * MAX_AGE),
-        trail: [{ x, y }],   // ring buffer of recent positions
-        color: null,
-      };
+      return { x, y, age: Math.floor(Math.random() * MAX_AGE), trail: [{ x, y }] };
     });
   }
 
   function _step() {
     if (!_ctx || !_W || !_H) return;
-
-    const dpr   = window.devicePixelRatio || 1;
+    const dpr = window.devicePixelRatio || 1;
     _ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    // Full clear each frame — trails are redrawn from particle history.
-    // This eliminates ghost pixels from 8-bit alpha quantization.
+    // Full clear each frame — trails are redrawn from particle history, which
+    // avoids ghost pixels from 8-bit alpha quantisation.
     _ctx.clearRect(0, 0, _W, _H);
-
-    // Use viewport size (not canvas size) for velocity scaling so particles
-    // move at the same visual speed regardless of canvas extent.
+    // Viewport size (not canvas size) scales velocity, so particles move at
+    // the same visual speed regardless of the margin.
     const vp    = _map ? _map.getSize() : { x: _W, y: _H };
     const scale = VEL_SCALE * Math.pow(dpr, 1 / 3) * (vp.x + vp.y) / 200;
-
     _ctx.lineWidth = LINE_W;
+    _ctx.lineCap = 'round';
+    _ctx.strokeStyle = _stroke + '1)';
 
+    // Advance every particle, then draw the trails in TRAIL_LEN batches —
+    // one path per trail position, newest brightest — instead of a stroke
+    // per segment (a few thousand particles would otherwise cost tens of
+    // thousands of stroke() calls a frame).
     for (const p of _particles) {
       const wind = _interpolate(p.x, p.y);
       if (!wind || wind.speed < 0.01) { _resetParticle(p); continue; }
-
       const nx = p.x + wind.u * scale;
       const ny = p.y - wind.v * scale;   // v is northward → y decreases
-
       p.x = nx; p.y = ny; p.age++;
-      p.color = _speedToColor(wind.speed);
       p.trail.push({ x: nx, y: ny });
       if (p.trail.length > TRAIL_LEN) p.trail.shift();
-
-      // Draw trail segments with fading alpha
-      const trail = p.trail;
-      if (trail.length > 1) {
-        _ctx.strokeStyle = p.color;
-        for (let i = 1; i < trail.length; i++) {
-          _ctx.globalAlpha = (i / trail.length) * Math.min(p.age / 20, 0.9);
-          _ctx.beginPath();
-          _ctx.moveTo(trail[i - 1].x, trail[i - 1].y);
-          _ctx.lineTo(trail[i].x, trail[i].y);
-          _ctx.stroke();
-        }
+      if (p.age > MAX_AGE || nx < -1 || nx > _W + 1 || ny < -1 || ny > _H + 1) _resetParticle(p);
+    }
+    for (let i = 1; i < TRAIL_LEN; i++) {
+      _ctx.globalAlpha = (i / TRAIL_LEN) * 0.85;
+      _ctx.beginPath();
+      for (const p of _particles) {
+        const t = p.trail;
+        if (t.length <= i) continue;
+        _ctx.moveTo(t[i - 1].x, t[i - 1].y);
+        _ctx.lineTo(t[i].x, t[i].y);
       }
-
-      if (p.age > MAX_AGE || nx < -1 || nx > _W + 1 || ny < -1 || ny > _H + 1) {
-        _resetParticle(p);
-      }
+      _ctx.stroke();
     }
     _ctx.globalAlpha = 1;
   }
 
-  // Cached bounding box for spot-mode particle spawning (recomputed in setSpotData).
-  let _spotBox = null;   // {x0, y0, x1, y1} in container px, or null
-
-  function _computeSpotBox() {
-    if (!_spots || !_spots.length || !_map) { _spotBox = null; return; }
-    // Spawn particles across the full canvas so they cover the entire
-    // visible map area.  The IDW interpolation cutoff (MAX_IDW_DEG) still
-    // resets particles that drift too far from any observation point.
-    _spotBox = { x0: 0, y0: 0, x1: _W, y1: _H };
-  }
-
   function _resetParticle(p) {
-    // In spot mode, spawn particles within the observation cluster's bounding box
-    // so they don't land in dead zones (outside the IDW cutoff) and flicker.
-    if (_spotBox) {
-      p.x = _spotBox.x0 + Math.random() * (_spotBox.x1 - _spotBox.x0);
-      p.y = _spotBox.y0 + Math.random() * (_spotBox.y1 - _spotBox.y0);
-    } else {
-      p.x = Math.random() * _W;
-      p.y = Math.random() * _H;
-    }
+    p.x = Math.random() * _W;
+    p.y = Math.random() * _H;
     p.age = 0;
     p.trail = [{ x: p.x, y: p.y }];
-    p.color = null;
   }
 
-  // Dispatch to the correct interpolation method based on active mode.
+  // Bilinear interpolation over the model grid (rows N→S, cols W→E).
   function _interpolate(px, py) {
-    if (_spots) return _interpolateSpots(px, py);
-    return _interpolateGrid(px, py);
-  }
-
-  // Bilinear interpolation over the coarse global grid (overview mode).
-  function _interpolateGrid(px, py) {
-    if (!_uData || !_vData || !_grid || !_map) return null;
+    if (!_u || !_v || !_grid || !_map) return null;
     try {
-      // Canvas pixel (px,py) → layer point → lat/lng
       const ll = _map.layerPointToLatLng(L.point(_origin.x + px, _origin.y + py));
       const { la1, lo1, nx, ny, dx, dy } = _grid;
       const fi = (la1 - ll.lat) / dy;
       const fj = (ll.lng  - lo1) / dx;
-      if (fi < 0 || fi > ny - 1 || fj < 0 || fj > nx - 1) return null;
-      const i0 = Math.min(Math.floor(fi), ny - 2), i1 = i0 + 1;
-      const j0 = Math.min(Math.floor(fj), nx - 2), j1 = j0 + 1;
-      const di  = fi - i0, dj = fj - j0;
-      const idx = (r, c) => r * nx + c;
-      const lerp = (a, b, t) => a + (b - a) * t;
-      const u = lerp(
-        lerp(_uData[idx(i0, j0)] || 0, _uData[idx(i0, j1)] || 0, dj),
-        lerp(_uData[idx(i1, j0)] || 0, _uData[idx(i1, j1)] || 0, dj), di);
-      const v = lerp(
-        lerp(_vData[idx(i0, j0)] || 0, _vData[idx(i0, j1)] || 0, dj),
-        lerp(_vData[idx(i1, j0)] || 0, _vData[idx(i1, j1)] || 0, dj), di);
+      if (!(fi >= 0 && fi <= ny - 1 && fj >= 0 && fj <= nx - 1)) return null;
+      const i0 = Math.min(Math.floor(fi), ny - 2), j0 = Math.min(Math.floor(fj), nx - 2);
+      const di = fi - i0, dj = fj - j0, a = i0 * nx + j0, b = a + nx;
+      const u = (_u[a] + (_u[a + 1] - _u[a]) * dj) * (1 - di) + (_u[b] + (_u[b + 1] - _u[b]) * dj) * di;
+      const v = (_v[a] + (_v[a + 1] - _v[a]) * dj) * (1 - di) + (_v[b] + (_v[b + 1] - _v[b]) * dj) * di;
       return { u, v, speed: Math.sqrt(u * u + v * v) };
     } catch (_) { return null; }
   }
 
-  // Inverse-distance-squared (IDW) interpolation from point observations (regional mode).
-  // Uses exactly the same records as the wind markers, so particles always agree with
-  // the table.  Direction convention: speed_mph + direction_deg (FROM) → u/v in m/s.
-  // MAX_IDW_DEG: if nearest spot is farther than this many degrees, return null so
-  // particles outside the region simply reset instead of showing extrapolated wind.
-  const MAX_IDW_DEG = 4.0;   // ~275 mi — covers full visible map at regional zoom
-  function _interpolateSpots(px, py) {
-    if (!_spots || !_map) return null;
-    try {
-      // Canvas pixel (px,py) → layer point → lat/lng
-      const ll = _map.layerPointToLatLng(L.point(_origin.x + px, _origin.y + py));
-      let sumWU = 0, sumWV = 0, sumW = 0;
-      let minD2 = Infinity;
-      for (const s of _spots) {
-        const dlat = ll.lat - s.lat;
-        const dlon = ll.lng - s.lon;
-        const d2 = dlat * dlat + dlon * dlon;
-        if (d2 < minD2) minD2 = d2;
-        // If particle is essentially on top of a station, return that station's wind exactly
-        if (d2 < 1e-8) return { u: s.u, v: s.v, speed: Math.sqrt(s.u * s.u + s.v * s.v) };
-        const w = 1 / d2;
-        sumWU += w * s.u;
-        sumWV += w * s.v;
-        sumW  += w;
-      }
-      // Kill particles that are too far from any observation point
-      if (minD2 > MAX_IDW_DEG * MAX_IDW_DEG) return null;
-      if (sumW === 0) return null;
-      const u = sumWU / sumW, v = sumWV / sumW;
-      return { u, v, speed: Math.sqrt(u * u + v * v) };
-    } catch (_) { return null; }
+  // Test hook: CPU cost of one frame, ms (averaged) — pairs with window._map.
+  function _stepBench(n = 30) {
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) _step();
+    return (performance.now() - t0) / n;
   }
 
-  function _speedToColor(speed) {
-    if (!_colors.length) return '#7c6af7';
-    const t  = Math.min(speed / MAX_VEL, 1);
-    const n  = _colors.length;
-    const fi = t * (n - 1);
-    const i0 = Math.min(Math.floor(fi), n - 2), i1 = i0 + 1;
-    const f  = fi - i0;
-    const h  = s => parseInt(s, 16);
-    const r  = Math.round(h(_colors[i0].slice(1, 3)) + (h(_colors[i1].slice(1, 3)) - h(_colors[i0].slice(1, 3))) * f);
-    const g  = Math.round(h(_colors[i0].slice(3, 5)) + (h(_colors[i1].slice(3, 5)) - h(_colors[i0].slice(3, 5))) * f);
-    const b  = Math.round(h(_colors[i0].slice(5, 7)) + (h(_colors[i1].slice(5, 7)) - h(_colors[i0].slice(5, 7))) * f);
-    return `rgb(${r},${g},${b})`;
-  }
-
-  // Recompute spot bounding box without restarting animation (call after pan in regional mode).
-  function refreshSpotBox() { _computeSpotBox(); }
-
-  return { init, setData, setSpotData, setColors, stop, reset, refreshSpotBox,
-           get isFullExtent() { return _fullExtent; } };
+  return { init, setData, setTheme, stop, reset, _stepBench,
+           get count() { return _particles.length; } };
 })();
 
 
 // ═══ 5. WIND SCHEDULER ══════════════════════════════════════
-// Thin debounce wrapper around WindRenderer.setData().
-// All wind rendering goes through request() — callers never
-// touch WindRenderer directly except for stop/reset.
+// Thin debounce wrapper that feeds one field to the raster and the
+// particles. All wind rendering goes through request() — callers never
+// touch WindRaster / WindRenderer directly except for stop/reset/clear.
 
 const WindScheduler = (() => {
   let _target = null, _timer = null;
   const DEBOUNCE_MS = 30;
 
-  function request(uArr, vArr, grid, label) {
-    if (!uArr || !vArr) return;
-    _target = { uArr, vArr, grid, label };
+  function request(field, label) {
+    if (!field) return;
+    _target = { field, label };
     clearTimeout(_timer);
     _timer = setTimeout(_apply, DEBOUNCE_MS);
   }
 
   function _apply() {
     if (!_target) return;
-    const { uArr, vArr, grid, label } = _target;
+    const { field, label } = _target;
     _target = null;
-    WindRenderer.setData(uArr, vArr, grid);
+    WindRaster.setField(field);
+    WindRenderer.setData(field);
     _setWindTimeLabel(label || 'NOW');
+    _setWindRunTag(field);
   }
 
   function reset() {
@@ -2134,49 +2303,55 @@ const WindScheduler = (() => {
 // _displayTime  — null = "now"; ISO string = user's hovered/clicked time.
 //   Persists across map interactions so zoom/drag keeps the right time.
 //
-// _requestWind  — saves current wind state, forwards to WindScheduler.
-// _resubmitWind — re-sends saved state; used by zoom/drag map events.
-// syncToNow     — snaps to nearest available wind time; updates all map overlays.
+// _requestWind  — saves the current field, forwards to WindScheduler.
+// _resubmitWind — re-sends the saved field; used by zoom/drag/resize/theme.
+// syncToNow     — the field at this minute; updates all map overlays.
 // syncByTime    — seeks to a specific time column; updates all map overlays.
 
 let _displayTime   = null;      // null = NOW, string = ISO time column
-let _savedU        = null;      // last-requested u array
-let _savedV        = null;      // last-requested v array
-let _savedGrid     = null;      // last-requested grid metadata
+let _savedField    = null;      // last field sent to the map ({u, v, grid, key, pair, run})
 let _savedLabel    = 'NOW';     // last-requested display label
+let _renderedPair  = null;      // the pair of steps _savedField was built from
 
-function _requestWind(uArr, vArr, grid, label) {
-  _savedU     = uArr;
-  _savedV     = vArr;
-  _savedGrid  = grid;
-  _savedLabel = label;
-  // Forward to the scheduler (overview / grid mode only).
-  // In regional mode, callers use buildRegionWindMarkers() → setSpotData()
-  // instead, and must NOT call _requestWind to avoid overwriting spot particles.
-  WindScheduler.request(uArr, vArr, grid, label);
+function _requestWind(field, label) {
+  _savedField   = field;
+  _savedLabel   = label;
+  _renderedPair = field.pair;
+  WindScheduler.request(field, label);
 }
 
-// Re-submit the current wind target without recalculating.
-// Called by zoomend/moveend so particles restart at the correct time.
-// In regional mode, spot particles are rebuilt by buildRegionWindMarkers()
-// which is called separately; this only handles grid (overview) re-arm.
+// Re-submit the current field without recalculating: restarts the particles
+// on the (possibly resized / re-themed) canvas and repaints the raster.
 function _resubmitWind() {
-  if (regionMode) {
-    // Rebuild spot particles from the current regionWindData at the current time.
-    buildRegionWindMarkers(_displayTime);
-    return;
-  }
-  if (_savedU && _savedV) {
-    WindScheduler.request(_savedU, _savedV, _savedGrid, _savedLabel);
-  }
+  if (_savedField) WindScheduler.request(_savedField, _savedLabel);
 }
 
 // Clear all saved wind state (call before full refresh or model switch).
 function _clearWindState() {
   _displayTime = null;
-  _savedU = _savedV = _savedGrid = null;
+  _savedField = null;
   _savedLabel = 'NOW';
+  _renderedPair = null;
 }
+
+// The field the map should show for the active model at `ms`; nothing until
+// the series has a step (WindField.onUpdate below catches up).
+function _syncWindTo(ms, label) {
+  const field = WindField.fieldAt(activeModel, ms);
+  if (field) _requestWind(field, label);
+  else _setWindTimeLabel(label);
+}
+
+// Steps landing for the active model (first paint, then each chunk): re-sync
+// only when the pair of steps bracketing the display time changed, so the
+// particles don't restart for chunks that don't touch this hour.
+WindField.onUpdate(model => {
+  if (model !== activeModel) return;
+  const ms = _displayTime ? new Date(_displayTime.replace('T', ' ')).getTime() : Date.now();
+  const field = WindField.fieldAt(model, ms);
+  if (field && field.pair !== _renderedPair) _requestWind(field, _displayTime ? fmtLabel(_displayTime) : 'NOW');
+  _setWindRunTag(field);
+});
 
 // Update wind time label in both the section header and the SBS map overlay.
 function _setWindTimeLabel(label) {
@@ -2247,73 +2422,20 @@ async function _refreshStatus() {
   } catch(e) { /* silent */ }
 }
 
-// Snap the map to the nearest available time to "now".
+// Snap the map to now (the field is interpolated to the minute).
 function syncToNow() {
   _displayTime = null;
   buildSwellArrows(null, 'buoy');
-
-  // In regional mode, buildRegionWindMarkers drives particles via setSpotData.
-  // Do NOT also send grid data through _requestWind — same race-condition
-  // guard as in syncByTime().
-  if (regionMode) {
-    buildRegionWindMarkers(null);
-    _setWindTimeLabel('NOW');
-    return;
-  }
-
-  const now = Date.now();
-  let nearest = null, minDiff = Infinity;
-  for (const t of Object.keys(windByTime)) {
-    const diff = Math.abs(new Date(t.replace('T', ' ')).getTime() - now);
-    if (diff < minDiff) { minDiff = diff; nearest = t; }
-  }
-  const d    = nearest ? windByTime[nearest] : windCurrent;
-  const grid = nearest ? (windForecast && windForecast.grid ? windForecast.grid : windCurrent) : windCurrent;
-  if (d && d.u && d.v) _requestWind(d.u, d.v, grid, 'NOW');
+  if (regionMode) buildRegionWindMarkers(null);
+  _syncWindTo(Date.now(), 'NOW');
 }
 
 // Seek to a specific forecast time column.
 function syncByTime(timeStr) {
   _displayTime = timeStr;
   buildSwellArrows(timeStr, 'forecast');
-
-  // In regional mode, buildRegionWindMarkers() drives both the map labels AND
-  // the wind particles (via setSpotData).  Do NOT also queue a grid-mode
-  // _requestWind — the WindScheduler's 30 ms debounce would fire AFTER
-  // setSpotData and overwrite the correct spot-based particles with the
-  // coarse overview grid, causing a visible mismatch.
-  if (regionMode) {
-    buildRegionWindMarkers(timeStr);
-    _setWindTimeLabel(fmtLabel(timeStr));
-    return;
-  }
-
-  const keys = Object.keys(windByTime);
-  if (!keys.length) {
-    // Wind forecast not yet loaded — keep showing the current-wind snapshot
-    // at its true "NOW" label.  Do NOT relabel it with the hovered time;
-    // that creates a misleading mismatch where the label says e.g. "WED 3p"
-    // but the particles still show today's wind.  Once loadWindForecast()
-    // finishes it will call _syncAfterWindLoad() to catch up.
-    return;
-  }
-
-  // Find exact match first, then nearest by timestamp.
-  let usedKey = timeStr;
-  if (!windByTime[timeStr]) {
-    const tMs = new Date(timeStr.replace('T', ' ')).getTime();
-    let minDiff = Infinity;
-    for (const k of keys) {
-      const diff = Math.abs(new Date(k.replace('T', ' ')).getTime() - tMs);
-      if (diff < minDiff) { minDiff = diff; usedKey = k; }
-    }
-  }
-
-  const target = windByTime[usedKey];
-  if (target && target.u && target.v) {
-    const grid = windForecast && windForecast.grid ? windForecast.grid : windCurrent;
-    _requestWind(target.u, target.v, grid, fmtLabel(timeStr));
-  }
+  if (regionMode) buildRegionWindMarkers(timeStr);
+  _syncWindTo(new Date(timeStr.replace('T', ' ')).getTime(), fmtLabel(timeStr));
 }
 
 
@@ -2377,8 +2499,7 @@ async function init() {
   if (CFG.region_views) REGION_VIEWS = CFG.region_views;
   _loader.step('Building interface…');
   buildLegend();
-  buildWindScale();
-  initMap();
+  initMap();            // builds the wind legend control too
   if (sbsMode) {
     setSbsHeight(); map.invalidateSize();
   } else if (_isMobile()) {
@@ -2456,7 +2577,7 @@ async function loadAll() {
     track(_fetchWithTimeout('/api/buoys', T),                        'Buoy data loaded'),
     track(_fetchWithTimeout('/api/forecast/EURO', T),                'EURO forecast loaded'),
     track(_fetchWithTimeout('/api/forecast/GFS', T),                 'GFS forecast loaded'),
-    track(_fetchWithTimeout(`/api/wind?model=${activeModel}`, T),    'Wind grid loaded'),
+    track(_fetchWithTimeout('/api/wind', T),                         'Spot winds loaded'),
     track(_fetchWithTimeout(_regionWindUrl(activeModel), T), 'Regional wind loaded'),
     track(_fetchWithTimeout(_regionWindUrl(_altModel()), T), 'Alt-model wind loaded'),
     track(_fetchWithTimeout(_tidesUrl(), T),                         'Tide data loaded'),
@@ -2488,18 +2609,16 @@ async function loadAll() {
   const _isNullOrEmpty = obj => !obj || Object.keys(obj).length === 0;
   const euroEmpty  = _isNullOrEmpty(forecastData.EURO) || _allNull(forecastData.EURO);
   const gfsEmpty   = _isNullOrEmpty(forecastData.GFS)  || _allNull(forecastData.GFS);
-  const windGrid   = wind.status === 'fulfilled' && wind.value && wind.value.grid;
-  const windFailed = !windGrid || !windGrid.u;
   const spotWinds  = wind.status === 'fulfilled' && wind.value && wind.value.spot_winds;
   const spotWindsFailed  = _isNullOrEmpty(spotWinds) || _allNull(spotWinds);
   const regionWindFailed = regionWind.status !== 'fulfilled' || _isNullOrEmpty(regionWind.value);
   const tidesFailed      = tides.status !== 'fulfilled' || _isNullOrEmpty(tides.value);
   // Also show banner if any core fetch timed out.
   const hadTimeout = [euro, gfs, wind].some(r => r.status === 'rejected');
-  if (hadTimeout || euroEmpty || gfsEmpty || windFailed || spotWindsFailed || regionWindFailed || tidesFailed) {
+  if (hadTimeout || euroEmpty || gfsEmpty || spotWindsFailed || regionWindFailed || tidesFailed) {
     _showOutageBanner({
       forecast:   hadTimeout || euroEmpty || gfsEmpty,
-      wind:       windFailed || spotWindsFailed,
+      wind:       spotWindsFailed,
       regionWind: regionWindFailed,
       tides:      tidesFailed,
     });
@@ -2507,13 +2626,6 @@ async function loadAll() {
     _clearOutageBanner();
   }
 
-  if (wind.status === 'fulfilled' && wind.value) {
-    const g = wind.value.grid || wind.value;
-    if (g && g.u) {
-      windCurrent = g;
-      syncToNow();
-    }
-  }
   if (regionWind.status === 'fulfilled' && regionWind.value) {
     regionWindData = regionWind.value;
     console.log('[loadAll] regionWindData loaded:', Object.keys(regionWindData).length, 'spots');
@@ -2535,7 +2647,9 @@ async function loadAll() {
   _loader.step('Building table…');
 
   buildTable();
-  buildSwellArrows(null, 'buoy');
+  // Map overlays at the user's time (the wind field catches up on its own
+  // if it is still loading).
+  if (_displayTime) syncByTime(_displayTime); else syncToNow();
   _instantPainted = false;   // fresh data is now on screen
   if (!euroEmpty && !gfsEmpty) _saveSnapshot();
 
@@ -2548,7 +2662,7 @@ async function loadAll() {
   const anyPartial = [forecastData.EURO, forecastData.GFS]
     .some(d => d && d._status === 'partial')
     || (wind.status === 'fulfilled' && wind.value && wind.value._status === 'partial')
-    || hadTimeout || euroEmpty || gfsEmpty || windFailed
+    || hadTimeout || euroEmpty || gfsEmpty
     || spotWindsFailed || regionWindFailed || tidesFailed;
   if (anyStale)        _setFreshnessChip('stale', 'STALE DATA', 'SHOWING LAST GOOD');
   else if (anyPartial) _setFreshnessChip('partial', 'PARTIAL DATA', '');
@@ -2556,60 +2670,46 @@ async function loadAll() {
   _lastLoadTs = Date.now();
 }
 
+// The map's wind for `model` — resolves once the step nearest now is in;
+// the rest of the series streams in behind it (WindField.load).
 async function loadWindForecast(model) {
   const m = model || activeModel;
-  try {
-    windForecast = await _fetchWithTimeout(`/api/wind_forecast?model=${m}`, 9000);
-    if (!windForecast || !windForecast.times) {
-      console.warn('[wind_forecast] backend returned null (rate limited or unavailable)');
-      return;
-    }
-    _applyWindForecast();
-  } catch(e) {
-    console.warn('[wind_forecast]', e);
-  }
-  _loader.step('Wind forecast loaded');
-}
-
-function _applyWindForecast() {
-  if (!windForecast || !windForecast.times) return;
-  windByTime = {};
-  windForecast.times.forEach((t, i) => {
-    windByTime[t] = {
-      u: windForecast.u_by_time[i],
-      v: windForecast.v_by_time[i],
-    };
-  });
-  _syncAfterWindLoad();
-}
-
-// Called when wind forecast data arrives.  If the user is hovering a column
-// (_displayTime set) the wind animation was stuck on "NOW" — update it now.
-function _syncAfterWindLoad() {
-  if (_displayTime && Object.keys(windByTime).length) {
-    syncByTime(_displayTime);
-  }
+  try { await WindField.load(m); } catch (e) { console.warn('[windField]', e); }
+  _loader.step('Wind field loaded');
 }
 
 
 // ═══ 8. LEGEND & WIND SCALE ═════════════════════════════════
 
 function buildWindScale() {
-  const container = document.getElementById('wind-speed-scale');
-  if (!container || !CFG || !CFG.wind_bands) return;
-  const dark = _isDark();
-  container.querySelectorAll('.wss-band').forEach(el => el.remove());
-  const lastLabel = container.querySelector('.wss-label:last-child');
-  CFG.wind_bands.forEach((b, idx) => {
-    const label = b.max != null ? `${b.min}–${b.max}` : `${b.min}+`;
-    const [bg, txt] = (!dark && LIGHT_WIND_COLORS[idx]) ? LIGHT_WIND_COLORS[idx] : [b.bg, b.text];
-    const span = document.createElement('span');
-    span.className = 'wss-band';
-    span.style.background = bg;
-    span.style.color = txt;
-    span.textContent = label;
-    container.insertBefore(span, lastLabel);
-  });
+  const el = document.getElementById('wind-speed-scale');
+  if (!el) return;
+  const MPH = 2.23694, MAX = 50, theme = _isDark() ? 'dark' : 'light';
+  if (el.dataset.built !== theme) {
+    const stops = [];
+    for (let m = 0; m <= MAX; m += 2) {
+      const c = windRampColor(m / MPH, theme === 'dark');
+      stops.push(`rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0}) ${(m / MAX * 100).toFixed(1)}%`);
+    }
+    const ticks = [0, 10, 20, 30, 40, 50]
+      .map(m => `<span style="left:${m / MAX * 100}%">${m}${m === MAX ? '+' : ''}</span>`).join('');
+    el.innerHTML = `<div class="wss-bar" style="background:linear-gradient(90deg,${stops.join(',')})"></div>` +
+      `<div class="wss-ticks">${ticks}</div><div class="wss-status" id="wind-status" hidden></div>`;
+    el.dataset.built = theme;
+  }
+  _setWindRunTag(_savedField);
+}
+
+// The legend is the bar alone; this only surfaces the loading / unavailable
+// states while there is nothing on the map.
+function _setWindRunTag(field) {
+  const el = document.getElementById('wind-status');
+  if (!el) return;
+  const st = WindField.state(activeModel);
+  const msg = st === 'error' ? 'wind unavailable'
+            : (st !== 'ok' || !field || field.pending) ? 'loading wind…' : '';
+  el.textContent = msg;
+  el.hidden = !msg;
 }
 
 function buildLegend() {
@@ -3427,22 +3527,29 @@ function windCondition(speed_mph, direction_deg, shore_normal, _gust_mph) {
 }
 
 function windCondColor(cond) {
-  // Palette — Option C from /palette-preview: airy hue-shift. Wind cells sit
-  // in teal / peach-amber / periwinkle / pale-taupe — deliberately different
-  // from swell's green / gold / blue / grey so at a glance a wind cell can't
-  // be mistaken for a swell cell.
+  // Wind ratings are a LIGHTNESS scale, not hues (v2.0): good wind is clear
+  // and light, bad wind goes dark — Textured a medium-dark grey, Messy
+  // darker, Blown Out black. Light mode carries it on the surface; dark mode
+  // keeps the order with the surface sinking below the page background and
+  // the ink fading toward it. No hue, so a wind cell can never be mistaken
+  // for a swell cell.
+  // Four even steps of surface lightness, the ink nearly constant (it only
+  // flips to light on the darkest light-mode tier) so adjacent cells read as
+  // one quiet scale next to the coloured swell cells.
   const dark = _isDark();
+  // The good tier takes a wider step than the rest so it reads as the
+  // exception at a glance; the lower three stay evenly spaced.
   if (cond === 'Glassy' || cond === 'Groomed' || cond === 'Clean')
-    return dark ? { bg: '#15252a', text: '#7dd8c8' }
-                : { bg: '#e4f1ed', text: '#196c60' };
+    return dark ? { bg: '#30303b', text: '#d4d4e0' }
+                : { bg: '#fbfbfd', text: '#2a2a34' };
   if (cond === 'Textured')
-    return dark ? { bg: '#27180c', text: '#ffb057' }
-                : { bg: '#faeacd', text: '#86530f' };
+    return dark ? { bg: '#1b1b21', text: '#a2a2af' }
+                : { bg: '#d2d2d9', text: '#2e2e38' };
   if (cond === 'Messy')
-    return dark ? { bg: '#181c30', text: '#8b94d1' }
-                : { bg: '#e4e6f3', text: '#3e4390' };
-  return dark ? { bg: '#1d1b1f', text: '#8a8085' }
-              : { bg: '#e7e3e0', text: '#6f656a' };
+    return dark ? { bg: '#121216', text: '#85859a' }
+                : { bg: '#a9a9b5', text: '#24242c' };
+  return dark ? { bg: '#0a0a0c', text: '#6a6a7a' }
+              : { bg: '#70707c', text: '#f0f0f4' };
 }
 
 // ── Region wind gate ────────────────────────────────────────
@@ -3543,9 +3650,13 @@ function buildWindCell(r, t, tideRec, shoreNormal, extraClass = '') {
   const col      = cond ? windCondColor(cond) : null;
   const cellBg   = col ? col.bg : 'var(--bg1)';
   const condHtml = cond
-    ? `<div><span class="wind-cond" style="background:${col.bg};color:${col.text};border:1px solid ${col.text}22">${cond}</span></div>`
+    ? `<div><span class="wind-cond" style="background:${col.bg};color:${col.text};border:1px solid ${col.text}33">${cond}</span></div>`
     : '';
-  return `<td class="${tdCls}" data-time="${t}" style="background:${cellBg}">
+  // The cell's ink follows its rating (a mid-grey Textured cell needs white
+  // text); gusts take a softened copy.
+  const inkVars  = col ? `;--wc-text:${col.text};--wc-sub:color-mix(in srgb, ${col.text} 85%, ${col.bg})`
+                       + `;--wc-tide:color-mix(in srgb, var(--accent) 55%, ${col.text})` : '';
+  return `<td class="${tdCls}" data-time="${t}" style="background:${cellBg}${inkVars}">
     <div class="wind-cell-inner">
       ${tideHtml}
       <div class="wind-line wind-speed">${r.speed_mph} mph ${r.direction_cardinal}</div>
@@ -4051,6 +4162,8 @@ function buildSwellArrows(timeStr, source) {
 
 // ═══ 14. REGIONAL WIND MARKERS ══════════════════════════════
 
+const SPOT_DOT = '#3d7ab5';   // every spot the same — the rating lives in the table, not the dot
+
 function buildRegionWindMarkers(timeStr) {
   if (!map || !regionWindLayer || !CFG || !regionMode) {
     console.warn('[regionWind] early return — missing:', {map: !!map, layer: !!regionWindLayer, CFG: !!CFG, regionMode});
@@ -4090,10 +4203,8 @@ function buildRegionWindMarkers(timeStr) {
 
   // Draw spot dots first; they're anchors for labels and leader lines.
   spotItems.forEach(({ ws, rec }) => {
-    const cond   = rec ? windCondition(rec.speed_mph, rec.direction_deg, ws.shore_normal, rec.gust_mph) : null;
-    const dotCol = cond ? windCondColor(cond).text : '#3d7ab5';
     L.circleMarker([ws.lat, ws.lon], {
-      radius: 5, color: dotCol, fillColor: dotCol, fillOpacity: 0.9, weight: 1, interactive: false,
+      radius: 5, color: SPOT_DOT, fillColor: SPOT_DOT, fillOpacity: 0.9, weight: 1, interactive: false,
     }).addTo(regionWindLayer);
   });
 
@@ -4156,28 +4267,6 @@ function buildRegionWindMarkers(timeStr) {
     _resolveLabelOverlapsDOM('.swell-arrow-label', []);
   });
 
-  // Drive wind particles from the same records used above.
-  // Convert speed_mph + direction_deg (FROM) → u/v in m/s so units match
-  // the global grid and the MAX_VEL colour scale stays correct.
-  // direction_deg is meteorological (FROM): u = −spd·sin(dir), v = −spd·cos(dir)
-  const MPH_TO_MS = 0.44704;
-  const windParticleSpots = spotItems
-    .filter(({ rec }) => rec && rec.speed_mph != null && rec.direction_deg != null)
-    .map(({ ws, rec }) => {
-      const dirRad = rec.direction_deg * Math.PI / 180;
-      const spd    = rec.speed_mph * MPH_TO_MS;
-      return {
-        lat: ws.lat,
-        lon: ws.lon,
-        u: -spd * Math.sin(dirRad),   // eastward component
-        v: -spd * Math.cos(dirRad),   // northward component
-      };
-    });
-  if (!windParticleSpots.length) {
-    console.warn('[regionWind] no valid particle spots — wind animation will not render.',
-      {spotsInRegion: spotItems.length, withRecords: spotItems.filter(s => s.rec).length});
-  }
-  WindRenderer.setSpotData(windParticleSpots.length ? windParticleSpots : null);
 }
 
 
@@ -4231,15 +4320,25 @@ function initMap() {
     zoomControl: false, attributionControl: false,
   });
 
-  tileLayer = L.tileLayer(_tileUrl(), _tileOpts()).addTo(map);
+  // Panes, bottom → top: bathymetry tiles → wind colour field → coastline
+  // tiles → particles (overlayPane) → swell arrows, buoy dots, labels.
+  // leaflet-rotate nests the tile/overlay panes inside its rotate pane (a
+  // stacking context), so the new panes must live there too to sort between them.
+  const paneRoot = map.getPane('rotatePane') || map.getPane('mapPane');
+  map.createPane('windRaster', paneRoot).style.zIndex = 350;
+  map.createPane('coast', paneRoot).style.zIndex = 380;
+  tileLayer  = _tileRetries(L.tileLayer(_tileUrl(), _tileOpts())).addTo(map);
+  coastLayer = _tileRetries(L.tileLayer(_coastUrl(), _tileOpts({ pane: 'coast' }))).addTo(map);
+  map.on('moveend zoomend', _prefetchTiles);
+  WindRaster.init(map);
+  WindRaster.setTheme(_isDark());
 
-  // WindRenderer — initialize BEFORE any vector layers are added to the map.
-  // Canvas is appended to overlayPane first, so all SVG vector elements
-  // (circle markers, swell arrows, wind markers) are added after it and
-  // therefore paint on top of the wind particles. Correct visual order:
-  // tiles → wind particles → swell arrows → buoy dots → region markers.
+  // WindRenderer — initialize BEFORE any vector layers are added to the map:
+  // its canvas is appended to overlayPane first, so the SVG vector elements
+  // (circle markers, swell arrows, wind markers) added after it paint on top
+  // of the particles.
   WindRenderer.init(map);
-  WindRenderer.setColors(_colorScale());
+  WindRenderer.setTheme(_isDark());
 
   // Buoy dots — stored so we can grey out offline buoys after data loads.
   window._buoyDots = {};
@@ -4263,10 +4362,10 @@ function initMap() {
   // heavyweight and wrong when the user is looking at a specific time column.
   //
   // ZOOM: stop + clear immediately (scale change makes particles visually wrong),
-  //   then restart on zoomend.
-  // PAN: the canvas lives in Leaflet's overlayPane and covers the full wind-data
-  //   extent, so particles exist everywhere and animation runs uninterrupted.
-  //   In spot mode (viewport-sized canvas) we restart on moveend.
+  //   then restart on zoomend. The colour field scales with the map during the
+  //   animation (zoomanim) and repaints itself at the new zoom.
+  // PAN: the canvases live in Leaflet's panes and move with the tiles; the
+  //   particles restart on moveend to cover the newly exposed margin.
   let _lastZoom = null;
   map.on('zoomstart', () => { _lastZoom = map.getZoom(); WindRenderer.stop(); });
   map.on('zoomend',   () => {
@@ -4282,9 +4381,7 @@ function initMap() {
     // If zoom just changed, zoomend already handled the restart
     if (_lastZoom !== null && _lastZoom !== map.getZoom()) { _lastZoom = null; return; }
     _lastZoom = null;
-    // Restart if canvas is viewport-sized (spot mode, or grid mode zoomed in
-    // past the point where the full extent fits in a single canvas).
-    if (regionMode || !WindRenderer.isFullExtent) _resubmitWind();
+    _resubmitWind();
   });
 
   // Double-tap to zoom (mobile). Leaflet 1.9 dropped its legacy touch `tap`
@@ -4338,7 +4435,20 @@ function initMap() {
   });
   window._timeOverlayCtrl = new TimeOverlayControl().addTo(map);
 
-  // Recenter button — always bottom-right
+  // Bottom-right stack, bottom first (Leaflet inserts later bottom controls
+  // above earlier ones): the wind-speed legend, then RECENTER on top of it.
+  // Regional mode is left by clicking the active region's name again.
+  const LegendControl = L.Control.extend({
+    options: { position: 'bottomright' },
+    onAdd() {
+      const el = L.DomUtil.create('div', 'wind-speed-scale');
+      el.id = 'wind-speed-scale';
+      return el;
+    },
+  });
+  new LegendControl().addTo(map);
+  buildWindScale();
+
   const RecenterControl = L.Control.extend({
     options: { position: 'bottomright' },
     onAdd() {
@@ -4350,19 +4460,6 @@ function initMap() {
     },
   });
   new RecenterControl().addTo(map);
-
-  // Overview button — always bottom-right
-  const OverviewControl = L.Control.extend({
-    options: { position: 'bottomright' },
-    onAdd() {
-      const btn = L.DomUtil.create('button', 'map-overview-btn');
-      btn.title = 'Return to overview';
-      btn.textContent = 'OVERVIEW';
-      L.DomEvent.on(btn, 'click', e => { L.DomEvent.stopPropagation(e); exitRegionMode(); });
-      return btn;
-    },
-  });
-  window._overviewCtrl = new OverviewControl().addTo(map);
 
   // Test hooks — expose map + rebuild helpers for the loop-test harness.
   window._map = map;
@@ -4402,7 +4499,6 @@ function recenterMap() {
 async function enterRegionMode(spotName) {
   if (regionMode === spotName) { exitRegionMode(); return; }
   regionMode = spotName;
-  document.querySelector('.map-overview-btn') && document.querySelector('.map-overview-btn').classList.add('visible');
   document.querySelector('.map-section').classList.add('region-active');
 
   // If regionWindData is empty (initial fetch failed or hasn't returned), re-fetch now.
@@ -4455,12 +4551,9 @@ async function enterRegionMode(spotName) {
 
 function exitRegionMode() {
   regionMode = null;
-  document.querySelector('.map-overview-btn') && document.querySelector('.map-overview-btn').classList.remove('visible');
   document.querySelector('.map-section').classList.remove('region-active');
   if (regionWindLayer) regionWindLayer.clearLayers();
   if (coastAngleLayer) coastAngleLayer.clearLayers();
-  // Discard spot data so the renderer is clean before grid data is loaded back.
-  WindRenderer.reset();
   if (map) {
     const mob = _isMobile();
     map.setView(mob ? MAP_CENTER_MOBILE : MAP_CENTER, mob ? MAP_ZOOM_MOBILE : MAP_ZOOM);
@@ -4469,8 +4562,6 @@ function exitRegionMode() {
   buildTable();
   _scrollTableToTime(scrollAnchor);
   buildSwellArrows(null, 'buoy');
-  // Restore grid particles.  _resubmitWind checks regionMode (now null) and
-  // re-fires the last saved grid u/v/grid through WindScheduler.
   _resubmitWind();
 }
 
@@ -4530,12 +4621,12 @@ function setModel(model, btn) {
   // after the table rebuilds (GFS and EURO can have different column widths).
   const scrollAnchor = _getScrollAnchor();
 
-  // Clear stale wind data and STOP the old animation immediately so the user
-  // never sees old-model particles while the table shows new-model wave data.
-  windByTime = {};
-  _savedU = _savedV = _savedGrid = null;
+  // Stop the old model's wind immediately so the map never shows one
+  // model's wind beside the other model's swell table.
+  _savedField = null; _renderedPair = null;
   _savedLabel = savedTime ? fmtLabel(savedTime) : 'NOW';
-  WindRenderer.reset();
+  WindScheduler.reset();
+  WindRaster.clear();
 
   // Restore _displayTime so downstream code knows the user's selection.
   _displayTime = savedTime;
@@ -4549,23 +4640,13 @@ function setModel(model, btn) {
     buildSwellArrows(null, 'buoy');
   }
 
-  // Fetch new current wind and wind forecast for the selected model.
-  // When new data arrives, restore to the user's saved time (or NOW).
-  fetch(`/api/wind?model=${model}`)
-    .then(r => r.json())
-    .then(data => {
-      const g = data.grid || data;
-      if (g && g.u) {
-        windCurrent = g;
-        // If user had a time selected, syncByTime will find the nearest
-        // matching time in the new model's data once wind forecast loads.
-        // For now, show the current snapshot.
-        if (!savedTime) syncToNow();
-      }
-    })
-    .catch(() => {});
-
-  loadWindForecast(model);
+  // This model's wind field (instant once it has been loaded before), then
+  // back to the user's time.
+  buildWindScale();
+  loadWindForecast(model).then(() => {
+    if (activeModel !== model) return;
+    if (savedTime) syncByTime(savedTime); else syncToNow();
+  });
   _refreshStatus();
 
   // Always refresh regionWindData (active) AND regionWindAlt (the other
@@ -6129,12 +6210,10 @@ async function refreshAll(opts = {}) {
 
   if (!soft) await fetch('/api/refresh', { method: 'POST' });
 
-  windByTime = {};
-  windForecast = null;
   _clearWindState();
-
   WindScheduler.reset();
-  WindRenderer.reset();
+  WindRaster.clear();
+  WindField.invalidate();   // re-read the series: a new run may have landed
 
   if (swellArrowLayer)  swellArrowLayer.clearLayers();
   if (regionWindLayer)  regionWindLayer.clearLayers();
@@ -6187,8 +6266,11 @@ window.addEventListener('pageshow', (e) => { if (e.persisted) _softRefresh(); })
 
 function _updateTileLayer() {
   if (!map) return;
-  if (tileLayer) { map.removeLayer(tileLayer); tileLayer = null; }
-  tileLayer = L.tileLayer(_tileUrl(), _tileOpts()).addTo(map);
+  if (tileLayer)  { map.removeLayer(tileLayer);  tileLayer  = null; }
+  if (coastLayer) { map.removeLayer(coastLayer); coastLayer = null; }
+  tileLayer  = _tileRetries(L.tileLayer(_tileUrl(), _tileOpts())).addTo(map);
+  coastLayer = _tileRetries(L.tileLayer(_coastUrl(), _tileOpts({ pane: 'coast' }))).addTo(map);
+  _prefetchTiles();
 }
 
 function toggleTheme() {
@@ -6197,8 +6279,9 @@ function toggleTheme() {
   localStorage.setItem('wave-theme', next);
   document.getElementById('theme-btn').textContent = _themeLabel(next);
   _updateTileLayer();
-  // Update WindRenderer color scale for new theme, then restart
-  WindRenderer.setColors(_colorScale());
+  // Re-theme the wind layers, then restart
+  WindRenderer.setTheme(next === 'dark');
+  WindRaster.setTheme(next === 'dark');
   WindScheduler.reset();
   // Rebuild color-coded UI elements
   buildLegend();
@@ -6355,7 +6438,8 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e =
   buildLegend();
   buildWindScale();
   buildTable();
-  WindRenderer.setColors(_colorScale());
+  WindRenderer.setTheme(theme === 'dark');
+  WindRaster.setTheme(theme === 'dark');
   WindScheduler.reset();
   _resubmitWind();
 });

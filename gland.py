@@ -544,7 +544,7 @@ def is_spring_tide(phase):
 
 
 # ── Fetchers ────────────────────────────────────────────────────────────────
-@ttl_cache(ttl_seconds=1800, skip_none=True)
+@ttl_cache(ttl_seconds=3600, skip_none=True)   # > the 30-min warmer interval, so a visitor never refetches
 def fetch_gfs_waves():
     """GFS-Wave partitions at G-Land via Open-Meteo Marine."""
     for model_id in _GFS_MODEL_IDS:
@@ -870,7 +870,7 @@ def fetch_gland_tide_range(start_date: str, end_date: str):
             "fit_rms_ft": round(m_to_ft(fit.get("rms_m", 0)), 2) if fit else None}
 
 
-@ttl_cache(ttl_seconds=1800, skip_none=True)
+@ttl_cache(ttl_seconds=3600, skip_none=True)
 def fetch_gland_wind():
     """Hourly wind at the point, in knots."""
     params = {
@@ -903,7 +903,29 @@ def fetch_gland_wind():
     return out
 
 
-@ttl_cache(ttl_seconds=1800, skip_none=True)
+# A fetcher that fails returns None, which ttl_cache(skip_none) refuses to
+# remember — so every page load would repeat the failing request and wait
+# for it (the AODN feed cost each /api/gland/all call ~1 s this way). Failed
+# sentinels are remembered for five minutes instead.
+_NEG_TTL = 300
+_negative: dict = {}
+
+
+def _negative_cached(key):
+    import time as _t
+    ts = _negative.get(key)
+    if ts is not None and _t.monotonic() - ts < _NEG_TTL:
+        return True
+    _negative.pop(key, None)
+    return False
+
+
+def _set_negative(key):
+    import time as _t
+    _negative[key] = _t.monotonic()
+
+
+@ttl_cache(ttl_seconds=3600, skip_none=True)
 def fetch_upstream_buoys():
     """Latest reading from each Western Australian sentinel buoy (AODN NRT).
 
@@ -911,6 +933,8 @@ def fetch_upstream_buoys():
     site. Rows carry Hs/Tp/Dp; some Spotter deployments publish Tp/Dp without
     Hs, which we surface as-is rather than inventing a value.
     """
+    if _negative_cached("aodn"):
+        return None
     sites = ",".join(f"'{b['site']}'" for b in UPSTREAM_BUOYS)
     params = {
         "typeName": "aodn:aodn_wave_nrt_v2_timeseries_map",
@@ -924,10 +948,13 @@ def fetch_upstream_buoys():
         r = requests.get(AODN_WFS, params=params, timeout=45)
         record_api_calls("gland_aodn_buoys", 1)
         if r.status_code != 200:
+            print(f"[gland] AODN HTTP {r.status_code}")
+            _set_negative("aodn")
             return None
         feats = (r.json() or {}).get("features") or []
     except Exception as e:
         print(f"[gland] AODN {type(e).__name__}: {e}")
+        _set_negative("aodn")
         return None
 
     latest = {}
@@ -1471,7 +1498,7 @@ def tide_state_for(height_ft, lo_ft, hi_ft):
     return "high"
 
 
-@ttl_cache(ttl_seconds=1800, skip_none=True)
+@ttl_cache(ttl_seconds=3600, skip_none=True)
 def fun_plus_summary():
     """G-Land's Fun+ Days figure for the main dashboard's overview column.
 
@@ -1837,7 +1864,7 @@ def _build_timeline(gfs, euro, wind, tide):
     return timeline
 
 
-@ttl_cache(ttl_seconds=1800, skip_none=True)
+@ttl_cache(ttl_seconds=3600, skip_none=True)
 def fetch_upstream_model_swell():
     """GFS and EURO sea state at each sentinel buoy, for the map overlay.
 

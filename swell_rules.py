@@ -23,7 +23,7 @@ CATEGORIES = ['FLAT', 'WEAK', 'FUN', 'SOLID', 'FIRING', 'HECTIC', 'MONSTRO']
 # dark_bg / dark_text  →  dark mode cell background and text
 # light_bg / light_text →  light mode cell background and text
 COLORS = {
-    'FLAT':    dict(dark_bg='#131316', dark_text='#404055',
+    'FLAT':    dict(dark_bg='#17171b', dark_text='#5c5c72',   # lifted (v2.0): the old #131316/#404055 cell vanished into the page
                     light_bg='#e2e2de', light_text='#70707c'),
     'WEAK':    dict(dark_bg='#0d1520', dark_text='#3d7ab5',
                     light_bg='#d8e8f8', light_text='#1a5a9a'),

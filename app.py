@@ -6,12 +6,14 @@ Routes:
   /review, /seasons, /csc, /csc-model, /gland, /tuner, /gland/tuner, /palette-preview
   /api/buoys                     Live NOAA buoy readings for all regions
   /api/forecast/<EURO|GFS>       10-day hourly wave forecast per buoy
-  /api/wind?model=               Current wind snapshot for map init
-  /api/wind_forecast?model=      Full hourly wind grid (for hover-sync)
+  /api/wind                      Current wind at every buoy region (spot winds)
+  /api/wind_field/meta?model=    The map's gridded wind series: grid, steps, chunks, runs
+  /api/wind_field/data?model=    One chunk/step of that series (gzip'd int16 byte planes)
+  /api/wind_field/status         Which runs are held per model
   /api/wind_spots                Hourly wind forecast per buoy location
   /api/region_wind?model=        Hourly wind per surf spot (regional mode)
   /api/tides                     Per-spot tide predictions with Surfline corrections
-  /api/config                    Spots, swell categories, wind bands, region views
+  /api/config                    Spots, swell categories, wind rating rules, region views
   /api/sun                       Sunrise/sunset (computed locally, no external API)
   /api/status?model=             Model run estimate + daily API usage
   /api/debug/spectral/<id>       Diagnostic: raw spectral parse (COLESURFS_DEBUG=1 only)
@@ -40,7 +42,7 @@ from flask import Flask, Response, abort, jsonify, render_template, request, sen
 from flask_compress import Compress
 from waitress import serve
 
-from config import SPOTS, WIND_SPOTS, MODEL_COLORS, WIND_BANDS, REGION_VIEWS
+from config import SPOTS, WIND_SPOTS, MODEL_COLORS, REGION_VIEWS
 import swell_rules
 import wind_rules
 from buoy  import (fetch_buoy, fetch_buoy_history, fetch_buoy_historical_context,
@@ -48,8 +50,7 @@ from buoy  import (fetch_buoy, fetch_buoy_history, fetch_buoy_historical_context
 import requests as _req_buoy
 from waves import fetch_wave_forecast, fetch_all_wave_forecasts
 from waves_cmems import fetch_all_cmems_wave_forecasts
-from wind  import (fetch_wind_grid, fetch_spot_wind, fetch_all_spot_winds,
-                    fetch_wind_forecast_grid, fetch_spot_wind_forecasts,
+from wind  import (fetch_spot_wind, fetch_all_spot_winds, fetch_spot_wind_forecasts,
                     fetch_region_wind_forecasts, estimate_model_run)
 from tide  import fetch_tide_predictions
 from sun   import compute_sun_data
@@ -57,6 +58,7 @@ from fun_days import (all_summaries as _fun_days_all, review_payload as _review_
                       season_tables as _season_tables)
 import cache as _cache
 import bathy
+import wind_field
 import numpy as np
 
 app = Flask(__name__)
@@ -67,6 +69,7 @@ PORT = int(os.environ.get("COLESURFS_PORT", 5151))
 # loopback, which we gate /tuner against via _restrict_tuner below.
 HOST = os.environ.get("COLESURFS_HOST", "0.0.0.0")
 DEBUG_MODE = os.environ.get("COLESURFS_DEBUG", "").strip() == "1"
+app.config["TEMPLATES_AUTO_RELOAD"] = DEBUG_MODE   # dev server picks up template edits
 
 # Thread pool for parallel buoy fetches (reused across requests)
 _buoy_pool = ThreadPoolExecutor(max_workers=8)
@@ -266,9 +269,8 @@ def api_forecast(model_key: str):
 
 @app.route("/api/wind")
 def api_wind():
-    model_key = request.args.get("model", "EURO").upper()
-    if model_key not in ("EURO", "GFS"):
-        model_key = "EURO"
+    """Current wind at every buoy region's spot (the map's gridded field is
+    /api/wind_field — see wind_field.py)."""
     # One batched request for all spots; fall back to parallel per-spot
     # fetches (each independently cached) only if the batch fails.
     spot_winds = fetch_all_spot_winds()
@@ -287,20 +289,58 @@ def api_wind():
                     spot_winds[name] = None
         except TimeoutError:
             pass   # serve whatever completed; missing spots stay None
-    grid = fetch_wind_grid(model_key)
-    payload = {"grid": grid, "spot_winds": spot_winds}
-    if grid is None or any(v is None for v in spot_winds.values()):
+    payload = {"spot_winds": spot_winds}
+    if any(v is None for v in spot_winds.values()):
         payload["_status"] = "partial"
     return jsonify(payload)
 
 
-@app.route("/api/wind_forecast")
-def api_wind_forecast():
-    """Full hourly wind grid for hover-sync with swell table."""
-    model_key = request.args.get("model", "EURO").upper()
-    if model_key not in ("EURO", "GFS"):
-        model_key = "EURO"
-    return jsonify(fetch_wind_forecast_grid(model_key))
+def _wind_field_model():
+    m = request.args.get("model", "EURO").upper()
+    return m if m in ("EURO", "GFS") else "EURO"
+
+
+@app.route("/api/wind_field/meta")
+def api_wind_field_meta():
+    """The map's wind series: grid, time steps (local ISO + epoch ms), chunk
+    layout and the runs it was composited from. 503 until the first run lands."""
+    s = wind_field.series(_wind_field_model())
+    if not s:
+        return jsonify({"error": "no wind field yet"}), 503
+    return jsonify(s["meta"])
+
+
+@app.route("/api/wind_field/data")
+def api_wind_field_data():
+    """One chunk (`chunk=k`) or one step (`step=i`) of the series named by
+    `series=` — gzip'd int16 x-delta byte planes (wind_field._encode). The
+    series id is in the URL, so unlike the rest of /api/ this is cacheable;
+    a stale id gets 409 and the client refetches meta."""
+    model = _wind_field_model()
+    s = wind_field.series(model)
+    if not s:
+        return jsonify({"error": "no wind field yet"}), 503
+    if request.args.get("series") != s["meta"]["series"]:
+        return jsonify({"error": "series changed", "series": s["meta"]["series"]}), 409
+    try:
+        if "chunk" in request.args:
+            body = s["chunks"][int(request.args["chunk"])]["gz"]
+        else:
+            body = wind_field.step_gz(model, int(request.args["step"]), s)
+    except (ValueError, IndexError):
+        body = None
+    if body is None:
+        return jsonify({"error": "chunk or step out of range"}), 400
+    resp = Response(body, mimetype="application/octet-stream")
+    resp.headers["Content-Encoding"] = "gzip"
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    resp.headers["Vary"] = "Accept-Encoding"
+    return resp
+
+
+@app.route("/api/wind_field/status")
+def api_wind_field_status():
+    return jsonify(wind_field.status())
 
 
 @app.route("/api/wind_spots")
@@ -384,11 +424,8 @@ def _config_payload() -> dict:
             {"period_ub": b["period_ub"], "rules": b["rules"]}
             for b in bands
         ],
-        "wind_bands": [
-            {"min": b[0], "max": b[1], "bg": b[2], "text": b[3]}
-            for b in WIND_BANDS
-        ],
         "wind_rating": wind_rules.load_config(),
+        "tile_style": bathy.STYLE,          # the basemap / coastline tile version the page must request
         "model_colors": MODEL_COLORS,
         "wind_spots":   WIND_SPOTS,
         "region_views": REGION_VIEWS,
@@ -402,16 +439,19 @@ def api_config():
 
 @app.route("/tiles/bathy/<style>/<theme>/<int:z>/<int:x>/<int:y>.png")
 def bathy_tile(style, theme, z, x, y):
-    """Self-rendered basemap (see bathy.py). Immutable per style version."""
+    """Self-rendered basemap and coastline tiles (see bathy.py). Immutable per
+    style version; `theme` is dark | light | coast-dark | coast-light, the
+    coast styles take `?dpr=1|2` for line weight."""
+    nope = lambda code: (Response(status=code, headers={"Cache-Control": "no-store"}))   # never let an edge cache a miss
     if style != bathy.STYLE:
-        abort(404)
+        return nope(404)
     try:
-        png = bathy.tile_png(theme, z, x, y)
+        png = bathy.tile_png(theme, z, x, y, 2 if request.args.get("dpr") == "2" else 1)
     except Exception as e:
         print(f"[bathy] {z}/{x}/{y} failed: {e}", flush=True)
-        abort(502)
+        return nope(502)
     if png is None:
-        abort(404)
+        return nope(404)
     resp = Response(png, mimetype="image/png")
     resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resp
@@ -497,7 +537,9 @@ def api_buoy_historical_context():
     days = max(1, min(days, 45))
     data = fetch_buoy_historical_context(station_id, days=days)
     if data is None:
-        return jsonify({"error": "data unavailable"}), 503
+        # a station NDBC isn't publishing (Cape Cod 44018 today) is a fact,
+        # not a server error — an empty history, not a 503 on every page load
+        return jsonify({"station_id": station_id, "records": [], "offline": True})
     return jsonify(data)
 
 
@@ -1544,12 +1586,13 @@ def tuner_page():
         for c in swell_rules.CATEGORIES
     }
     wind_colors = {
-        "Glassy":   {"bg": "#ccecd4", "text": "#166028"},
-        "Groomed":  {"bg": "#ccecd4", "text": "#166028"},
-        "Clean":    {"bg": "#ccecd4", "text": "#166028"},
-        "Textured": {"bg": "#f5e6c0", "text": "#7a5500"},
-        "Messy":    {"bg": "#d8e8f8", "text": "#1a5a9a"},
-        "Blown Out":{"bg": "#e2e2de", "text": "#70707c"},
+        # = windCondColor() light mode in index.html — keep in step
+        "Glassy":   {"bg": "#fbfbfd", "text": "#2a2a34"},
+        "Groomed":  {"bg": "#fbfbfd", "text": "#2a2a34"},
+        "Clean":    {"bg": "#fbfbfd", "text": "#2a2a34"},
+        "Textured": {"bg": "#d2d2d9", "text": "#2e2e38"},
+        "Messy":    {"bg": "#a9a9b5", "text": "#24242c"},
+        "Blown Out":{"bg": "#70707c", "text": "#f0f0f4"},
     }
     payload = {
         "swell": swell_payload,
@@ -1700,9 +1743,11 @@ def apple_touch_icon_precomposed():
 # no-cache so autopulled UI changes appear on the next open.
 @app.after_request
 def _add_cache_headers(response):
-    if request.method != "GET":
-        return response
-    if request.path.startswith("/api/"):
+    if request.method != "GET" or request.path.startswith("/tiles/"):
+        return response                     # tiles set their own: immutable hits, no-store misses
+    if request.path == "/api/wind_field/data":
+        pass                                # series id in the URL — cacheable
+    elif request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     elif request.path.startswith("/widget/"):
         response.headers["Cache-Control"] = "no-cache"
@@ -1722,9 +1767,9 @@ _WARM_INTERVAL = 1800   # 30 minutes — well within TTL of 3600s
 def _warm_all_caches():
     """Pre-fetch all data so user requests always hit warm cache.
 
-    Independent sources warm concurrently; the six api.open-meteo.com wind
-    calls stay sequential within their group to keep today's request pattern
-    (no concurrent-429 risk). CSC2 runs after the wave groups because its
+    Independent sources warm concurrently; the api.open-meteo.com wind calls
+    stay sequential within their group to keep today's request pattern (no
+    concurrent-429 risk). CSC2 runs after the wave groups because its
     per-buoy fetches reuse the TTL-cache entries those groups populate."""
     t0 = time.monotonic()
     errors = []
@@ -1736,9 +1781,6 @@ def _warm_all_caches():
             errors.append(f"{label}: {e}")
 
     def _warm_open_meteo_wind():
-        for model in ("EURO", "GFS"):
-            _run(f"wind_grid/{model}", lambda m=model: fetch_wind_grid(m))
-            _run(f"wind_forecast/{model}", lambda m=model: fetch_wind_forecast_grid(m))
         for model in ("EURO", "GFS"):
             _run(f"region_wind/{model}", lambda m=model: fetch_region_wind_forecasts(m))
 
@@ -1774,6 +1816,13 @@ def _warm_all_caches():
     # Observed fun+ ledger — after the wind group so today's gate hours come
     # from the freshly warmed EURO region-wind entry.
     _run("fun_days", _fun_days_all)
+    # /gland: its own sources (a cold CMEMS point fetch alone is ~90 s) —
+    # warmed here so no visitor ever pays for it.
+    def _warm_gland():
+        import gland as _g
+        _g.fetch_all()
+        _g.fetch_gland_history()
+    _run("gland", _warm_gland)
 
     elapsed = time.monotonic() - t0
     if errors:
@@ -1828,5 +1877,6 @@ if __name__ == "__main__":
     _warmer = threading.Thread(target=_cache_warmer_loop, daemon=True)
     _warmer.start()
     bathy.prewarm_async()   # default-view basemap tiles; no-op once rendered
+    wind_field.start_updater()   # GRIB wind fields for the map, every 10 min
 
-    serve(app, host=HOST, port=PORT, threads=8)
+    serve(app, host=HOST, port=PORT, threads=16)   # a map view fires ~40 tile requests at once

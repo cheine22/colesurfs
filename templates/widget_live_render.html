@@ -101,8 +101,9 @@ a.w, a.w.medium { width:{{ base_w }}px; height:{{ base_h }}px; max-width:none; m
 <script>
 const DATA = {{ data|tojson }};
 const appearance = "{{ appearance }}";
+// mirrors swell_rules.COLORS; FLAT's light ink darkened from the table's #70707c
 const CAT = {
-  FLAT:   { db:'#131316', dt:'#404055', lb:'#e2e2de', lt:'#52525f' },   // light ink darkened from the table's #70707c
+  FLAT:   { db:'#17171b', dt:'#5c5c72', lb:'#e2e2de', lt:'#52525f' },
   WEAK:   { db:'#0d1520', dt:'#3d7ab5', lb:'#d8e8f8', lt:'#1a5a9a' },
   FUN:    { db:'#0d1a0f', dt:'#3fb950', lb:'#ccecd4', lt:'#166028' },
   SOLID:  { db:'#1a1800', dt:'#f5c518', lb:'#f5e6c0', lt:'#7a5500' },
@@ -110,14 +111,17 @@ const CAT = {
   HECTIC: { db:'#1c1240', dt:'#7c6af7', lb:'#e2dcf8', lt:'#3828b8' },
   MONSTRO:{ db:'#1a0a30', dt:'#c084fc', lb:'#ecdcf8', lt:'#7010b8' },
 };
-// windCondColor(): clean teal / textured amber / messy periwinkle / blown-out taupe
+// windCondColor() (v2.0): a lightness scale — good wind clear and light,
+// Textured mid-dark grey, Messy darker, Blown Out black. The dark-mode inks
+// sit one step brighter than the table's so the tide chart stays legible on
+// a widget glanced at arm's length.
 const WIND = {
-  Glassy:  { db:'#15252a', dt:'#7dd8c8', lb:'#e4f1ed', lt:'#196c60' },
-  Groomed: { db:'#15252a', dt:'#7dd8c8', lb:'#e4f1ed', lt:'#196c60' },
-  Clean:   { db:'#15252a', dt:'#7dd8c8', lb:'#e4f1ed', lt:'#196c60' },
-  Textured:{ db:'#27180c', dt:'#ffb057', lb:'#faeacd', lt:'#86530f' },
-  Messy:   { db:'#181c30', dt:'#8b94d1', lb:'#e4e6f3', lt:'#3e4390' },
-  'Blown Out': { db:'#1d1b1f', dt:'#8a8085', lb:'#e7e3e0', lt:'#6f656a' },
+  Glassy:  { db:'#2a2a33', dt:'#f6f6fb', lb:'#ffffff', lt:'#26262e' },
+  Groomed: { db:'#2a2a33', dt:'#f6f6fb', lb:'#ffffff', lt:'#26262e' },
+  Clean:   { db:'#2a2a33', dt:'#f6f6fb', lb:'#ffffff', lt:'#26262e' },
+  Textured:{ db:'#19191e', dt:'#b0b0bd', lb:'#80808a', lt:'#ffffff' },
+  Messy:   { db:'#0c0c0f', dt:'#8c8c99', lb:'#4c4c55', lt:'#f2f2f5' },
+  'Blown Out': { db:'#000000', dt:'#7a7a88', lb:'#000000', lt:'#9c9ca6' },
 };
 
 // the dashboard's wind-sea glyph (_WIND_SEA_GLYPH), for partitions typed "windsea"

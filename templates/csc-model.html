@@ -301,7 +301,7 @@
   <ul>
     <li><b>EURO</b> rows come from <code>waves_cmems.fetch_cmems_point</code> (CMEMS ANFC) called by <code>csc2.logger</code>.</li>
     <li><b>GFS</b> rows come from <code>waves.fetch_wave_forecast(model_key="GFS")</code> against Open-Meteo (and from <code>csc2.aws_gfs_backfill</code> for the historical fill).</li>
-    <li>The on-disk schema is defined in <code>csc2/schema.py</code> as <code>FORECAST_COLUMNS</code> — raw partition fields (<code>sw1_*</code>, <code>sw2_*</code>) plus combined-sea fields (<code>combined_*</code>) so the dashboard's v1.7.1 GFS fallback can be reconstituted at read time.</li>
+    <li>The on-disk schema is defined in <code>csc2/schema.py</code> as <code>FORECAST_COLUMNS</code> — raw partition fields (<code>sw1_*</code>, <code>sw2_*</code>) plus combined-sea fields (<code>combined_*</code>), logged for diagnostics; the old combined-sea GFS fallback was removed in v1.13.1 and is never reconstituted.</li>
     <li>Every cycle preserves the full <code>+0…+240 h</code> lead structure.</li>
   </ul>
 
@@ -368,10 +368,11 @@
     carries observed sw1 and sw2 alongside the two model forecasts.
   </p>
   <p>
-    <code>_apply_dashboard_fallback_gfs</code> (at <code>csc2/train.py:106</code>)
-    synthesizes GFS sw1 from <code>combined_*</code> fields when partitions are
-    absent — byte-identical to the dashboard's v1.7.1 fallback in
-    <code>waves.py:_parse_response</code>. Rows where <em>both</em> obs sw1 and
+    <code>_apply_dashboard_fallback_gfs</code> (<code>csc2/train.py</code>) keeps
+    its name but no longer synthesizes anything: it tags each GFS row
+    <code>partition</code> or <code>missing</code> in <code>gfs_sw1_source</code>,
+    and missing rows are left out of training (the dashboard's combined-sea
+    fallback was removed in v1.13.1). Rows where <em>both</em> obs sw1 and
     sw2 are missing are dropped.
   </p>
 

@@ -397,8 +397,10 @@
     buoy identity (one-hot), and <b>lead hour</b> — treated as a first-class feature since every
     cycle in the archive preserves the full 0..+240 h lead structure. Eight boosters total
     (sw1/sw2 × {height, period, dp_sin, dp_cos}); direction is recombined via atan2 at inference.
-    GFS rows where partitions are absent reconstitute sw1 from combined-sea fields per the
-    dashboard's v1.7.1 fallback (<code>csc2.train._apply_dashboard_fallback_gfs</code>).
+    GFS rows where no partition survived are tagged <code>missing</code> by
+    <code>csc2.train._apply_dashboard_fallback_gfs</code> and left out of training — the
+    dashboard's old combined-sea fallback was removed in v1.13.1 (it drew pure wind sea as a
+    FUN swell at the mean period).
   </div>
 </section>
 
@@ -520,7 +522,7 @@
     <div class="modal-title"><span class="wave-glyph">∿</span>csc2 · more</div>
     <a class="modal-btn" href="/csc-model">≡ MODEL NOTES</a>
     <button class="modal-btn" id="theme-btn" type="button">◑ THEME</button>
-    <span class="modal-version">v1.15.1</span>
+    <span class="modal-version">v2.0.0</span>
   </div>
 </div>
 

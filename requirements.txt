@@ -4,6 +4,8 @@ waitress>=3.0.0
 requests>=2.31.0
 pyyaml>=6.0
 astral>=3.2
+eccodes>=2.30       # GRIB decoding for the map's wind field (wind_field.py; csc2 backfills)
+scipy>=1.10         # bathy.py coastline mask cleanup (also a scikit-learn dependency)
 
 # CSC (Colesurfs Correction) — Parquet archive + ML post-processing
 pandas>=2.0

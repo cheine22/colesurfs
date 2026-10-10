@@ -6,8 +6,8 @@ Loads all region/buoy/spot data from regions.yaml at import time and exposes:
   WIND_SPOTS    — one entry per surf spot (name, lat, lon, tide info, shore_normal, etc.)
   REGION_VIEWS  — per-region map center/zoom for regional mode
 
-Also defines the color palette, wind speed bands, model identifiers, unit
-conversion helpers, and the wind-map grid geometry.
+Also defines the color palette, model identifiers and unit conversion
+helpers. The map's wind grid geometry lives in wind_field.py.
 """
 import math, os, yaml
 
@@ -76,21 +76,6 @@ HUE = {
     "red":        "#f85149",
 }
 
-# ─── Wind Speed Scale ─────────────────────────────────────────────────────────
-# Labels shown below the wind map. Units: mph. The particle renderer's own
-# 7-stop colour ramp (index.html _colorScale) spans 0 → 20 m/s ≈ 0 → 45 mph;
-# these five bands are the legend, not the ramp.
-#
-# Format: (min_mph, max_mph_or_None, bg_color, text_color)
-# Use None for the last band's max to display "45+".
-WIND_BANDS = [
-    (0,   5,    "#1e1e2e", "#404055"),
-    (5,  10,   "#3a2e88", "#c0b8ff"),
-    (10,  25,   "#3fb950", "#ffffff"),
-    (25,  45,   "#d29922", "#ffffff"),
-    (45,  None, "#f85149", "#ffffff"),
-]
-
 # ─── Swell Categorization ─────────────────────────────────────────────────────
 # Thresholds: edit swell-categorization-scheme.toml (or /tuner) → Refresh in app.
 # Colors:     edit COLORS dict in swell_rules.py → restart.
@@ -100,7 +85,7 @@ MODEL_COLORS = {
     "GFS":  HUE["green"],    # green
 }
 
-# Wind models (for wind forecast grid + regional spot forecasts).
+# Wind models for the per-spot forecasts (table cells, ratings, widget).
 # ecmwf_ifs:    ECMWF IFS atmospheric model (Open-Meteo API default resolution)
 #               1-hourly for first 90 h, 3-hourly after, 6-hourly after 144 h
 # gfs_seamless: NOAA GFS seamless (hourly for d0-5, then 3-h) — matches Windy's GFS layer
@@ -137,20 +122,6 @@ def ms_to_mph(ms):
 def ms_to_kts(ms):
     return round(ms * 1.94384, 1) if ms is not None else None
 
-# ─── Wind Map Grid: Western Atlantic basin ───────────────────────────────────
-# 144 grid points (12 rows × 12 cols) — fits in ONE Open-Meteo API call.
-# Covers 5°N–49°N × 83°W–39°W (East Coast + NW Atlantic + Caribbean edge).
-# 4° spacing provides smooth wind particle animation while staying within
-# free API limits.
-GRID_LATS = [5.0 + i * 4.0 for i in range(12)]    # 5°N → 49°N, 4° step  (12 rows)
-GRID_LONS = [-83.0 + i * 4.0 for i in range(12)]   # 83°W → 39°W, 4° step (12 cols)
-GRID_NY   = len(GRID_LATS)   # 12
-GRID_NX   = len(GRID_LONS)   # 12
-GRID_DX   = 4.0
-GRID_DY   = 4.0
-GRID_LA1  = float(GRID_LATS[-1])   # 49.0 — northernmost (grid starts NW)
-GRID_LO1  = float(GRID_LONS[0])    # -83.0 — westernmost
-
 # ─── Forecast Settings ────────────────────────────────────────────────────────
 FORECAST_DAYS = 10
 TIMEZONE      = "America/New_York"
@@ -166,10 +137,10 @@ MODEL_UPDATE_HOURS_UTC = {
     "EURO": [10, 21],
 }
 
-# Wind-model refresh hours (UTC). Open-Meteo's ecmwf_ifs025 ingests all four
-# IFS runs (00/06/12/18Z, available ~7 h after init), so wind caches refresh
-# 4x/day even though the EURO wave product stays 2x/day. Kept separate from
-# MODEL_UPDATE_HOURS_UTC so the run indicator stays truthful about wave runs.
+# Wind-model publication hours (UTC), 4 runs/day for both atmospheric models
+# (ECMWF IFS 00/06/12/18Z, Open-Meteo has each ~7 h after init). Kept separate
+# from MODEL_UPDATE_HOURS_UTC so the run indicator stays truthful about wave
+# runs. (The map's GRIB wind fields probe the sources directly — wind_field.py.)
 WIND_UPDATE_HOURS_UTC = {
     "GFS":  [4, 10, 16, 22],
     "EURO": [1, 7, 13, 19],

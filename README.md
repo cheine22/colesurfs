@@ -1,10 +1,10 @@
-# colesurfs · v1.15.1
+# colesurfs · v2.0.0
 
 © 2026 Cole Heine. All rights reserved. — [LICENSE](./LICENSE)
 
-A surf forecast dashboard for the NY / NJ / New England coast. Designed to provide the best tools for the experienced surfer & surf forecaster to anticipate windows of good waves and plan surf sessions. Guiding principle: interpretation of the agreement between the different models provides the most accurate predictive information. Pulls live buoy data from NOAA and swell/wind model forecasts from Open-Meteo and Copernicus Marine (CMEMS), then presents everything in one scrollable view: a color-coded swell table synced to an animated wind map, with per-spot tide predictions and wind condition ratings.
+A surf forecast dashboard for the NY / NJ / New England coast. Designed to provide the best tools for the experienced surfer & surf forecaster to anticipate windows of good waves and plan surf sessions. Guiding principle: interpretation of the agreement between the different models provides the most accurate predictive information. Pulls live buoy data from NOAA, swell forecasts from Open-Meteo and Copernicus Marine (CMEMS), per-spot wind from Open-Meteo, and the map's wind straight from the NOAA GFS and ECMWF IFS model grids, then presents everything in one scrollable view: a color-coded swell table synced to a Windy-style wind map, with per-spot tide predictions and wind condition ratings.
 
-Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authenticates via the `copernicusmarine` CLI; everything else uses free unauthenticated NOAA / Open-Meteo endpoints.
+Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path authenticates via the `copernicusmarine` CLI; everything else uses free unauthenticated NOAA / ECMWF / Open-Meteo endpoints.
 
 **New here?** See the **[annotated interface guide](./interface-guide.png)** — one screenshot with every feature numbered and explained (cell coloring, agreement chips, Fun+ Days, wind map, and more).
 
@@ -12,22 +12,39 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 
 ## Features
 
-- **Easy toggling between EURO & GFS wave forecasts** — hourly or 3-hour swell table with up to 3 swell partitions per cell, color-coded by swell category
-- **Model concordance & wind at a glance** — up to two small tinted letter chips stacked in each forecast cell's top-right corner. The **swell agreement chip** ("M") is a solid block in the *hidden* model's swell category colour (matches the cell when EURO and GFS agree, reveals the other model's rating when they diverge; shown only for poor-or-better hidden reads). The **wind agreement chip** ("W", neutral-white) appears only when *both* models agree ≥1 spot in the buoy's region has clean wind at that hour.
-- **Customized swell rating scale** — 7 hierarchical tiers (Flat / Weak / Fun / Solid / Firing / Hectic / Monstro) per swell (current or modeled) based on swell size and period
-- **At-a-glance swell forecast evaluation ("Fun+ Days", new in v1.7)** — per-region count of days in the forecast with ≥2 daytime 3-hour windows where *both* models rate the primary swell fun-or-better (`min(GFS, EURO) ≥ FUN`) *and* ≥1 spot in the region has Textured-or-better wind at that hour. Denominator is the forecast span in days; cell colour tracks the best `min(GFS, EURO)` window across the forecast.
-- **Historical-data mode** (new in v1.7) — toggle in the toolbar (desktop) or More modal (mobile) reveals a -240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from CSC2 archives.
-- **NOAA buoy readings** — live wave height, dominant period, and direction per buoy
-- **Historical buoy popup** — BUOY SPECTRA button (or clicking any BUOY NOW cell) opens a 3-day modal with two stacked charts: a live frequency spectrum at the scrubbed time (top) and energy-over-time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile.
+- **EURO ↔ GFS wave forecasts at a toggle** — hourly or 3-hour swell table, up to two ranked partitions per cell (the model's wind-sea partition competes with the swell partitions and is flagged with a wind glyph when it wins a slot), color-coded by swell category
+- **Model concordance & wind at a glance** — up to two small letter chips stacked in each forecast cell's top-right corner. The **swell agreement chip** ("M") is a solid block in the *hidden* model's swell category colour (matches the cell when EURO and GFS agree, reveals the other model's rating when they diverge; shown only for poor-or-better hidden reads). The **wind agreement chip** ("W", neutral-white) appears only when *both* models agree ≥1 spot in the buoy's region has clean wind at that hour
+- **Customized swell rating scale** — 7 hierarchical tiers (Flat / Weak / Fun / Solid / Firing / Hectic / Monstro) per swell (observed or modeled) from swell size and period, with the primary swell drawn on the map as an arrow
+- **Fun+ Days** — per-region count of forecast days with ≥2 daytime 3-hour windows where *both* models rate the primary swell fun-or-better (`min(GFS, EURO) ≥ FUN`) *and* ≥1 spot in the region has Textured-or-better wind at that hour. Denominator is the forecast span in days; cell colour tracks the best `min(GFS, EURO)` window across the forecast. A second line shows the days since the buoy last *observed* a fun+ day, and the regional view ends with this year's observed fun+ tally by category plus the longest drought between fun+ swells in the last year
+- **Historical-data mode** — toggle in the toolbar (desktop) or More modal (mobile) reveals a −240 h buoy-observation strip to the left of the Fun+ Days column, with a ✓ glyph on cells where both models' archived forecasts agreed with the observed classification. Cadence matches the resolution toggle; data preloads in the background from the CSC2 archives
+- **NOAA buoy readings** — live primary + secondary swell per buoy from the raw NDBC spectral files (same partitioning conventions as Surfline's readout)
+- **Buoy spectra popup** — BUOY SPECTRA button (or clicking any BUOY NOW cell) opens a 3-day modal with two stacked charts: the frequency spectrum at the scrubbed time (top) and energy over time (bottom). Date/time label above the charts, swell readout below, dotted-line hover indicator on desktop, touch scrubber on mobile
 - **Tide predictions** — NOAA CO-OPS harmonic predictions per spot, with Surfline-matched time corrections
-- **Individual swell components** — spectral analysis producing primary + secondary swell partitions from raw NDBC spectral files
-- **Animated wind map** — Leaflet.js with a custom HiDPI canvas particle system (Windy-style), synced to the swell table by hover time. Retina-aware tiles and rendering
-- **Customized wind condition rating scale** — 6 hierarchical tiers (Glassy / Groomed / Clean / Textured / Messy / Blown Out) per spot based on wind direction relative to the measured coast angle and speed
-- **Smart API caching** — model-run-aware cache that skips API calls when cached data is still from the latest model run
-- **Smart refresh** — refresh button checks for new model data before clearing caches; shows toast if no new data available
+- **Wind map (v2.0)** — the models' own 0.25° 10 m wind, hourly, drawn Windy-style: a continuous colour field by speed under dark particles that show direction and flow, the in-house bathymetry basemap beneath and a clean coastline on top; synced to the swell table by hover time and to the EURO/GFS toggle. See *The map* below
+- **Regional mode** — click a region's name to zoom the map to its spots, rate each spot's wind hour by hour, and show per-spot tide; click the name again to leave
+- **Customized wind condition rating scale** — 6 hierarchical tiers (Glassy / Groomed / Clean / Textured / Messy / Blown Out) per spot from wind direction relative to the measured coast angle and sustained speed, shown as a lightness scale: good wind clear and light, Textured mid-grey, Messy darker, Blown Out black
+- **Smart API caching** — model-run-aware cache that skips upstream calls when cached data is still from the latest model run
+- **Smart refresh** — the refresh button checks for new model data before clearing caches; shows a toast if nothing new is available. An installed web app also soft-refreshes when it comes back to the foreground after a minute away
 - **YAML-driven region config** — all regions, buoys, and spots defined in `regions.yaml`; adding a new region requires no code changes
-- **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column.
-- **iOS home-screen widgets (v1.14–1.15)** — two widgets for [Scriptable](https://scriptable.app), one two-line loader on the phone, picked by the widget parameter (the More menu's ▣ IOS WIDGETS lists them). **Fun+ Days** (`forecast-nyc` / `forecast-bi`): the count per region as a small (1 region), medium (2) or large (4) widget in the dashboard's category colours, with a "Last update today 12Z" stamp from the older of the two model runs; tap opens the dashboard. **Live** (`live-lido`, `live-landing`, `live-southampton`; medium): the spot's buoy now in the BUOY NOW cell grammar with the day's swell trend, and the spot's tide now with today's curve and highs/lows, plus the wind outlook (dawn patrol ratings after sunset); tap opens the spot's Surfline page. The server renders each widget image from the design mockups' own CSS (`/api/widget`, `/api/widget/live`, `/widget/tile.png`, `widget/colesurfs.js`).
+- **Mobile-optimized layout** — responsive portrait layout with velocity-based time scrubbing (iOS-style precision control). Double-tap the slider snaps the Fun+ Days column flush against the sticky spot column
+- **iOS home-screen widgets** — two [Scriptable](https://scriptable.app) widgets served as images rendered from the design mockups' own CSS. See *iOS widgets* below
+- **Light / dark theme, side-by-side mode** (desktop) — in the More modal
+
+---
+
+## Pages
+
+| route | what |
+|---|---|
+| `/` | the dashboard |
+| `/review` | **Conditions Reviewer** — per region, days-per-rating histogram, days-between-fun+-swells histogram, daily peak energy and daily peak period over a review period (calendar year, trailing 365 d, season in progress, completed seasons, custom range) |
+| `/seasons` | **Seasonal Analysis** — per region, four season-by-year tables (Flat / Fun+ / Solid or Firing days, drought length as `average (median)`), fall 2019 onward |
+| `/csc` | CSC2 evaluation — archive accumulation, model registry, metric tables, live CSC2 vs EURO vs GFS forecast row; `/csc-model` documents the training pipeline |
+| `/gland` | G-Land (Grajagan, East Java) trip page — its own sources, its own swell-window scoring, a section ranker and an upstream-buoy translation layer; `/gland/tuner` edits its own category thresholds |
+| `/tuner` | slider-driven editor for the swell + wind category thresholds (LAN only; writes the TOML schemes and reloads them live) |
+| `/palette-preview` | static comparison of the current swell + wind palettes (no save action) |
+
+Every page is reachable from the dashboard's More modal; `/review` and `/seasons` share a remembered region and deep-link with `?region=<buoy_id>`.
 
 ---
 
@@ -35,92 +52,33 @@ Flask backend, vanilla HTML/CSS/JS frontend. The CMEMS EURO path (C-EURO) authen
 
 All data is fetched from free or free-tier public services:
 
-- **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min); yearly stdmet + spectral (swden/swdir) archives back to 2019 used for the obs backfills
-- **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC with swell partitions (VHM0_SW1/SW2, VTM01_SW1/SW2, VMDR_SW1/SW2), the EURO source for both the dashboard and CSC2. Live fetch via `copernicusmarine` (free `copernicusmarine login` credential at `~/.copernicusmarine/.copernicusmarine-credentials`)
-- **Google Earth Engine — `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`** — cycle-preserving archive of the same CMEMS product, used by CSC2's historical backfill because CMEMS itself overwrites past cycles. The GEE mirror ingests one cycle per day starting 2025-04-28; see `csc2/gee_backfill.py`. Free for noncommercial use (Community Tier: 150 EECU-hours/month)
-- **AWS Open Data — `s3://noaa-gfs-bdp-pds/`** — NOAA GFS-Wave GRIB2 archive with swell partitions back to 2021-04 used by CSC2's historical backfill; byte-range fetches via `.idx` sidecars
-- **Open-Meteo Marine API** — live GFS-Wave partition forecasts for the dashboard and live logger (GFS stream only; EURO migrated off Open-Meteo in v1.5)
-- **Open-Meteo Forecast API** — ECMWF IFS and GFS wind model forecasts
+- **NOAA NDBC** — live buoy observations and spectral swell data (updated every 30 min); yearly stdmet + spectral (swden/swdir) archives back to 2019 for the obs backfills and the observed fun+ ledgers
+- **Copernicus Marine (CMEMS)** — ECMWF WAM ANFC with swell partitions (VHM0/VTM01/VMDR for SW1, SW2 and the wind-wave partition WW), the EURO wave source for the dashboard, `/gland` and CSC2. Live fetch via `copernicusmarine` (free `copernicusmarine login` credential at `~/.copernicusmarine/.copernicusmarine-credentials`)
+- **Open-Meteo Marine API** — live GFS-Wave partition forecasts (three swell partitions + the wind-wave partition) for the dashboard, `/gland` and the live logger
+- **Open-Meteo Forecast API** — ECMWF IFS (`ecmwf_ifs`) and GFS (`gfs_seamless`) point winds per spot: the wind cells, the wind ratings, the Fun+ Days gate and the widgets. The map does **not** use Open-Meteo
+- **NOAA NCEP GFS via NOMADS** (grib filter; AWS `noaa-gfs-bdp-pds` byte ranges as fallback) and **ECMWF IFS open data** (`data.ecmwf.int`, AWS mirror as fallback; CC BY 4.0) — the map's 0.25° 10 m wind fields, decoded from GRIB on the server
+- **NOAA NCEI `DEM_global_mosaic`** — raw float32 elevation for the self-rendered basemap and coastline tiles
 - **NOAA CO-OPS** — harmonic tide predictions per spot with Surfline-calibrated time corrections
+- **Google Earth Engine — `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H`** — cycle-preserving archive of the same CMEMS product, used by CSC2's historical backfill because CMEMS itself overwrites past cycles (one cycle per day from 2025-04-28). Free for noncommercial use
+- **AWS Open Data — `s3://noaa-gfs-bdp-pds/`** — NOAA GFS-Wave GRIB2 archive with swell partitions used by CSC2's historical backfill; byte-range fetches via `.idx` sidecars
+- **Open-Meteo historical-forecast API** — per-spot hourly `ecmwf_ifs` wind back to 2019 for the observed fun+ ledger's wind gate
+- **AODN / IMOS** near-real-time wave buoys off Western Australia — `/gland`'s upstream sentinels
 
-How the live data flows from these sources to the dashboard (sun times are computed locally in `sun.py`; everything on this path is transient cache except the `.cache/` write-through and the last-known-good fallback — durable storage happens in the CSC2 pipeline):
+Sun times are computed locally (`sun.py`, astral). How the live data flows from these sources to the dashboard (everything on this path is transient cache except the `.cache/` write-through and the last-known-good fallback — durable storage happens in the CSC2 pipeline):
 
 ![Live data flow — sources → fetch modules → TTL cache → Flask → Cloudflare → browser](development-assets/docs/data-flow.svg)
 
 ---
 
-## In beta: CSC2 — Colesurfs Correction v2 (lead-time-aware forecast correction)
+## The map (v2.0)
 
-**Goal.** A forecast-correction model that predicts the primary + secondary
-swells (height, period, direction) at a fixed set of NDBC buoys using patterns
-in the difference between the EURO and GFS model data across lead time, plus
-the time of year. Outputs are produced in the same dashboard-ready units as
-the `EURO` and `GFS` buttons, so a future `CSC2` button drops in alongside them.
+**Wind field.** `wind_field.py` pulls each model's own 0.25° 10 m u/v straight from GRIB — GFS hourly to +120 h then 3-hourly to +240 h, ECMWF IFS 3-hourly to +144 h then 6-hourly to +240 h (06/18Z runs stop at +90 h) — decodes it with eccodes, cuts it to a 30–48° N × 82–55° W envelope (73 × 109 points), quantises to 0.05 m/s int16 and keeps each run under `.cache/wind_field/<MODEL>/` for four days. A background thread probes both sources every 10 minutes and tops up a run while it is still publishing, so a new cycle reaches the map within minutes of its first steps. The served series composites the newest run for every valid hour from three days back to the newest run's +240 h — hourly through +48 h, 3-hourly beyond and in the past — and streams to the browser as gzip'd int16 x-delta byte planes (~14 KB a step): the step nearest now first (first paint in one small request), then now → +48 h, the tail, the past. The page interpolates between steps, so a hovered column shows that hour's wind; both models' series stay in memory so the EURO/GFS toggle is instant after the first switch.
 
-**Scope.** Eight buoys total, split into two tracks that share code and
-architecture but nothing else:
+**Colour field.** Wind speed is painted per screen pixel (exact Web Mercator, bilinear in the grid, 2 CSS px per sample) on the site's own Obsidian palette made continuous — calm in the page's navy (slate blue in light mode), through the indigo and purple accent, then the green / amber / red the rest of the site uses, lightening past gale force, 0–50+ mph, at ~80 % opacity. The ramp is purely wind speed and has no relationship to the swell or wind-rating palettes. Particles are dark strokes in both themes, trails batched so a few thousand run at the display's frame rate.
 
-- **East (user-facing)** — 44013 Boston, 44065 NY Harbor Entrance, 44097 Block Island Sound, 44091 Barnegat (NJ), 44098 Jeffrey's Ledge (NH)
-- **West (silent, parallel)** — 46025 Santa Monica Basin, 46221 Santa Monica Bay, 46268 Topanga Nearshore
+**Legend.** A Leaflet control at the map's bottom-right, directly under the `⊙ RECENTER` button and dressed like it: the colour bar and mph ticks only, rebuilt per theme. A small "loading wind…" / "wind unavailable" line appears beneath it only while there is nothing on the map. There is no overview button — regional mode is left by clicking the active region's name again.
 
-**Identity with the dashboard.** Every forecast value that feeds training and
-live correction passes through the exact same processing pipeline as the main
-dashboard (`waves_cmems.py` and `waves.py`: 5.0 s Tm01 filter, `Tm01 × 1.20`
-Tp-rescale for CMEMS partitions, energy-sorted top-2 partitions, no
-combined-sea fallback). If a CSC2 cell disagrees with the dashboard's EURO or
-GFS cell for the same hour and buoy, something is wrong — not a model
-difference.
-
-**Data sources** (all kept strictly consistent with what the dashboard serves):
-
-| stream            | live (going forward)                                | historical backfill                                                              |
-|-------------------|-----------------------------------------------------|----------------------------------------------------------------------------------|
-| EURO (CMEMS)      | `com.colesurfs.csc2-logger` @ 3 AM + 3 PM ET        | Google Earth Engine `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H` (2025-04 → today) |
-| GFS (Open-Meteo)  | same plist, same schedule                           | AWS `s3://noaa-gfs-bdp-pds/` byte-range GRIB2 fetch (scope A: 2025-04 → today)   |
-| Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet + spectral archives (2019 → today), CDIP for 44091/97/98             |
-
-**Model architectures.** Two tiers reported side-by-side on the eval page:
-
-- *CSC2+baseline* — per-[buoy × lead-hour × variable] linear bias correction. Simple floor; no learned interactions.
-- *CSC2+ML* — gradient-boosted trees (LightGBM) over features: raw EURO partitions, raw GFS partitions, EURO–GFS deltas per lead, sin/cos day-of-year, buoy identity, and **lead hour as a first-class feature** (since the archive preserves full 0..+240 h lead structure for every cycle). One model per output variable.
-
-**Naming.** "CSC2" alone refers to the *training dataset* (paired GFS + EURO + buoy obs). A trained model instance is always named:
-
-```
-CSC2+{baseline|ML}_{YYMMDD}_{coverage}_v{N}
-```
-
-`YYMMDD` = train date (UTC, sorts lexicographically); `coverage` = fraction of 365 with ≥1 paired GFS + EURO + **spectral-swell-buoy** day pooled across the 5 east buoys, rounded to 0.01 (>1.0 once we cross into year 2). "Spectral-swell-buoy" means a hour where at least one of partition=1 (primary swell) or partition=2 (secondary swell) — produced by the same `_spectral_components` decomposition the dashboard uses — has Hs/Tp/Dp; partition=0 (combined sea, basic NDBC stdmet WVHT/DPD/MWD) does NOT count, because the model targets sw1/sw2 to match dashboard cells. `v{N}` = architecture/hyperparameter variant for same-day comparisons. Example: `CSC2+ML_260424_0.77_v2`. Weights land in `.csc2_models/east/<full-name>/`. The west track uses identical naming under `.csc2_models/west/`.
-
-**Evaluation.** [`/csc`](http://localhost:5151/csc) renders two tables with a
-buoy picker (individual or combined):
-
-- *Table 1 — Traditional metrics*: MAE / RMSE / bias for primary and secondary swell Hs, Tp, direction. One row per (variable × statistic), four columns (Raw EURO, Raw GFS, CSC2 baseline, CSC2 model). Color-coded best → worst per row.
-- *Table 2 — Surfer metrics*: Sensitivity / specificity / PPV / NPV for the dashboard's categorizer, stratified per category (FUN, SOLID, FIRING, HECTIC, MONSTRO) plus a combined FUN-or-better class. Same four-column layout.
-
-An "Archive accumulation" panel at the top of the page stays visible even
-after training, showing per-buoy EURO cycles, GFS cycles, and **paired cycles**
-(init times where both model forecasts *and* matching buoy observations
-exist — the minimum condition for a trainable sample). A live forecast row
-shows CSC2 vs EURO vs GFS for the selected buoy out to +240 h
-(`/api/csc2/forecast`).
-
-**Training cadence.** First models trained in v1.8 once east-pool paired
-coverage crossed the bar. Current top performer is `CSC2+baseline_260909_0.85_v6`
-(primary-swell height MAE 0.49 ft vs raw EURO 0.54 ft on its holdout; the
-sibling `CSC2+ML_260909_0.85_v6` wins on period and direction), the first
-models trained after the EURO cycle relabel, the H²·T partition re-ranking and
-the fallback removal — models from before that are parked in
-`.csc2_models/<scope>/_pre-relabel/`, where the registry does not see them,
-because they learned lead hours twelve hours short on their live rows. Retraining
-is quarterly via `com.colesurfs.csc2-retrain` (1st of Mar/Jun/Sep/Dec), with
-a daily live-eval pass (`com.colesurfs.csc2-eval`) appending rolling skill
-per model. Long-term target remains 60 months of coverage so the model can
-learn seasonal pattern changes; live loggers top the archive up daily.
-
-**West-coast track** uses identical architecture; models train silently,
-artifacts land in `.csc2_models/west/`, and nothing is surfaced on the main
-dashboard until explicitly promoted.
+**Basemap and coastline.** `bathy.py` renders every tile itself from NOAA NCEI elevation (no key, no third-party raster): the base paints land flat and shades the sea by depth (half the ramp across the shelf 0–200 m, half down the slope to 4 km) in the theme palette; the coastline styles are transparent except a black line on the land/sea boundary plus a translucent land wash, drawn *above* the colour field so wind shows over land and the coast stays a clean edge. The land mask is cleaned in metres before tracing (specks and hairlines under ~40 m, creeks under ~120 m, enclosed ponds under 0.25 km², islands under 1.5 km²), the base tiles paint land from that same mask, and the retina coastline variant ships the full 512 px render so phones get a crisp ~1 CSS px line. One NOAA request renders a 2 × 2 group of tiles in every style; tiles persist on disk, serve with immutable cache headers, and the default + regional views and then the whole NY/New England core box (zooms 6–11) pre-render at startup so panning and zooming never wait on NOAA. The page retries a tile that errors and warms the browser cache around the viewport on every move.
 
 ---
 
@@ -138,36 +96,138 @@ The app uses a **7-category 2D lookup system** based on both wave height (ft) an
 | **HECTIC**  | Potential for maxed out spots, difficult to find a decent wave with so much energy |
 | **MONSTRO** | Good luck finding a break that can handle it                                       |
 
-Thresholds are defined per period band in `swell-categorization-scheme.toml`.
+Thresholds are defined per period band in `swell-categorization-scheme.toml` (editable live in `/tuner`); nothing under 5.9 s is ever more than FLAT. Partitions are ranked by energy, H²·T, on both the buoy and the model side, and partitions under 5.0 s are dropped everywhere. G-Land keeps its own thresholds in `gland-swell-categorization.toml`; only the category names and colours are shared.
 
 ---
 
 ## Wind Condition Rating
 
-In regional mode, each spot is classified by surf-quality based on wind direction relative to the coast and sustained wind speed. The 6 tiers are evaluated hierarchically (first match wins):
+Each spot is classified by surf quality from wind direction relative to its measured shore normal and sustained wind speed. The 6 tiers are evaluated hierarchically (first match wins):
 
-| Rating | Color | Condition |
+| Rating | Shade | Condition |
 |---|---|---|
-| **Glassy** | Green | Offshore, sustained < 9.3 mph |
-| **Groomed** | Green | Offshore, sustained > 20 mph |
-| **Clean** | Green | Offshore at any speed in between, or any direction with sustained < 3 mph |
-| **Textured** | Gold | Sideshore + sustained < 15.5 mph, or onshore + sustained < 8.1 mph |
-| **Messy** | Blue | Sideshore + sustained < 18.3 mph, or onshore + sustained < 13.3 mph |
-| **Blown Out** | Grey | Everything else |
+| **Glassy** | light | Offshore, sustained < 9.33 mph |
+| **Groomed** | light | Offshore, sustained > 20 mph |
+| **Clean** | light | Offshore at any speed in between, or any direction with sustained < 3 mph |
+| **Textured** | mid-grey | Sideshore + sustained < 15.5 mph, or onshore + sustained < 8.13 mph |
+| **Messy** | darker | Sideshore + sustained < 18.33 mph, or onshore + sustained < 13.33 mph |
+| **Blown Out** | black | Everything else |
 
-Wind direction zones are defined relative to each spot's measured shore normal: offshore (≤ 32° from offshore direction), sideshore (32°–115°), onshore (> 115°). Thresholds are site-wide and tunable via `/tuner`; the numbers above are the values in `wind-categorization-scheme.toml` at the time of writing.
+Wind direction zones are relative to each spot's shore normal: offshore (≤ 32° from the offshore direction), sideshore (32°–115°), onshore (> 115°). Thresholds are site-wide, live in `wind-categorization-scheme.toml` and are tunable via `/tuner`; the numbers above are the file's values at the time of writing. Ratings are shown as a four-step lightness scale (good / Textured / Messy / Blown Out) with near-constant ink, so wind cells read as one quiet scale beside the coloured swell cells; the regional map's spot dots are one colour.
+
+---
+
+## iOS widgets
+
+Two widgets for [Scriptable](https://scriptable.app), one two-line loader on the phone that fetches and runs `widget/colesurfs.js` from the server (so edits ship through autopull), picked by the widget parameter — the More modal's ▣ IOS WIDGETS button carries the setup steps and the parameter table.
+
+- **Fun+ Days** (empty / `forecast-nyc` = regions in `regions.yaml` order; `forecast-bi` = Block Island Sound first): the count per region as a small (1 region), medium (2) or large (4) widget in the dashboard's category colours, with a "Last update today 12Z" stamp from the *older* of the two model runs. `/api/widget` is a server-side port of the dashboard's Fun+ Days rule. Tap opens the dashboard
+- **Live** (`live-lido`, `live-landing`, `live-southampton`; medium only): the spot's buoy now in the BUOY NOW cell grammar — the category word as the hero line, the swells beneath — with "Swell trending / staying X" for the rest of the daylight window, and the spot's tide now with today's curve and highs/lows plus the wind outlook sentence (dawn-patrol ratings after sunset), tinted by the better of the two models' current wind ratings. Any `regions.yaml` spot with a tide station and shore normal works (`/api/widget/live?spot=`). Tap opens the spot's Surfline page
+- `calibrate` shows a point ruler; append `; size=WxH` to pin a phone's widget point size
+
+Scriptable can't load the fonts or draw the glass, so the widget is an image: the server renders the mockup's own HTML/CSS with headless Chrome and the phone fetches it as tiles (`/widget/tile.png`, ≤ 290 px a side, because Scriptable recompresses any image a widget loads above ~500 k px) laid edge to edge at 1:1.
+
+---
+
+## CSC2 — Colesurfs Correction v2 (beta, lead-time-aware forecast correction)
+
+**Goal.** A forecast-correction model that predicts the primary + secondary swells (height, period, direction) at a fixed set of NDBC buoys using patterns in the difference between the EURO and GFS model data across lead time, plus the time of year. Outputs are in the same dashboard-ready units as the `EURO` and `GFS` buttons, so a `CSC2` button can drop in alongside them; today the live correction is shown on `/csc` only (the dashboard links there from the More modal).
+
+**Scope.** Eight buoys in two tracks that share code and architecture but nothing else:
+
+- **East (user-facing)** — 44013 Boston, 44065 NY Harbor Entrance, 44097 Block Island Sound, 44091 Barnegat (NJ), 44098 Jeffrey's Ledge (NH)
+- **West (silent, parallel)** — 46025 Santa Monica Basin, 46221 Santa Monica Bay, 46268 Topanga Nearshore. Models train silently into `.csc2_models/west/` and nothing surfaces on the dashboard until explicitly promoted
+
+**Identity with the dashboard.** Every forecast value that feeds training and live correction passes through the exact same processing pipeline as the dashboard (`waves_cmems.py` and `waves.py`: 5.0 s floor, `Tm01 × 1.20` Tp-rescale for CMEMS partitions, wind-sea partition ranked with the swells, energy-sorted top-2, no combined-sea fallback). If a CSC2 cell disagrees with the dashboard's EURO or GFS cell for the same hour and buoy, something is wrong — not a model difference.
+
+**Data sources** (kept strictly consistent with what the dashboard serves):
+
+| stream            | live (going forward)                                | historical backfill                                                              |
+|-------------------|-----------------------------------------------------|----------------------------------------------------------------------------------|
+| EURO (CMEMS)      | `com.colesurfs.csc2-logger` @ 3 AM + 3 PM ET        | Google Earth Engine `COPERNICUS/MARINE/WAV/ANFC_0_083DEG_PT3H` (2025-04 → today) |
+| GFS (Open-Meteo)  | same plist, same schedule                           | AWS `s3://noaa-gfs-bdp-pds/` byte-range GRIB2 fetch (2025-04 → today)            |
+| Buoy observations | `com.colesurfs.csc2-obs` @ every 30 min             | NDBC stdmet + spectral archives (2019 → today), CDIP for the west buoys           |
+
+EURO cycles are labelled from the data (the series' last valid time plus the capture clock, settled against the CMEMS bulletin listing), not from the clock: CMEMS ships the 00Z run at ~08:30Z and the 12Z run at ~20:50Z.
+
+**Model architectures.** Two tiers reported side by side on the eval page:
+
+- *CSC2+baseline* — per-[buoy × lead-hour × variable] linear bias correction with count-weighted lead-hour smoothing (±2 h). Simple floor; no learned interactions
+- *CSC2+ML* — gradient-boosted trees (LightGBM) over raw EURO partitions, raw GFS partitions, EURO–GFS deltas per lead, sin/cos day-of-year, buoy identity, and **lead hour as a first-class feature** (the archive preserves the full 0..+240 h lead structure for every cycle). One model per output variable
+
+**Naming.** "CSC2" alone refers to the *training dataset* (paired GFS + EURO + buoy obs). A trained model instance is always named
+
+```
+CSC2+{baseline|ML}_{YYMMDD}_{coverage}_v{N}
+```
+
+`YYMMDD` = train date (UTC, sorts lexicographically); `coverage` = fraction of 365 with ≥1 paired GFS + EURO + **spectral-swell-buoy** day pooled across the 5 east buoys, rounded to 0.01 (> 1.0 once the archive crosses into year 2). "Spectral-swell-buoy" means an hour where partition=1 (primary) or partition=2 (secondary) from the dashboard's own spectral decomposition has Hs/Tp/Dp; partition=0 (combined sea, basic NDBC stdmet) does **not** count, because the model targets sw1/sw2 to match dashboard cells. `v{N}` = architecture / data-rule variant. Weights land in `.csc2_models/east/<full-name>/`; the west track uses identical naming under `.csc2_models/west/`.
+
+**Current models.** `CSC2+baseline_260919_0.85_v8` and `CSC2+ML_260919_0.85_v8` on both tracks, trained after the wind-sea ranking and the archive re-pull. East baseline is the top performer (primary-swell height MAE 0.54 ft vs raw EURO 0.58 ft on its holdout, SW1 height skill +0.07); the ML sibling wins on period and direction. Earlier generations are parked in `_pre-relabel/` (v1–v5, learned lead hours 12 h short on their live EURO rows) and `_pre-v1134/` (v6–v7, learned late-stamped GFS rows and a swell-only primary), where the registry does not see them.
+
+**Evaluation.** `/csc` renders, with a buoy picker (individual or combined): an **Archive accumulation** panel (per-buoy EURO cycles, GFS cycles and **paired cycles** — init times where both model forecasts *and* matching buoy observations exist, the minimum condition for a trainable sample); the model registry (#1 by composite skill — which must at least match raw EURO on primary-swell height — plus the two most recent models); *Table 1 — Traditional metrics* (MAE / RMSE / bias for primary and secondary swell Hs, Tp, direction; columns Raw EURO, Raw GFS, CSC2 baseline, CSC2 model, best → worst per row); *Table 2 — Surfer metrics* (sensitivity / specificity / PPV / NPV for the dashboard's categorizer per category plus a FUN-or-better class); and a live forecast row of CSC2 vs EURO vs GFS to +240 h (`/api/csc2/forecast`).
+
+**Cadence.** Quarterly retrain via `com.colesurfs.csc2-retrain` (1st of Mar/Jun/Sep/Dec), a daily live-eval pass (`com.colesurfs.csc2-eval`) appending rolling skill per model, and the live loggers topping the archive up daily. Long-term target is 60 months of coverage so the model can learn seasonal pattern changes.
+
+---
+
+## Architecture
+
+```
+regions.yaml ──► config.py ──► app.py (Flask + Waitress, :5151)
+                                 │  routes, cache headers, rate limits, warmer
+   buoy.py  waves.py  waves_cmems.py  wind.py  tide.py  sun.py   ← fetchers (cache.py TTL cache)
+   wind_field.py  (GRIB → int16 run store → composited series)   ← the map's wind
+   bathy.py       (NOAA elevation → basemap + coastline tiles)    ← the map's tiles
+   fun_days.py    (observed fun+ ledger, /review, /seasons)
+   gland.py (+ gland_euro_archive.py)                             ← /gland
+   csc2/          (loggers, backfills, trainer, registry, live eval)
+   templates/     index.html (the dashboard, one file, all JS/CSS inline), review, seasons,
+                  csc, csc-model, gland, gland-tuner, tuner, palette-preview,
+                  widget_render, widget_live_render
+   widget/colesurfs.js                                            ← the Scriptable script
+```
+
+No build step, no bundler, no framework: `templates/index.html` inlines all of the dashboard's JS and CSS. `/api/config` (also inlined into the page) carries the spots, swell bands, wind rules, region views and the tile style version, so the page never hard-codes a scheme or a tile version. Swell → category lives in `swell_rules.py` + `swell-categorization-scheme.toml`, wind → rating in `wind_rules.py` + `wind-categorization-scheme.toml`; both reload live on a tuner save or `POST /api/refresh`.
+
+---
+
+## Caching
+
+- **Origin TTL cache** (`cache.py`): in-memory with write-through to `.cache/*.json`, per-key single-flight locks so concurrent misses can't stampede a slow upstream. Buoys 10 min, buoy history 30 min, GFS waves and spot winds 1 h, tides a month-anchored ~4-month window per station cached 45 days; EURO waves are model-run-aware (24 h hard TTL, invalidated when a new CMEMS bulletin is due at 10/21 UTC). A background warmer refreshes everything every 30 minutes
+- **The map's wind** is not in that cache: `wind_field.py` keeps its own run store on disk and an in-memory series rebuilt when a run changes or an hour passes. `/api/wind_field/data` is the one cacheable `/api/` response (the series id is in the URL)
+- **Edge / browser caching of API responses is deliberately off**: every `/api/*` GET is `no-store`, HTML is `no-cache`, so a new model run shows on the next open. Tiles are immutable for a year (misses are never cached); widget assets revalidate
+- **Fault tolerance**: the last-known-good forecast persists to `.cache/lkg_forecast.json` and is served with `_status: "stale"` when a live fetch fails; partially populated payloads carry `_status: "partial"`; the page stashes its last good payload set in `sessionStorage` (≤ 6 h) and instant-paints from it on reload
+- `POST /api/refresh` clears the caches (rate-limited to one call per 30 s per IP); `/api/*` is limited to 240 calls/min per IP
+
+---
+
+## Deployment
+
+Production runs as launchd user agents on a Mac (Flask + Waitress behind a Cloudflare tunnel, with an autopull job syncing `main`, the CSC2 loggers, the daily fun+ ledger and the G-Land archive). The setup, restart and tunnel details live in a local-only `hosting.md` that is intentionally not committed.
+
+---
+
+## Development
+
+```
+pip install -r requirements.txt     # eccodes needs the system libeccodes; copernicusmarine needs `copernicusmarine login`
+COLESURFS_DEBUG=1 python app.py     # :5151; also enables /api/debug/spectral/<id> and Jinja template auto-reload
+```
+
+`COLESURFS_PORT` / `COLESURFS_HOST` override the bind. Tests (golden fixtures for the wave pipeline and the buoy decomposition) live in the gitignored `development-assets/tests/`. The annotated `interface-guide.png` is regenerated from a production screenshot whenever visible UI changes land.
 
 ---
 
 ## Local data layout (not committed to Git)
 
-All CSC2 training inputs, observed-ledger data and model artifacts live
-outside Git. `.gitignore` covers every directory below:
+All CSC2 training inputs, observed-ledger data, rendered tiles and model artifacts live outside Git. `.gitignore` covers every directory below:
 
 ```
 colesurfs/
 ├── .cache/                    # TTL-cache write-through JSON + lkg_forecast.json
-│   ├── bathy_tiles/<STYLE>/   # self-rendered basemap PNGs (bathy.py)
+│   ├── bathy_tiles/<STYLE>/   # self-rendered basemap + coastline PNGs (bathy.py)
+│   ├── wind_field/<MODEL>/    # decoded GRIB wind runs, <YYYYMMDDHH>.npz (wind_field.py)
 │   └── widget_png/            # rendered iOS-widget images + tiles, keyed by content hash
 ├── .csc_data/                 # observation archive (buoy-only, model-agnostic)
 │   ├── observations/          # NDBC stdmet + spectral / CDIP shards (2019 → today), per buoy/year
@@ -182,36 +242,41 @@ colesurfs/
 │   ├── logs/                  # per-job append-only text logs
 │   └── archive_status_cache.json   # cached payload for /api/csc2/archive_status
 ├── .csc2_models/              # trained model weights
-│   ├── east/<name>/ …
+│   ├── east/<name>/ …         # (+ _pre-relabel/, _pre-v1134/ archives the registry ignores)
 │   └── west/<name>/ …
 ├── .gland_data/               # rolling 14-day EURO archive for /gland history (gland_euro_archive.py)
 ├── development-assets/        # dev-only: tests, design mockups, doc sources, icon archive
+├── purgatory/                 # shelved work, never synced
 └── _hold/                     # staging for files awaiting manual review/deletion
 ```
 
 Why not Git?
 
-- **Size** — ~50 MB today, grows by ~300 MB/year once the live loggers and
-  GFS backfill both settle. Not a good fit for Git history.
-- **Reproducibility** — every row is deterministically rebuildable from public
-  sources (CMEMS via GEE, NOAA GFS-Wave via AWS Open Data, NDBC stdmet
-  archives). The backfills are idempotent: `python -m csc2.gee_backfill`,
-  `python -m csc2.aws_gfs_backfill --start YYYY-MM-DD`, `python -m csc2.ndbc_backfill`.
-  A fresh clone on a new machine just re-runs them.
-- **Mutability** — shards get rewritten when backfills re-run or when the
-  live loggers fire. Git isn't the right store for append-only time series.
+- **Size** — tens of MB today, growing by ~300 MB/year with the live loggers and the GFS backfill. Not a good fit for Git history.
+- **Reproducibility** — every row is deterministically rebuildable from public sources (CMEMS via GEE, NOAA GFS-Wave via AWS Open Data, NDBC stdmet archives). The backfills are idempotent: `python -m csc2.gee_backfill`, `python -m csc2.aws_gfs_backfill --start YYYY-MM-DD`, `python -m csc2.ndbc_backfill`. A fresh clone on a new machine just re-runs them.
+- **Mutability** — shards get rewritten when backfills re-run or when the live loggers fire. Git isn't the right store for append-only time series.
 
 ---
 
 ## Known Limitations
 
 - No wave breaking / beach angle correction — offshore buoy and model data only. This model is not meant to be a one-stop-shop to compare the surf height at different locations, it is meant to provide a data that can be verified on the day through the buoy for session planning based on local knowledge. 
-- The wind particle field is drawn at the model grid resolution (144 points at 4° spacing), not interpolated to a finer mesh
+- The map's wind is the models' 0.25° grid (~25 km). At regional zooms the field is a smooth interpolation between a handful of cells, so sea-breeze fronts, inlet funnelling and other sub-grid coastal effects aren't resolved; the per-spot ratings come from Open-Meteo's point forecasts and can differ from the map right at the coast
 - Tide corrections were calibrated on a single date (2026-04-01) against Surfline's spot data and are fixed constants
 
 ---
 
 ## Changelog
+
+### v2.0.0
+- **The wind map is rebuilt around the models' own grids.** The map used to animate a 144-point Open-Meteo grid at 4° spacing (one API call's worth); fronts and lows were blurs. It now draws the **0.25° 10 m wind straight from the model output**: GFS from NOMADS' grib filter (a subregion cut of UGRD/VGRD per step, ~23 KB; AWS `noaa-gfs-bdp-pds` byte ranges as the fallback) and ECMWF IFS from the open-data index files + HTTP byte ranges (one global 10u/10v field per step; `data.ecmwf.int`, AWS mirror as fallback) — no API keys, no quotas, CC BY 4.0 / public domain. New `wind_field.py` decodes each run with eccodes, cuts it to a 30–48° N × 82–55° W envelope (73 × 109 points), quantises to 0.05 m/s int16, keeps each run for four days under `.cache/wind_field/<MODEL>/`, and composites a time series — the newest run for every valid hour (older runs fill the past three days and, behind a short 06/18Z ECMWF run, the tail): hourly from now to +48 h, three-hourly to +240 h. A background thread probes both sources every 10 minutes and tops up a run while it is still publishing, so a new cycle reaches the map within minutes of its first steps. `/api/wind_field/meta` carries the grid, the steps (local time + epoch), the chunk layout and the runs; `/api/wind_field/data` streams the series as gzip'd int16 x-delta byte planes (~14 KB a step) — the step nearest now first (first paint in one small request), then now → +48 h, the tail, the past. The dashboard interpolates between steps, so a hovered column shows that hour's wind, and both models' series stay in memory so the EURO/GFS toggle is instant after the first switch.
+- **Site-wide consistency pass.** `/gland`'s wind row uses the dashboard's lightness scale instead of swell colours; the tuner's wind palette matches the dashboard; `/csc` and `/csc-model` no longer describe the removed GFS combined-sea fallback as active; an offline buoy's history (Cape Cod 44018) answers 200 with an empty record list instead of a 503 on every page load; the server runs 16 threads so a map view's tile burst doesn't queue; the info modal tells you to tap a region's name again to return to the overview.
+- **Map chrome.** The wind-speed legend is a Leaflet control stacked under RECENTER (same surface, border and shadow as the button); the OVERVIEW button is gone — clicking the active region's name again leaves regional mode. The footer version sits on the true centre line (three-cell grid).
+- **Coloured by speed.** A continuous colour field (`WindRaster`, a canvas in its own Leaflet pane) paints wind speed under the particles: the site's own Obsidian palette made continuous — calm in the page's navy, through the indigo and purple accent, then the green / amber / red the rest of the site uses, lightening past gale force (0–50+ mph; a slate-blue start in light mode), at ~80 % opacity, sampled per screen pixel (exact Web Mercator, bilinear in the grid) and scaled with the map during zoom and pinch. The ramp is purely wind speed — it has no relationship to the swell or wind rating scales — and the legend in the map's corner is the same ramp with mph ticks and nothing else. Particles are dark strokes in both themes, unhurried and fine, with trails batched per position so a few thousand run at the display's frame rate.
+- **The coast stays a clean line, the land stands apart.** `bathy.py` gains coastline tile styles (`coast-dark` / `coast-light`, `?dpr=1|2` for line weight) drawn ABOVE the colour field: a crisp black line on the land/sea boundary plus a translucent land wash (lighter and muted, as the v1 basemap read), so wind still shows over land while land and sea are told apart at a glance; the bathymetry basemap still sits beneath the field and shows through faintly. The land mask is cleaned in metres before tracing (specks and hairlines narrower than ~40 m opened away, creeks narrower than ~120 m closed, enclosed ponds under 0.25 km² filled, islands under 1.5 km² dropped — never a component larger than a neighbour's margin window can see whole, so seams stay continuous) with 32 px of neighbour context, and the base tiles paint land from the same mask so filled creeks don't ghost through the field. The retina coastline variant ships the full 512 px render so phones get a crisp ~1 CSS px line. Style is `v6` (the page reads it from `/api/config`, never hard-coded); NOAA is asked for 2 × 2 tile groups (a quarter of the requests on fresh ground), retried three times, with a single-tile fallback and misses never cached; startup pre-renders the default and regional views first and then the whole NY/NE core box at zooms 6–11, once; the page retries a tile that errors and warms the browser cache around the viewport, so zooming and panning around the coast no longer waits on NOAA. Regional mode draws the same field (the old inverse-distance blend of the spot winds is gone); spot labels and dots are unchanged.
+- **Wind ratings are a lightness scale.** Four even steps of surface lightness from Glassy / Groomed / Clean (light) to Blown Out (dark), the ink nearly constant so the cells read as one quiet scale beside the coloured swell cells — in the table, the info legend, the tuner and the live widget's tide pane (the regional map's spot dots stay one colour; good-wind cells are no longer bold). Dark mode keeps the order with the surface sinking below the page and the ink fading toward it. Wind cells take their ink from the rating (`--wc-text`, `--wc-sub`, `--wc-tide`), so text and the tide line stay readable on every tier. FLAT swell cells in dark mode are lifted a step (`#17171b` / `#5c5c72`) so they no longer vanish into the page.
+- **/gland loads instantly.** The AODN sentinel fetch had been failing and `ttl_cache(skip_none)` never remembers a failure, so every G-Land request re-tried it and waited ~1 s; failures are now negative-cached for five minutes, the page's fetchers' TTLs sit above the warmer interval and the cache warmer pre-builds the page (`gland.fetch_all` + history), so no visitor pays the cold CMEMS fetch.
+- Removed: the Open-Meteo wind grid (`fetch_wind_grid` / `fetch_wind_forecast_grid`, `/api/wind_forecast`, `config.GRID_*`, `WIND_BANDS` and the pill legend). `/api/wind` now serves the spot winds only. The info modal's provenance lists the map's sources (NOAA NCEP GFS 0.25° via NOMADS; ECMWF IFS 0.25° open data, CC BY 4.0). Dev: `COLESURFS_DEBUG=1` turns on Jinja template auto-reload.
 
 ### v1.15.1
 - **Live widget: the rating leads.** The buoy pane now reads the way FLAT already did for every category — the category word (FUN, SOLID, …) as the hero line, the primary swell beneath it in the small line and the secondary under that. FLAT shows the primary only. A buoy reading with no period (no category) keeps the old reading-as-hero layout.

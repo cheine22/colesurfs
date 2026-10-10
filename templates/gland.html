@@ -569,7 +569,7 @@
     <a class="modal-btn" href="/gland/tuner">⇞ TUNER</a>
     <button class="modal-btn" id="refreshBtn">↺ REFRESH NOW</button>
     <button class="modal-btn" id="themeBtn">◑ THEME</button>
-    <span class="modal-version">v1.15.1</span>
+    <span class="modal-version">v2.0.0</span>
   </div>
 </div>
 
@@ -777,6 +777,18 @@ const isLight = () => {
 function catColors(cat){
   const c = CAT_COLORS[cat] || CAT_COLORS.FLAT;
   return isLight() ? [c.light_bg, c.light_text] : [c.dark_bg, c.dark_text];
+}
+// Wind ratings use the dashboard's lightness scale (windCondColor in
+// index.html — keep the two in step): good light, then darker per tier.
+// G-Land's own rating names map onto its four steps.
+const _WIND_TIER = { GLASSY:0, GROOMED:0, CLEAN:0, 'STRONG OFFSHORE':1, TEXTURED:1, CHOPPY:2, ONSHORE:3 };
+const _WIND_PAL = {
+  dark:  [['#30303b','#d4d4e0'], ['#1b1b21','#a2a2af'], ['#121216','#85859a'], ['#0a0a0c','#6a6a7a']],
+  light: [['#fbfbfd','#2a2a34'], ['#d2d2d9','#2e2e38'], ['#a9a9b5','#24242c'], ['#70707c','#f0f0f4']],
+};
+function windColors(rate){
+  const t = _WIND_TIER[rate] ?? 3;
+  return _WIND_PAL[isLight() ? 'light' : 'dark'][t];
 }
 const DIRS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
 const compassPt = d => (d==null) ? '—' : DIRS[Math.round(((d%360)+360)%360/22.5)%16];
@@ -1523,9 +1535,7 @@ function renderTable(rows){
     const w = r.wind;
     if (!w || w.speed_kt == null){ body += `<td class="cell${night}">·</td>`; return; }
     const rate = r.wind_rating;
-    const good = ['GLASSY','GROOMED','CLEAN'].includes(rate);
-    const mid  = ['STRONG OFFSHORE','TEXTURED'].includes(rate);
-    const [bg, ink] = good ? catColors('FUN') : mid ? catColors('WEAK') : catColors('FLAT');
+    const [bg, ink] = windColors(rate);
     body += `<td class="cell${night}" style="background:${bg};color:${ink}"
       title="${Math.round(w.speed_kt)} kt ${compassPt(w.direction_deg)} — ${rate}">
       <div class="cell-inner"><div class="comp-line p1"><span class="c-ht">${
