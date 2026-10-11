@@ -5,7 +5,7 @@ code as it is; the historical record is `README.md` § Changelog.
 
 ## What this is
 
-Single-page Flask app (v2.0.2) that aggregates surf-forecast data — NOAA
+Single-page Flask app (v2.0.3) that aggregates surf-forecast data — NOAA
 NDBC buoys, NOAA CO-OPS tides, Copernicus Marine / Open-Meteo wave models —
 and renders it as a swell table synced to a wind map whose field comes
 straight from the GFS and ECMWF IFS GRIB grids; the table's spot winds are
@@ -162,7 +162,8 @@ Analysis), `/gland` (+ `/gland/tuner`), `/tuner`, `/csc-model`,
 - `templates/tuner.html` — threshold editor; `templates/palette-preview.html`
   — static palette comparison, no save action.
 - `templates/widget_render.html`, `templates/widget_live_render.html` — the
-  widget mockups' CSS verbatim, rendered to PNG. See "Widgets".
+  widgets' CSS, rendered to PNG: the Fun+ Days widget's tinted panes
+  (v1.14) and the live widget's sea glass (v2.0.3). See "Widgets".
 - `widget/colesurfs.js` — the Scriptable script, served `no-cache`.
 - `favicon.svg` + `favicon-{16,32,192}.png` + `apple-touch-icon*.png` — the
   liquid-glass icon set. Glass layers (edge refraction with chromatic fringe,
@@ -862,7 +863,7 @@ because `eval` parses a classic script, where top-level await is a syntax
 error), so edits ship through autopull. Small = 1 region, medium = 2,
 large = 4.
 
-**The widget is an image, and the live widget mockup is the spec:**
+**The widget is an image, and the widget mockups are the spec:**
 Scriptable can't load the fonts or draw the glass, so `/widget/image.png`
 renders `templates/widget_render.html` (the mockup's CSS verbatim, one
 widget at the mockup's own px size — `_WIDGET_DIMS` small 170×170, medium
@@ -882,35 +883,62 @@ decode since a widget's tiles arrive as 8–16 parallel requests. Point sizes
 come from a screen-width table; the parameter `size=WxH` pins them and
 `calibrate` shows a point ruler to read a phone's real size. Numerals
 containing a 0 use Archivo (JetBrains Mono has no plain zero). FLAT's ink is
-lifted on both widgets (`_FLAT_DARK_INK` / `_FLAT_LIGHT_INK`). Tap opens the
+lifted on the Fun+ Days widget (`_FLAT_DARK_INK` / `_FLAT_LIGHT_INK`; the live widget's own `CAT` table lifts it to `#8c8ca6`). Tap opens the
 site in Safari: a home-screen web app has no URL scheme and Shortcuts' Open
 App can't target one either (tried 2026-10), so `OPEN_SHORTCUT` stays empty;
 the server sends each widget's target as `X-Tap-Url` on every tile.
 
 **Live widget** (parameters `live-lido` / `live-landing` / `live-southampton`,
 medium only, `kind=live` on the image/tile routes, `/api/widget/live` →
-`_live_payload`, `templates/widget_live_render.html` = the live mockup's CSS
-+ chart JS verbatim): left = the region buoy's partitions, tinted by the
-primary's category — the category word is the hero line and the swells sit
-beneath it in the BUOY NOW cell grammar (every category reads the way FLAT
-does; FLAT keeps only the primary; a reading with no period keeps the
-reading-as-hero layout) + "Swell trending X" = the worst primary rating
-either model forecasts in the window, floored at the buoy ("Swell staying
-X" when that is the buoy's own rating); right = the spot's tide now + today's
-curve with the CO-OPS highs/lows (`hilo_iso` / `hilo_height_ft`; the payload
-rebuilds them from `hilo_time` while an older cached tide dict is live) and
-wind, tinted by the better of the two models' current ratings. Window = the
-rest of today's daylight; after sunset (or before sunrise) it is the coming
-daylight and the pane shows "dawn patrol wind" badges at the sunrise hour
-instead of the outlook sentence. Outlook tiers: good = Glassy/Groomed/Clean,
-Textured, bad = Messy/Blown Out; not good → first hour either model turns
-good ("Wind trending glassy at 4 PM"), bad → first textured hour; good →
-first hour either model leaves good ("deteriorating at…" for bad, "trending
-textured at…"); else "holding for rest of day" / "holding tomorrow" —
-`_live_wind_sentence`, mirrored in the mockup's JS. The wind-rating
-lightness scale is mirrored there as the `WIND` map (dark inks one step
-brighter than the table's). The live widget's halves lean toward the seam
-(20 px outer / 10 px inner inset).
+`_live_payload`, `templates/widget_live_render.html` = direction B of the
+mockup `development-assets/design-demo/widget-glass.html`, "sea glass",
+round 2 — the mockup is the spec): **one constant slab, never tinted by a
+rating.** Dark: the home screen's slate (`#3b475f → #262f40 → #161c28`, a
+fog highlight top-left, a shade bottom-right); light: the wallpaper's bright
+cloud band (`#c4ccd6 → #adb6c3 → #97a2b1`, a mid slate, never white — the
+fog-white slab read as a jarring card). A grain of frost over it, then the
+icon's glass pared down: dark = the gradient rim (the one glass cue), one
+faint lip, the navy depth grade, no sheen / top highlight / chromatic fringe
+/ inner glow (the full stack read as too much on a widget); light = a soft
+cloud sheen, hairline edge, low inner frost glow, depth grade, rim fading to
+the sky's blue-grey, on a slab-coloured canvas. Left =
+the region buoy's partitions in the BUOY NOW cell grammar — the category
+word is the hero in its category colour (`--cat`: dark = the dashboard's
+cell text, FLAT lifted to `#8c8ca6`; light = the `lw` set re-lit for the
+slab, FUN `#128038`, FLAT `#565965`, FIRING `#ae1d1f`, HECTIC `#4c3ddb`…,
+since the dashboard's light inks went muddy on a mid slate), with a glow
+(light: a halo of the category's pale cell tint `--cat-ink`), a light-leak
+in the pane's lower-left corner (`.lk`: the colour; in light mode the pale
+tint) and a meniscus along
+the bottom edge (light mode borrows the dark widget's bar colour
+`--cat-glow`, FLAT's its hero ink, so both themes share one bar); the swells
+beneath (every category reads the way FLAT does; FLAT keeps only the
+primary; a reading with no period keeps the reading-as-hero layout) +
+"Swell trending X" = the worst primary rating either model forecasts in the
+window, floored at the buoy ("Swell staying X" when that is the buoy's own
+rating). Right = the spot's tide now + today's curve in `--tide` with the
+CO-OPS highs/lows (`hilo_iso` / `hilo_height_ft`; the payload rebuilds them
+from `hilo_time` while an older cached tide dict is live), then wind.
+Window = the rest of today's daylight; after sunset (or before sunrise) it
+is the coming daylight and the pane shows "dawn patrol wind" chips at the
+sunrise hour (both models' ratings, `×2` when they agree) instead of the
+outlook sentence. **The sentence leads with the rating now** — the better
+model's word, starred when the two models sit in different tiers
+("Textured* now"), since the slab no longer carries it — then the trend.
+Tiers: good = Glassy/Groomed/Clean, Textured, bad = Messy/Blown Out; not
+good → first hour either model turns good ("Messy now, trending glassy at
+4 PM"), bad → first textured hour; good → first hour either model leaves
+good ("Clean now, deteriorating at…" for bad, "…trending textured at…");
+else "…holding for rest of day" / "…holding tomorrow" —
+`_live_wind_sentence`; the mockup carries the output strings. It is set at
+9 px and wraps naturally; at that size every form fits in two lines. The
+wind-rating
+lightness scale is the template's `WIND` / `WINDL` maps (dark inks one
+step brighter than the table's; light chips pull 30 % toward `--ink` with
+a lifted fill so every tier sits at or above ~4.3:1 where the chips land).
+The widget is drawn at a 28 px radius, iOS's corner mask measured on a
+home-screen screenshot, so the rim follows the curve. The halves lean
+toward the seam (20 px outer / 10 px inner inset).
 
 Parameters: empty / `forecast-nyc` (regions in yaml order), `forecast-bi`
 (Block Island Sound first; anything unrecognised = default), the three live
@@ -1147,10 +1175,13 @@ comment.
   disagrees with a dashboard cell for the same hour/buoy, something is wrong
   — not a model difference.
 - **Energy is H²·T everywhere.** Never reintroduce H·T² on any side.
-- **The live widget mockup is the spec.** `widget_render.html` /
-  `widget_live_render.html` carry the mockups' CSS verbatim; change the
-  mockup in `development-assets/design-demo/` and the template together.
-  Widget tiles stay ≤ 290 px a side.
+- **The widget mockups are the spec.** `widget_live_render.html` is
+  direction B of `development-assets/design-demo/widget-glass.html` (the
+  round-2 sea glass; the page also holds the A chart-glass and C wind-glass
+  directions and the panel's `?variant=` stylesheets, none shipped);
+  `widget_render.html` keeps the Fun+ Days widget's tinted design, whose
+  CSS now lives in the template alone. Change the mockup and the template
+  together. Widget tiles stay ≤ 290 px a side.
 - Buoys in user-facing output use the location label ("NY Harbor
   Entrance"), with the station number in parentheses only for
   disambiguation. Model-vs-model comparisons show the dashboard quantity —

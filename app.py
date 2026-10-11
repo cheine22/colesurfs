@@ -713,10 +713,13 @@ def api_widget():
 
 # ── live-lido widget ─────────────────────────────────────────────────────────
 # Medium widget, Scriptable parameters live-lido / live-landing /
-# live-southampton: the spot's buoy now (left, swell tint) and the spot's tide /
-# wind (right, wind tint). Any WIND_SPOTS entry with a tide station and a shore
-# normal works; the buoy is the spot's buoy_region. The trend rules below are
-# the ones the mockup page implements in JS.
+# live-southampton: the spot's buoy now (left) and the spot's tide / wind
+# (right) on one constant sea-glass slab (v2.0.3) — the swell rating is the
+# hero word's colour, the wind rating leads the outlook sentence. Any
+# WIND_SPOTS entry with a tide station and a shore normal works; the buoy is
+# the spot's buoy_region. The trend rules below are the source of the
+# sentences; the mockup page (development-assets/design-demo/widget-glass.html)
+# carries their output strings.
 _LIVE_DEFAULT_SPOT = "Lido Beach"
 
 
@@ -753,26 +756,31 @@ def _fmt_clock(dt) -> str:
 
 
 def _live_wind_sentence(now: dict, ahead: list, after_sunset: bool) -> str:
-    """now = {t, e, g} (EURO / GFS rating at Lido this hour), ahead = the hours after it."""
+    """now = {t, e, g} (EURO / GFS rating at the spot this hour), ahead = the hours after it.
+    Leads with the rating now — the better model's word, starred when the two
+    models sit in different tiers (good / textured / bad) — then the trend. The
+    sea-glass widget's slab is constant, so the word is the only place the
+    current rating shows (v2.0.3; it used to be the pane's tint)."""
     cur = _wind_better(now["e"], now["g"])
     t0 = _wind_tier(cur)
+    lead = cur + ("*" if _wind_tier(now["e"]) != _wind_tier(now["g"]) else "") + (" at dawn" if after_sunset else " now")
     at = lambda h: f"at {_fmt_hour(h)}{' tomorrow' if after_sunset else ''}"
     if t0 != "good":
         for w in ahead:                      # improving: first hour EITHER model rates good
             b = _wind_better(w["e"], w["g"])
             if b in _WIND_GOOD:
-                return f"Wind trending {b.lower()} {at(w['t'])}"
+                return f"{lead}, trending {b.lower()} {at(w['t'])}"
         if t0 == "bad":
             for w in ahead:
                 if _wind_tier(_wind_better(w["e"], w["g"])) == "mid":
-                    return f"Wind trending textured {at(w['t'])}"
+                    return f"{lead}, trending textured {at(w['t'])}"
     else:
         for w in ahead:                      # worsening: first hour EITHER model leaves good
             x = _wind_worse(w["e"], w["g"])
             if x not in _WIND_GOOD:
-                return (f"Wind deteriorating {at(w['t'])}" if _wind_tier(x) == "bad"
-                        else f"Wind trending textured {at(w['t'])}")
-    return "Wind holding tomorrow" if after_sunset else "Wind holding for rest of day"
+                return (f"{lead}, deteriorating {at(w['t'])}" if _wind_tier(x) == "bad"
+                        else f"{lead}, trending textured {at(w['t'])}")
+    return f"{lead}, holding tomorrow" if after_sunset else f"{lead}, holding for rest of day"
 
 
 def _live_payload(spot: dict) -> dict:
@@ -909,13 +917,31 @@ def _live_payload(spot: dict) -> dict:
     }
 
 
+_live_payload_memo_store: dict = {}
+
+
+def _live_payload_memo(spot: dict) -> dict:
+    """`_live_payload` held for 60 s per spot. The widget PNG is keyed on the
+    rendered HTML, which inlines the payload with `generated_at` to the
+    second, so without this the 8–16 tile requests one Scriptable refresh
+    fires could straddle a second boundary and force a second Chrome render
+    (and the decoded-PNG cache to thrash between the two)."""
+    key, now = spot["name"], time.time()
+    hit = _live_payload_memo_store.get(key)
+    if hit and now - hit[0] < 60:
+        return hit[1]
+    data = _live_payload(spot)
+    _live_payload_memo_store[key] = (now, data)
+    return data
+
+
 @app.route("/api/widget/live")
 def api_widget_live():
     """`spot=` (default Lido Beach) picks the tide/wind spot; the buoy is its region's."""
     spot, err = _live_spot_arg()
     if err:
         return err
-    return jsonify(_live_payload(spot))
+    return jsonify(_live_payload_memo(spot))
 
 
 # ── widget image ─────────────────────────────────────────────────────────────
@@ -958,7 +984,7 @@ def _widget_render_ctx():
         spot, err = _live_spot_arg()
         if err:
             return None, err
-        return {"kind": "live", "family": "medium", "appearance": appearance, "data": _live_payload(spot),
+        return {"kind": "live", "family": "medium", "appearance": appearance, "data": _live_payload_memo(spot),
                 **_widget_dims_arg(*_WIDGET_DIMS["medium"])}, None
     if family not in _WIDGET_DIMS:
         return None, (jsonify({"error": "family must be small, medium or large"}), 400)
