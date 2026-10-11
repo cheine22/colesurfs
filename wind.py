@@ -1,25 +1,32 @@
 """
 colesurfs — Wind Data Fetcher
-  • fetch_spot_wind()                       → per-spot current wind for table
-  • fetch_spot_wind_forecasts()             → per-spot hourly wind for WIND table row
-  • fetch_region_wind_forecasts(model_key)  → hourly wind for all WIND_SPOTS (regional mode)
+  • fetch_spot_wind()                       → per-spot current wind (Open-Meteo)
+  • fetch_spot_wind_forecasts()             → per-spot hourly wind for WIND table row (Open-Meteo)
+  • fetch_region_wind_forecasts(model_key)  → hourly wind + gust for all WIND_SPOTS
+                                              (table cells, ratings, Fun+ gate, widgets)
   • estimate_model_run(model_key)           → best guess of which model run is current
 
-Wind model is matched to the active wave model:
-  EURO → ecmwf_ifs atmospheric model
-  GFS  → gfs atmospheric model
-
-The map's gridded wind field is NOT fetched here — see wind_field.py (0.25°
-GRIB straight from NOMADS / ECMWF open data).
+Spot winds are the MAP'S OWN FIELD: fetch_region_wind_forecasts samples the
+wind_field series (the model's 0.25° GRIB u/v/gust the map paints) at each
+spot with the page's interpolation, so a table cell, its map label and the
+colour under the dot are one number. Open-Meteo point forecasts remain only
+for history hours older than the GRIB store (the −240 h strip) and as a
+stand-in before the first run lands — always for the SAME model
+(WIND_MODELS: EURO → ecmwf_ifs, GFS → gfs_seamless), never another model's
+wind under this model's name.
 """
+import threading
 import time
+import numpy as np
 import requests
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from cache import ttl_cache, record_api_calls
 from config import (
     TIMEZONE, FORECAST_DAYS, WIND_MODELS, MODEL_UPDATE_HOURS_UTC,
     ms_to_kts, ms_to_mph, degrees_to_cardinal, SPOTS, WIND_SPOTS,
 )
+import wind_field
 
 FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 
@@ -267,131 +274,164 @@ def fetch_spot_wind_forecasts() -> dict | None:
     return result
 
 
-# ─── Regional wind spot hourly forecasts (for Regional Mode table) ─────────────
-@ttl_cache(ttl_seconds=3600)
-def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> dict | None:
-    """
-    Hourly wind + gust forecast for all WIND_SPOTS, respecting model_key.
-    Returns {spot_name: [{time, speed_mph, direction_deg, direction_cardinal,
-                          gust_mph, gust_cardinal}, ...]}
-    Uses WIND_MODELS[model_key] atmospheric model (same as wind grid).
-    Falls back to API default if the requested model fails.
+# ─── Regional wind spot hourly forecasts (table cells, ratings, Fun+ gate) ────
 
-    `past_days` (0..30) instructs Open-Meteo to include this many days of
-    historical hours BEFORE today in the response. Used by the dashboard's
-    historical-data toggle so the per-spot wind strip can show observed
-    wind from the same model for each historical cell.
+def _unique_wind_coords():
+    """WIND_SPOTS deduplicated by (lat, lon) — spots shared between regions
+    are one point. Returns (coords, index per WIND_SPOTS entry)."""
+    coords, idx, spot_to = [], {}, []
+    for ws in WIND_SPOTS:
+        key = (ws["lat"], ws["lon"])
+        if key not in idx:
+            idx[key] = len(coords)
+            coords.append(key)
+        spot_to.append(idx[key])
+    return coords, spot_to
 
-    Deduplicates spots that share the same lat/lon (e.g. spots appearing in
-    multiple regions) so the API call uses only unique coordinates, saving
-    quota and avoiding 429 rate-limit errors.
-    """
-    if not WIND_SPOTS:
+
+def _record(t: str, spd_ms, dir_deg, gust_ms) -> dict:
+    d = None if dir_deg is None else int(round(float(dir_deg))) % 360
+    return {
+        "time":               t,
+        "speed_mph":          ms_to_mph(spd_ms),
+        "direction_deg":      d,
+        "direction_cardinal": degrees_to_cardinal(d),
+        "gust_mph":           ms_to_mph(gust_ms),
+        "gust_cardinal":      degrees_to_cardinal(d),
+    }
+
+
+@ttl_cache(ttl_seconds=3600, skip_none=True)
+def _open_meteo_region_hours(model_key: str, past_days: int) -> dict | None:
+    """Open-Meteo's hourly point wind for WIND_MODELS[model_key] at every
+    unique spot coordinate: {unique index: [record…]}. Used only where the
+    GRIB series has nothing (history older than three days; everything before
+    the first run lands). The requested model or nothing — a failure here
+    must never put another model's wind under this model's name."""
+    coords, _ = _unique_wind_coords()
+    if not coords:
         return {}
-
     neg_key = f"region_wind:{model_key}"
     if _is_negative_cached(neg_key):
-        print("[region_wind] skipping — negative cached (rate limited recently)")
+        print("[region_wind] skipping Open-Meteo — negative cached (rate limited recently)")
         return None
-
-    # ── Deduplicate by lat/lon ──────────────────────────────────────────────
-    # Build a list of unique (lat, lon) pairs and track which spot names
-    # map to each unique location.
-    unique_coords = []          # [(lat, lon), ...]
-    coord_to_idx: dict[tuple, int] = {}   # (lat, lon) → index in unique_coords
-    spot_to_unique: list[int] = []        # WIND_SPOTS index → unique_coords index
-
-    for s in WIND_SPOTS:
-        key = (s["lat"], s["lon"])
-        if key not in coord_to_idx:
-            coord_to_idx[key] = len(unique_coords)
-            unique_coords.append(key)
-        spot_to_unique.append(coord_to_idx[key])
-
-    n_unique = len(unique_coords)
     model_id = WIND_MODELS.get(model_key)
-    lats = ",".join(str(c[0]) for c in unique_coords)
-    lons = ",".join(str(c[1]) for c in unique_coords)
-
-    past_days = max(0, min(int(past_days or 0), 30))
-    base_params = {
-        "latitude":        lats,
-        "longitude":       lons,
+    params = {
+        "latitude":        ",".join(str(c[0]) for c in coords),
+        "longitude":       ",".join(str(c[1]) for c in coords),
         "hourly":          "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
         "wind_speed_unit": "ms",
         "forecast_days":   FORECAST_DAYS,
         "timezone":        TIMEZONE,
     }
+    if model_id:
+        params["models"] = model_id
     if past_days > 0:
-        base_params["past_days"] = past_days
-
-    print(f"[region_wind] fetching {n_unique} unique pts "
-          f"(from {len(WIND_SPOTS)} total spots)…")
-
-    attempts = ([{**base_params, "models": model_id}] if model_id else []) + [base_params]
-    data = None
-    for params in attempts:
-        try:
-            record_api_calls("region_wind", n_unique)
-            r = requests.get(FORECAST_API, params=params, timeout=30,
-                             headers={"User-Agent": "ColeSurfs/1.0"})
-            r.raise_for_status()
-            raw = r.json()
-        except Exception as e:
-            print(f"[region_wind] fetch ({params.get('models', 'default')}): {e}")
-            if "429" in str(e):
-                _set_negative_cache(neg_key)
-                break   # don't retry fallback model — also rate limited
-            continue
-
-        if isinstance(raw, dict):
-            raw = [raw]
-        if not raw or not isinstance(raw, list):
-            continue
-        if raw[0].get("error"):
-            print(f"[region_wind] API error ({params.get('models', 'default')}): "
-                  f"{raw[0].get('reason', '?')} — trying without model…")
-            continue
-
-        times = raw[0].get("hourly", {}).get("time", [])
-        if times:
-            data = raw
-            break
-
-    if not data:
+        params["past_days"] = past_days
+    print(f"[region_wind] Open-Meteo {model_id or 'default'}: {len(coords)} pts, past_days={past_days}…")
+    try:
+        record_api_calls("region_wind", len(coords))
+        r = requests.get(FORECAST_API, params=params, timeout=30,
+                         headers={"User-Agent": "ColeSurfs/1.0"})
+        r.raise_for_status()
+        raw = r.json()
+    except Exception as e:
+        print(f"[region_wind] Open-Meteo ({model_id or 'default'}): {e}")
+        if "429" in str(e):
+            _set_negative_cache(neg_key)
         return None
+    if isinstance(raw, dict):
+        raw = [raw]
+    if not raw or not isinstance(raw, list) or raw[0].get("error"):
+        print(f"[region_wind] Open-Meteo API error ({model_id or 'default'}): "
+              f"{raw[0].get('reason', '?') if raw and isinstance(raw, list) else raw}")
+        return None
+    out = {}
+    for i in range(len(coords)):
+        h = raw[i].get("hourly", {}) if i < len(raw) else {}
+        times, speeds = h.get("time", []), h.get("wind_speed_10m", [])
+        dirs, gusts = h.get("wind_direction_10m", []), h.get("wind_gusts_10m", [])
+        out[i] = [_record(t, speeds[j] if j < len(speeds) else None,
+                          dirs[j] if j < len(dirs) else None,
+                          gusts[j] if j < len(gusts) else None)
+                  for j, t in enumerate(times)]
+    return out
 
-    # ── Parse unique responses ─────────────────────────────────────────────
-    unique_records: list[list[dict]] = []
-    for i in range(n_unique):
-        if i >= len(data):
-            unique_records.append([])
-            continue
-        h      = data[i].get("hourly", {})
-        times  = h.get("time",               [])
-        speeds = h.get("wind_speed_10m",     [])
-        dirs   = h.get("wind_direction_10m", [])
-        gusts  = h.get("wind_gusts_10m",     [])
 
-        records = []
-        for j, t in enumerate(times):
-            spd  = speeds[j] if j < len(speeds) else None
-            dirn = dirs[j]   if j < len(dirs)   else None
-            gust = gusts[j]  if j < len(gusts)  else None
-            records.append({
-                "time":               t,
-                "speed_mph":          ms_to_mph(spd),
-                "direction_deg":      dirn,
-                "direction_cardinal": degrees_to_cardinal(dirn),
-                "gust_mph":           ms_to_mph(gust),
-                "gust_cardinal":      degrees_to_cardinal(dirn),
-            })
-        unique_records.append(records)
+_region_memo: dict[tuple, dict] = {}
+_region_lock = threading.Lock()
 
-    # ── Map unique results back to all spot names ──────────────────────────
+
+def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> dict | None:
+    """
+    Hourly wind + gust for all WIND_SPOTS, local time, respecting model_key:
+    {spot_name: [{time, speed_mph, direction_deg, direction_cardinal,
+                  gust_mph, gust_cardinal}, ...]}
+
+    Every hour the map's series covers (three days back to the newest run's
+    +240 h) is the map's own field — wind_field.sample(): the model's 0.25°
+    u/v/gust, linear between steps, bilinear in the grid, read at the spot —
+    so the table cell, the spot label and the colour beneath the dot agree.
+    Hours before the series (the history strip, `past_days` up to 30) and,
+    before the first run lands, the whole window come from Open-Meteo's point
+    forecast for the same model. Hours with no source are left out.
+
+    Memoised per (model, past_days) on the series build (a new run, a top-up
+    such as gusts landing, or the hourly window move rebuild the series and
+    so this); building is local arithmetic.
+    """
+    if not WIND_SPOTS:
+        return {}
+    past_days = max(0, min(int(past_days or 0), 30))
+    tz = ZoneInfo(TIMEZONE)
+    now = datetime.now(tz)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=past_days)
+    s = wind_field.series(model_key)
+    key = (model_key, past_days, s["meta"]["built"] if s else None, now.strftime("%Y%m%d%H"))
+    with _region_lock:
+        hit = _region_memo.get(key)
+    if hit is not None:
+        return hit
+
+    coords, spot_to = _unique_wind_coords()
+    end = (datetime.fromtimestamp(int(s["ms"][-1]) / 1000, timezone.utc).astimezone(tz) if s
+           else start + timedelta(days=FORECAST_DAYS))
+    n_hours = int((end - start).total_seconds() // 3600) + 1
+    times = [start + timedelta(hours=k) for k in range(max(n_hours, 0))]
+    labels = [t.strftime("%Y-%m-%dT%H:%M") for t in times]
+    ms = [int(t.timestamp() * 1000) for t in times]
+
+    per_point: list[dict[str, dict]] = [{} for _ in coords]
+    sampled = wind_field.sample(model_key, coords, ms) if s else None
+    if sampled:
+        spd, dirn, gust = sampled["speed_ms"], sampled["dir_deg"], sampled["gust_ms"]
+        for k, t in enumerate(labels):
+            for i in range(len(coords)):
+                v = spd[k, i]
+                if np.isnan(v):
+                    continue
+                g = gust[k, i]
+                per_point[i][t] = _record(t, float(v), float(dirn[k, i]), None if np.isnan(g) else float(g))
+
+    # Open-Meteo only for hours the series can't give: before its first
+    # step (history) or all of them (no run yet).
+    need = (s is None) or (s["ms"][0] > ms[0] if ms else False)
+    if need:
+        om = _open_meteo_region_hours(model_key, past_days)
+        for i, recs in (om or {}).items():
+            have = per_point[i]
+            for r in recs:
+                if r["time"] not in have and r["speed_mph"] is not None and r["time"] >= labels[0]:
+                    have[r["time"]] = r
+
     result = {}
-    for i, spot in enumerate(WIND_SPOTS):
-        uid = spot_to_unique[i]
-        result[spot["name"]] = unique_records[uid]
-
+    for j, ws in enumerate(WIND_SPOTS):
+        recs = per_point[spot_to[j]]
+        result[ws["name"]] = [recs[t] for t in sorted(recs)]
+    if not any(result.values()):
+        return None
+    with _region_lock:
+        for k in [k for k in _region_memo if k[:2] == key[:2]]:
+            _region_memo.pop(k, None)
+        _region_memo[key] = result
     return result

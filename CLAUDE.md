@@ -5,10 +5,11 @@ code as it is; the historical record is `README.md` § Changelog.
 
 ## What this is
 
-Single-page Flask app (v2.0.0) that aggregates surf-forecast data — NOAA
-NDBC buoys, NOAA CO-OPS tides, Copernicus Marine / Open-Meteo wave models,
-Open-Meteo point winds — and renders it as a swell table synced to a wind
-map whose field comes straight from the GFS and ECMWF IFS GRIB grids. No
+Single-page Flask app (v2.0.2) that aggregates surf-forecast data — NOAA
+NDBC buoys, NOAA CO-OPS tides, Copernicus Marine / Open-Meteo wave models —
+and renders it as a swell table synced to a wind map whose field comes
+straight from the GFS and ECMWF IFS GRIB grids; the table's spot winds are
+that same field read at each spot. No
 build step and no bundler: `templates/index.html` inlines all of the
 dashboard's JS and CSS in one file.
 
@@ -76,14 +77,23 @@ Analysis), `/gland` (+ `/gland/tuner`), `/tuner`, `/csc-model`,
   `development-assets/tests/test_wave_identity.py` (golden fixtures);
   regenerate goldens only for intentional changes via
   `development-assets/tests/regen_golden.py`.
-- `wind.py` — per-spot Open-Meteo winds ONLY (table cells, ratings, Fun+
-  gate, widgets): `fetch_all_spot_winds` batches every spot's current wind
-  into one call (`fetch_spot_wind` per spot is the fallback),
-  `fetch_spot_wind_forecasts` (WIND row), `fetch_region_wind_forecasts(model,
-  past_days)` (regional mode; `past_days` up to 30 for the history strip),
-  `estimate_model_run` / `make_new_run_checker` (run indicator, smart
-  refresh). Models `config.WIND_MODELS`: EURO → `ecmwf_ifs`, GFS →
-  `gfs_seamless`. The map's grid is `wind_field.py`, never this module.
+- `wind.py` — the per-spot winds (table cells, ratings, Fun+ gate,
+  regional map labels, widgets): `fetch_region_wind_forecasts(model,
+  past_days)` samples the MAP'S OWN SERIES at every WIND_SPOT
+  (`wind_field.sample`: u/v/gust linear between the two steps bracketing
+  the hour, bilinear in the grid — the arithmetic the page runs under the
+  spot's pixel), hourly from local midnight (minus `past_days`) to the
+  series' last step, memoised on (model, past_days, series id, hour). Only
+  hours the series cannot give — history older than its three-day reach
+  (`past_days` up to 30) and everything before the first run lands — come
+  from `_open_meteo_region_hours` (Open-Meteo point forecast for the SAME
+  model, `config.WIND_MODELS`: EURO → `ecmwf_ifs`, GFS → `gfs_seamless`;
+  TTL 1 h, 429 negative-cached 30 min). There is NO cross-model fallback:
+  a model's column is that model or empty. `fetch_all_spot_winds` /
+  `fetch_spot_wind` / `fetch_spot_wind_forecasts` are the Open-Meteo
+  "current" and WIND-row fetchers behind `/api/wind` / `/api/wind_spots`
+  (the dashboard calls neither); `estimate_model_run` /
+  `make_new_run_checker` drive the run indicator and smart refresh.
 - `wind_field.py` — the map's gridded wind. See "The map".
 - `bathy.py` — self-rendered basemap + coastline tiles. See "The map".
 - `tide.py` — CO-OPS harmonic predictions with the per-spot Surfline
@@ -189,17 +199,26 @@ Analysis), `/gland` (+ `/gland/tuner`), `/tuner`, `/csc-model`,
 
 ### wind_field.py — the gridded wind
 
-Pulls the models' own 0.25° 10 m u/v straight from GRIB: GFS through
-NOMADS' grib filter (a subregion cut of UGRD/VGRD, ~23 KB a step; AWS
-`noaa-gfs-bdp-pds` `.idx` byte ranges as the fallback), ECMWF IFS through
-the open-data `.index` files + byte ranges (one global field per step,
-~0.75 MB; `data.ecmwf.int`, AWS mirror as fallback). Steps: GFS hourly to
-120 then 3-hourly to 240; ECMWF 3-hourly to 144 then 6-hourly to 240 (06/18Z
-stop at 90). Each run is decoded with eccodes (`_decode` normalises row order
-N→S and longitudes to −180..180; `_cut` slices the envelope 30–48° N ×
-82–55° W, 73 × 109), quantised to 0.05 m/s int16 (`SCALE` 20) and written to
-`.cache/wind_field/<MODEL>/<YYYYMMDDHH>.npz` as soon as its first steps land.
-Runs are kept `KEEP_DAYS` = 4 days (the composite only reaches back 3).
+Pulls the models' own 0.25° 10 m u/v AND gust straight from GRIB: GFS
+through NOMADS' grib filter (a subregion cut of UGRD/VGRD at 10 m + GUST at
+the surface, ~31 KB a step; AWS `noaa-gfs-bdp-pds` `.idx` byte ranges as
+the fallback), ECMWF IFS through the open-data `.index` files + byte ranges
+(global `10u`, `10v` and the gust — `10fg` to +90 h and on the 6-hourly tail, `10fg3` from +93 to +144 — per step, ~3 MB) from Google's mirror
+(`storage.googleapis.com/ecmwf-open-data`), then AWS, then `data.ecmwf.int`
+— ECMWF's own server answers bursts with 429 and the AWS mirror with 503
+Slow Down. EURO steps are paced one a second. Steps: GFS hourly to 120 then
+3-hourly to 240; ECMWF 3-hourly to 144 then 6-hourly to 240 (06/18Z stop at
+90). Each run is decoded with eccodes (`_decode` normalises row order N→S
+and longitudes to −180..180; `_cut` slices the envelope 30–48° N × 82–55° W,
+73 × 109), quantised to 0.05 m/s int16 (`SCALE` 20; gust `NO_GUST` = −1
+where a step has none — an ECMWF +0 h `10fg` is a constant field and GFS
+`GUST` can sit under the 10 m wind, which `sample()` floors) and written to
+`.cache/wind_field/<MODEL>/<YYYYMMDDHH>.npz` as soon as its first steps
+land, with a per-step `gok` flag (fetched by the gust-aware fetcher). A file
+from before gusts loads with `gok` all false, so the updater refills the two
+newest cycles with gusts and the older ones keep serving the past gust-less
+(gust `—` in those history cells). Runs are kept `KEEP_DAYS` = 4 days (the
+composite only reaches back 3).
 
 `update()` runs every 10 min (`start_updater`, a daemon thread; `_loop`
 loads the disk store first) and fetches or tops up the two newest cycles
@@ -218,7 +237,19 @@ hashes which run supplies each step, so a top-up that only re-sources hours
 the previous cycle already covered is a new id. Wire format `_encode`: per
 field, int16 x-deltas within each row (first column raw), the high bytes of
 every value then the low bytes; the client prefix-sums each row (int16
-wraparound cancels exactly).
+wraparound cancels exactly). Only u and v go over the wire; the gust plane
+(`g`) and the step epochs (`ms`) stay server-side for `sample()`.
+
+`sample(model, points, times_ms)` is the table's read of the series: for
+each epoch it takes the two bracketing steps (`searchsorted` on `ms`),
+lerps u and v, reads the four grid corners bilinearly and takes
+`hypot` / `atan2(−u, −v)` from the interpolated components — the same
+arithmetic as `WindField.fieldAt` + `WindRaster.render` under the spot's
+pixel, so the cell and the colour agree to rounding. NaN outside the series
+window or the grid; gust from whichever bracketing step has one, floored at
+the speed, NaN when neither does. **Keep `sample()` and the page's
+interpolation identical** — if one changes (e.g. nearest-step instead of
+linear), change both.
 
 Routes (app.py): `/api/wind_field/meta?model=` (grid, steps with local ISO
 + epoch ms + run + lead, `now_index`, chunk layout, runs; 503 until the
@@ -227,6 +258,8 @@ first run lands), `/api/wind_field/data?model=&series=&chunk=k|step=i`
 `public, max-age=86400` because the id is in the URL, the one `/api/`
 exception in `_add_cache_headers`), `/api/wind_field/status`. Nothing here
 touches Open-Meteo. `python wind_field.py [GFS|EURO]` runs one pass by hand.
+`/api/region_wind?model=&past_days=` (wind.py) is where the series meets
+the table.
 
 ### bathy.py — basemap and coastline tiles
 
@@ -328,12 +361,14 @@ Four objects, all fed one field at a time:
   canvas row, one longitude per column (bearing is always 0), bilinear in
   the grid, `RES` = 2 CSS px per sample, viewport + `PAD` 25 % margin,
   positioned in layer space so it pans with the tiles. 512-entry LUT to
-  40 m/s over `WIND_RAMP[theme]` (m/s stops, the only ramp; the legend is
-  rebuilt from it per theme): the site's own Obsidian palette made
-  continuous — page navy (slate blue in light mode) → indigo → `--accent`
-  purple → green → amber → red, lightening past gale force — at `_alpha`
-  0.78 dark / 0.8 light. A Windy-style rainbow and muted/saturated variants
-  were tried and rejected: the map must stay in the site's palette. Events:
+  40 m/s over `WIND_RAMP` (stops written in mph in `_RAMP_MPH`, converted to
+  m/s; one ramp for both themes; the legend is rebuilt from it): bands Cole
+  set — purples to 5 mph (indigo → `--accent`), blues to 15 (the WEAK blue
+  family), greens to 30 (the FUN green), then orange and red, lightening past
+  50 — at `_alpha` 0.78 dark / 0.8 light. A Windy-style rainbow,
+  muted/saturated variants and a ramp with the purples running to ~18 mph
+  were tried and rejected: the map stays in the site's palette on these
+  bands. Events:
   `zoomanim` scales it like an image
   overlay (`_latLngBoundsToNewLayerBounds`), `zoom` keeps it fitted through
   a pinch (leaflet-rotate drives fractional zooms with no zoomanim),
@@ -355,9 +390,16 @@ Four objects, all fed one field at a time:
 `_requestWind` / `_resubmitWind` track the current target so map events
 re-render without recalculating; `syncToNow` / `syncByTime` →
 `_syncWindTo(ms)`. Regional mode draws the same grid; labels/dots are the
-Open-Meteo spot winds, dots one colour (`SPOT_DOT`). The outage banner does
-not watch the map wind; the status line does. The loader counts the wind
-field as one of its ten steps.
+spot winds from `/api/region_wind` — the same series read at the spot — so
+a label matches the colour under its dot; dots one colour (`SPOT_DOT`).
+`WindField` re-reads a model's meta when it is older than `META_TTL`
+(10 min) or invalidated, carries over steps the new series still composes
+from the same (ms, run, lead), and fires `onSeriesChange` when the id moved;
+§ 6 answers it with `_refreshRegionWind()` (one in-flight fetch of both
+models' spot winds, then `buildTable` + the regional labels), so a new run
+reaches the map and the table together. The outage banner does not watch
+the map wind; the status line does. The loader counts the wind field as one
+of its nine steps.
 
 Panes bottom → top: bathy tiles (tilePane) → `windRaster` (350) → `coast`
 tiles (380) → particles / SVG vectors (overlayPane) → markers.
@@ -810,9 +852,11 @@ SE trade windsea would take a top-2 slot.
 `computeModelOverview` (the Fun+ Days cell: 3 h stride from now, night
 skipped, min(EURO, GFS) category, EURO region-wind gate, ≥ 2 windows per
 day) — change the JS rule and this together, they must agree exactly.
-`last_update` is the OLDER of the two model runs, labelled "today 12Z" /
-"yesterday 0Z" by the run's LOCAL day (a 00Z run is the previous evening
-here). The phone holds a two-line loader that `await eval`s
+`last_update` is the OLDER of the two model runs, labelled "today 0Z" /
+"yesterday 12Z" by the run's own UTC date compared with today's local date
+(the forecasters' convention — today's 00Z run is 8 PM the previous evening
+here, and labelling it by its local day read "yesterday 0Z", which Cole took
+for a stale run); a run dated past local today still reads "today". The phone holds a two-line loader that `await eval`s
 `/widget/colesurfs.js` (served `no-cache`; the script body is one async IIFE
 because `eval` parses a classic script, where top-level await is a syntax
 error), so edits ship through autopull. Small = 1 region, medium = 2,
@@ -932,8 +976,8 @@ comment.
 
 ## Dashboard landmarks (templates/index.html)
 
-- **Loading** — `_loader` counts ten steps (interface, buoys, EURO, GFS,
-  spot winds, region wind, alt wind, tides, table, wind field); the page
+- **Loading** — `_loader` counts nine steps (interface, buoys, EURO, GFS,
+  region wind, alt wind, tides, table, wind field); the page
   instant-paints from `sessionStorage['cs_snapshot_v1']` when present.
 - **Table header** — the top-left cell reads **BUOY/REGION** in overview
   mode and **SPOT** in regional mode. Up to two ranked partitions per cell
@@ -1171,7 +1215,24 @@ To reload any service after a code change:
   (`fetch_wind_grid`, `/api/wind_forecast` and `config.GRID_*` are gone,
   and so are `WIND_BANDS`, the pill legend, `windCurrent` / `windForecast` /
   `windByTime` and the IDW spot particles). `/api/wind` serves spot winds
-  only.
+  only, and the dashboard no longer calls it: it rendered nothing from it,
+  and a slow fallback behind Open-Meteo 429s timed the page out into a
+  false PARTIAL DATA OUTAGE modal.
+- **Don't put the table's wind back on Open-Meteo point forecasts, and never
+  fall back across models.** v2.0 read the cells from Open-Meteo while the
+  map drew the GRIB field: Open-Meteo snaps a beach to its nearest LAND cell
+  (and GFS-seamless is a different grid), so cells disagreed with the colour
+  under the dot by up to 2×, and when the `models=` request failed the
+  fetcher silently served Open-Meteo's default blend as "EURO" — the EURO
+  column was GFS wind for hours at a time. The cells are now
+  `wind_field.sample()` of the map's series; Open-Meteo is only for history
+  older than the store and only ever the same model. The wind-rating
+  thresholds (`wind-categorization-scheme.toml`) were tuned on the land-cell
+  values, so coastal spots now rate a step windier on sea breezes — retune
+  there, not by changing the source. The observed fun+ ledger's archive
+  (`fun_days.py`, Open-Meteo historical `ecmwf_ifs`) still holds land-cell
+  winds; the live tail it overlays from the dashboard payload is now the
+  GRIB read — a known seam.
 - **Don't re-add edge / browser caching of `/api/*`** without solving the
   2–3-reload staleness it causes (see Data & caching).
 - **`_add_cache_headers` must not touch `/tiles/`** — misses are

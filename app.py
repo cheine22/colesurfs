@@ -675,15 +675,18 @@ def _widget_payload(names: list[str]) -> dict:
     runs = {k: estimate_model_run(k) for k in ("EURO", "GFS")}
     oldest = min(runs.values(), key=lambda r: r.get("run_time") or "")
     rt = oldest.get("run_time") or ""
-    # "today 12Z" / "yesterday 0Z": the run's day in local time (a 00Z run is
-    # the previous evening here), hour without the leading zero.
+    # "today 0Z" / "yesterday 12Z": a run is named by its own UTC date, the
+    # forecasters' convention (today's 00Z run is midnight UTC, 8 PM the
+    # previous evening here), compared with today's local date; hour without
+    # the leading zero. A run dated past local today (a 00Z run just before
+    # local midnight) still reads "today".
     label = "—"
     if len(rt) >= 16:
         from zoneinfo import ZoneInfo
         from config import TIMEZONE
-        run_local = datetime.strptime(rt, "%Y-%m-%dT%H:%MZ").replace(tzinfo=_tz.utc).astimezone(ZoneInfo(TIMEZONE))
-        days_ago = (now.astimezone(ZoneInfo(TIMEZONE)).date() - run_local.date()).days
-        day = "today" if days_ago == 0 else "yesterday" if days_ago == 1 else f"{rt[5:7]}/{rt[8:10]}"
+        run_date = datetime.strptime(rt[:10], "%Y-%m-%d").date()
+        days_ago = (now.astimezone(ZoneInfo(TIMEZONE)).date() - run_date).days
+        day = "today" if days_ago <= 0 else "yesterday" if days_ago == 1 else f"{rt[5:7]}/{rt[8:10]}"
         label = f"{day} {int(rt[11:13])}Z"
 
     return {

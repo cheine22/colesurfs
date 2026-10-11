@@ -1491,13 +1491,13 @@
     <dl class="info-modal-sources">
       <dt>Swell — EURO</dt><dd>Copernicus Marine (CMEMS) · ECMWF WAM ANFC</dd>
       <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
-      <dt>Wind — spots</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless</dd>
-      <dt>Wind — map</dt><dd>NOAA NCEP GFS 0.25° via NOMADS · ECMWF IFS 0.25° open data (CC BY 4.0)</dd>
+      <dt>Wind — map &amp; spots</dt><dd>NOAA NCEP GFS 0.25° via NOMADS · ECMWF IFS 0.25° open data (CC BY 4.0) — the spot winds are this field read at each spot</dd>
+      <dt>Wind — history</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless (hours older than the map's three-day store)</dd>
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v2.0.1</span>
+    <span class="info-modal-version">v2.0.2</span>
   </div>
 </div>
 
@@ -1522,7 +1522,7 @@
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
       <button class="info-modal-refresh" onclick="openWidgetModal()">▣ IOS WIDGETS</button>
     </div>
-    <span class="about-version">v2.0.1</span>
+    <span class="about-version">v2.0.2</span>
   </div>
 </div>
 
@@ -1592,7 +1592,7 @@ await eval(await r.loadString());</pre>
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v2.0.1</span>
+    <span class="footer-version">v2.0.2</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -1624,7 +1624,7 @@ await eval(await r.loadString());</pre>
 // ═══ 0. LOADING PROGRESS ════════════════════════════════════
 const _loader = {
   _done: 0,
-  _total: 10,  // interface, buoys, euro, gfs, spot winds, regionWind, altWind, tides, table, wind field
+  _total: 9,   // interface, buoys, euro, gfs, regionWind, altWind, tides, table, wind field
   step(label) {
     this._done = Math.min(this._done + 1, this._total);
     const pct = Math.round((this._done / this._total) * 100);
@@ -1782,30 +1782,25 @@ function _prefetchTiles() {
 // site uses, lightening past gale force. One ramp per theme drives the
 // raster and the legend. It is purely wind speed — no relation to the
 // swell / wind RATING palettes.
-const WIND_RAMP = {
-  dark: [
-    [ 0, [0x1a, 0x1a, 0x2e]],
-    [ 2.5, [0x2e, 0x2e, 0x4e]],
-    [ 5, [0x4a, 0x3f, 0xaa]],
-    [ 8, [0x7c, 0x6a, 0xf7]],
-    [11, [0x3f, 0xb9, 0x50]],
-    [15, [0xd2, 0x99, 0x22]],
-    [20, [0xf8, 0x51, 0x49]],
-    [28, [0xff, 0x9a, 0x8a]],
-    [40, [0xff, 0xe0, 0xdc]],
-  ],
-  light: [
-    [ 0, [0x5a, 0x68, 0x98]],
-    [ 2.5, [0x4a, 0x50, 0xa0]],
-    [ 5, [0x4a, 0x3f, 0xaa]],
-    [ 8, [0x7c, 0x6a, 0xf7]],
-    [11, [0x3f, 0xb9, 0x50]],
-    [15, [0xd2, 0x99, 0x22]],
-    [20, [0xf8, 0x51, 0x49]],
-    [28, [0xff, 0x9a, 0x8a]],
-    [40, [0xff, 0xe0, 0xdc]],
-  ],
-};
+// Bands in mph (the legend's unit): purples to 5, blues to 15, greens to
+// 30, orange then red beyond — the site's own hues (indigo / accent purple,
+// the WEAK blue family, the FUN green, amber, red). Both themes share it.
+const _RAMP_MPH = [
+  [ 0, [0x3b, 0x31, 0x92]],
+  [ 3, [0x7c, 0x6a, 0xf7]],
+  [ 5.5, [0x5a, 0x72, 0xe0]],
+  [10, [0x3d, 0x8a, 0xd0]],
+  [14, [0x46, 0xb0, 0xe0]],
+  [17, [0x3f, 0xb9, 0x50]],
+  [24, [0x5c, 0xc2, 0x44]],
+  [29, [0x9a, 0xc8, 0x38]],
+  [33, [0xe8, 0x8a, 0x2a]],
+  [40, [0xf8, 0x51, 0x49]],
+  [50, [0xff, 0x9a, 0x8a]],
+  [70, [0xff, 0xe0, 0xdc]],
+];
+const _RAMP_MS = _RAMP_MPH.map(([mph, c]) => [mph * 0.44704, c]);
+const WIND_RAMP = { dark: _RAMP_MS, light: _RAMP_MS };
 function windRampColor(ms, dark = _isDark()) {
   const R = WIND_RAMP[dark ? 'dark' : 'light'];
   if (ms <= R[0][0]) return R[0][1];
@@ -1819,15 +1814,21 @@ function windRampColor(ms, dark = _isDark()) {
 }
 
 const WindField = (() => {
+  const META_TTL = 10 * 60000;                // re-read a model's series this often (a new run may have landed)
   const _models = {};
-  const _listeners = [];
+  const _listeners = [], _seriesListeners = [];
   let _lastField = null;
 
   function _rec(model) {
-    return _models[model] || (_models[model] = { meta: null, steps: [], n: 0, loading: null, failed: 0, stale: false, err: null });
+    return _models[model] || (_models[model] = { meta: null, metaAt: 0, steps: [], n: 0, loading: null, failed: 0, stale: false, err: null });
   }
+  function _fresh(rec) { return !!rec.meta && !rec.stale && Date.now() - rec.metaAt < META_TTL; }
   function onUpdate(fn) { _listeners.push(fn); }
+  // Fired when a model's series id changes after it was first read — the
+  // table's spot winds are sampled from that series, so they re-fetch.
+  function onSeriesChange(fn) { _seriesListeners.push(fn); }
   function _emit(model) { for (const fn of _listeners) { try { fn(model); } catch (e) { console.warn('[windField]', e); } } }
+  function _emitSeries(model) { for (const fn of _seriesListeners) { try { fn(model); } catch (e) { console.warn('[windField]', e); } } }
 
   async function _meta(model) {
     const r = await fetch(`/api/wind_field/meta?model=${model}`);
@@ -1863,23 +1864,33 @@ const WindField = (() => {
   function load(model) {
     const rec = _rec(model);
     if (rec.loading && !rec.stale) return rec.loading;
-    if (rec.meta && !rec.stale && rec.steps.every(st => st.u)) return Promise.resolve(rec);
+    if (_fresh(rec) && rec.steps.every(st => st.u)) return Promise.resolve(rec);
     // A generation token lets a superseded stream (invalidate / 409 / a
     // second load) exit silently instead of writing into the new series.
     const gen = rec.gen = (rec.gen || 0) + 1;
     clearTimeout(rec.retry);
     rec.loading = (async () => {
       try {
-        if (!rec.meta || rec.stale) {
+        if (!_fresh(rec)) {
           const meta = await _meta(model);
           if (gen !== rec.gen) return rec;
-          if (!rec.meta || rec.meta.series !== meta.series) {
+          const changed = !rec.meta || rec.meta.series !== meta.series;
+          if (changed) {
+            // Steps the new series still composes from the same run and lead
+            // are unchanged — keep them; only what moved is fetched again.
+            const had = new Map(rec.steps.filter(st => st.u).map(st => [`${st.ms}:${st.run}:${st.lead}`, st]));
             Object.assign(rec, { meta, n: meta.grid.nx * meta.grid.ny,
-              steps: meta.steps.map(st => ({ ms: st.ms, t: st.t, run: st.run, lead: st.lead, u: null, v: null })) });
+              steps: meta.steps.map(st => {
+                const o = had.get(`${st.ms}:${st.run}:${st.lead}`);
+                return { ms: st.ms, t: st.t, run: st.run, lead: st.lead, u: o ? o.u : null, v: o ? o.v : null };
+              }) });
           } else {
             rec.meta = meta;
           }
+          const hadMeta = rec.metaAt > 0;
+          rec.metaAt = Date.now();
           rec.stale = false; rec.err = null; _lastField = null;
+          if (changed && hadMeta) _emitSeries(model);
         }
         const ni = rec.meta.now_index;
         if (!rec.steps[ni].u) {
@@ -1917,8 +1928,9 @@ const WindField = (() => {
   function _fail(model, rec, e) {
     if (rec.stale) {
       // The series moved on (409 from the server, or invalidate() during a
-      // refresh): not an error — re-read it right away.
-      rec.meta = null; rec.steps = []; rec.loading = null; _lastField = null;
+      // refresh): not an error — re-read it right away (load() keeps the
+      // steps the new series still shares).
+      rec.loading = null; _lastField = null;
       rec.retry = setTimeout(() => load(model), 250);
       return;
     }
@@ -1971,7 +1983,7 @@ const WindField = (() => {
   }
   function clear() { for (const r of Object.values(_models)) clearTimeout(r.retry); for (const m of Object.keys(_models)) delete _models[m]; _lastField = null; }
   function invalidate() { for (const r of Object.values(_models)) { r.stale = true; clearTimeout(r.retry); } _lastField = null; }
-  return { load, fieldAt, state, meta, onUpdate, clear, invalidate };
+  return { load, fieldAt, state, meta, onUpdate, onSeriesChange, clear, invalidate };
 })();
 
 
@@ -2341,6 +2353,33 @@ WindField.onUpdate(model => {
   _setWindRunTag(field);
 });
 
+// The table's spot winds are the map's own series read at each spot
+// (/api/region_wind samples wind_field.series), so when the active model's
+// series changes under the page — a new run landed, or the hourly window
+// moved — re-fetch both models' spot winds and redraw against them. One
+// in-flight refresh at a time.
+let _regionWindRefresh = null;
+function _refreshRegionWind() {
+  if (_regionWindRefresh) return _regionWindRefresh;
+  const model = activeModel;
+  _regionWindRefresh = Promise.all([
+    fetch(_regionWindUrl(model)).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetch(_regionWindUrl(_altModel())).then(r => r.ok ? r.json() : null).catch(() => null),
+  ]).then(([data, alt]) => {
+    if (model !== activeModel) return;
+    if (data) regionWindData = data;
+    if (alt)  regionWindAlt  = alt;
+    if (data || alt) {
+      const anchor = _getScrollAnchor();
+      buildTable();
+      _scrollTableToTime(anchor);
+      if (regionMode) buildRegionWindMarkers(_displayTime);
+    }
+  }).finally(() => { _regionWindRefresh = null; });
+  return _regionWindRefresh;
+}
+WindField.onSeriesChange(model => { if (model === activeModel) _refreshRegionWind(); });
+
 // Update wind time label in both the section header and the map legend.
 function _setWindTimeLabel(label) {
   const el = document.getElementById('wind-time-display');
@@ -2561,11 +2600,10 @@ async function loadAll() {
   // Abort any fetch that doesn't respond within 9 s so the loading screen
   // doesn't block indefinitely when an upstream source is down.
   const T = 9000;
-  const [buoys, euro, gfs, wind, regionWind, altWind, tides] = await Promise.allSettled([
+  const [buoys, euro, gfs, regionWind, altWind, tides] = await Promise.allSettled([
     track(_fetchWithTimeout('/api/buoys', T),                        'Buoy data loaded'),
     track(_fetchWithTimeout('/api/forecast/EURO', T),                'EURO forecast loaded'),
     track(_fetchWithTimeout('/api/forecast/GFS', T),                 'GFS forecast loaded'),
-    track(_fetchWithTimeout('/api/wind', T),                         'Spot winds loaded'),
     track(_fetchWithTimeout(_regionWindUrl(activeModel), T), 'Regional wind loaded'),
     track(_fetchWithTimeout(_regionWindUrl(_altModel()), T), 'Alt-model wind loaded'),
     track(_fetchWithTimeout(_tidesUrl(), T),                         'Tide data loaded'),
@@ -2597,16 +2635,14 @@ async function loadAll() {
   const _isNullOrEmpty = obj => !obj || Object.keys(obj).length === 0;
   const euroEmpty  = _isNullOrEmpty(forecastData.EURO) || _allNull(forecastData.EURO);
   const gfsEmpty   = _isNullOrEmpty(forecastData.GFS)  || _allNull(forecastData.GFS);
-  const spotWinds  = wind.status === 'fulfilled' && wind.value && wind.value.spot_winds;
-  const spotWindsFailed  = _isNullOrEmpty(spotWinds) || _allNull(spotWinds);
   const regionWindFailed = regionWind.status !== 'fulfilled' || _isNullOrEmpty(regionWind.value);
   const tidesFailed      = tides.status !== 'fulfilled' || _isNullOrEmpty(tides.value);
   // Also show banner if any core fetch timed out.
-  const hadTimeout = [euro, gfs, wind].some(r => r.status === 'rejected');
-  if (hadTimeout || euroEmpty || gfsEmpty || spotWindsFailed || regionWindFailed || tidesFailed) {
+  const hadTimeout = [euro, gfs].some(r => r.status === 'rejected');
+  if (hadTimeout || euroEmpty || gfsEmpty || regionWindFailed || tidesFailed) {
     _showOutageBanner({
       forecast:   hadTimeout || euroEmpty || gfsEmpty,
-      wind:       spotWindsFailed,
+      wind:       false,
       regionWind: regionWindFailed,
       tides:      tidesFailed,
     });
@@ -2649,9 +2685,8 @@ async function loadAll() {
     .some(d => d && d._status === 'stale');
   const anyPartial = [forecastData.EURO, forecastData.GFS]
     .some(d => d && d._status === 'partial')
-    || (wind.status === 'fulfilled' && wind.value && wind.value._status === 'partial')
     || hadTimeout || euroEmpty || gfsEmpty
-    || spotWindsFailed || regionWindFailed || tidesFailed;
+    || regionWindFailed || tidesFailed;
   if (anyStale)        _setFreshnessChip('stale', 'STALE DATA', 'SHOWING LAST GOOD');
   else if (anyPartial) _setFreshnessChip('partial', 'PARTIAL DATA', '');
   else                 _setFreshnessChip(null);
