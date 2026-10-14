@@ -5,7 +5,7 @@ code as it is; the historical record is `README.md` § Changelog.
 
 ## What this is
 
-Single-page Flask app (v2.0.3) that aggregates surf-forecast data — NOAA
+Single-page Flask app (v2.0.4) that aggregates surf-forecast data — NOAA
 NDBC buoys, NOAA CO-OPS tides, Copernicus Marine / Open-Meteo wave models —
 and renders it as a swell table synced to a wind map whose field comes
 straight from the GFS and ECMWF IFS GRIB grids; the table's spot winds are
@@ -94,6 +94,14 @@ Analysis), `/gland` (+ `/gland/tuner`), `/tuner`, `/csc-model`,
   "current" and WIND-row fetchers behind `/api/wind` / `/api/wind_spots`
   (the dashboard calls neither); `estimate_model_run` /
   `make_new_run_checker` drive the run indicator and smart refresh.
+  `fetch_spot_weather(lat, lon)` is the live widget's dawn-patrol weather
+  (nothing on the site shows it): Open-Meteo hourly `weather_code` (+ cloud,
+  precipitation, snowfall as stand-ins) for `ecmwf_ifs` and `gfs_seamless`,
+  `cell_selection=nearest` (the default land cell put Lido ~10 km inland),
+  hours fetched as Unix times and keyed in local time here (Open-Meteo's
+  local labels carry one offset per response and drift an hour across a
+  DST change), mapped by `weather_kind` to `WEATHER_KINDS` (sunny / partly /
+  cloudy / rainy / snowy); TTL 1 h, any failure negative-cached 30 min.
 - `wind_field.py` — the map's gridded wind. See "The map".
 - `bathy.py` — self-rendered basemap + coastline tiles. See "The map".
 - `tide.py` — CO-OPS harmonic predictions with the per-spot Surfline
@@ -106,7 +114,17 @@ Analysis), `/gland` (+ `/gland/tuner`), `/tuner`, `/csc-model`,
 - `cache.py` — TTL cache + disk write-through + API-call counter
   (`record_api_calls`). Per-key single-flight locks so concurrent misses
   can't stampede a slow upstream (CMEMS cold fetch ≈ 90 s).
-  `model_aware_cache` adds run-hour invalidation (EURO waves).
+  `model_aware_cache` adds run-hour invalidation (EURO waves): a due
+  re-fetch runs on a background pool, single-flight per key, and callers
+  wait for it — except inside `refresh_wait(s)`, where a caller holding the
+  previous run waits at most s and takes the cached run. Only
+  `/api/forecast/EURO` does that (`REFRESH_WAIT_S`, 6 s, under the page's
+  9 s fetch timeout); the warmer, widgets, `/gland` and `/csc` must wait, or
+  their own TTL caches would keep the replaced run for 30–60 min and a
+  widget's parallel tiles could straddle two runs. A failed re-fetch is not
+  retried for `REFRESH_BACKOFF_S` (15 min), the cached run served meanwhile
+  (None once the hard TTL lapses → the caller's last-known-good);
+  `clear_all()` forgets the backoff with the values.
 - `config.py` — loads `regions.yaml` into `SPOTS` (one per buoy region),
   `WIND_SPOTS` (one per surf spot: tide station + offsets, shore normal,
   Surfline URL), `REGION_VIEWS` (map centre/zoom, phone variants); palette,
@@ -442,7 +460,10 @@ Data flows through these caches; a staleness bug could live in any of them:
    - GFS waves, spot winds, region winds, tide predictions 3600 s
    - `fetch_cmems_point` (EURO waves): `@model_aware_cache`, 24 h hard TTL,
      invalidated on `MODEL_UPDATE_HOURS_UTC` (10/21 UTC) — new runs land
-     within one 30-min warmer cycle; upstream is hard-capped at 2 cycles/day
+     within one 30-min warmer cycle; upstream is hard-capped at 2 cycles/day.
+     Re-fetches never hold the dashboard's EURO request more than 6 s and
+     back off 15 min after a failure (see `cache.py`)
+   - `fetch_spot_weather` (live widget dawn weather) 3600 s
    - Tides: month-anchored ~4-month window per station, 45-day TTL
      (`tide._fetch_station_window`), sliced locally per request
    - `fun_days.all_summaries` / `review_payload` 600 s, `season_tables`
@@ -493,6 +514,16 @@ Fault tolerance:
   `mkstemp` temp file, since a second process sharing `.cache/` could
   interleave into a fixed `.tmp` name before `os.replace`) and is served
   with `_status: "stale"` when a live fetch fails.
+- **A dead CMEMS login must fail fast.** app.py sets
+  `COPERNICUSMARINE_HTTPS_RETRIES=1` / `COPERNICUSMARINE_HTTPS_TIMEOUT=20`
+  for the server process before the toolkit loads (defaults: 5 retries with
+  backoff, 60 s — ~93 s per refused login; a host that hangs instead still
+  costs ~2 min a fetch, which only the capped wait hides). With the cache's
+  capped wait and backoff this is what kept the 2026-10-13 Copernicus login outage from
+  becoming a page outage (every EURO request had queued ~25 min behind
+  failing re-fetches → the page's 9 s timeout → DATA UNAVAILABLE, both
+  widgets hung). The csc2 logger and gland-euro jobs keep the defaults —
+  they can afford to wait. Don't remove either half.
 - Partially populated payloads (`/api/forecast/*`, `/api/wind`) carry
   `_status: "partial"` so the frontend can badge degraded data (badge UI
   pending design approval — see `development-assets/design-demo/index.html`).
@@ -724,14 +755,32 @@ exactly the biggest days. The wind-sea partition therefore competes with the
 swell partitions under the same rules (5 s floor, H²·T) and carries
 `type: "windsea"`; the frontend leads such a line with a wind glyph
 (`.ws-glyph`, `_WIND_SEA_GLYPH`). Known cost: an offshore blow's chop can
-take the primary slot (e.g. 8 ft @ 7 s NNE at Block Island Sound over a
-3.8 ft @ 8 s E swell) — the glyph is what flags it, and the buoy reads the
-same thing. Records also carry `wind_sea` (the candidate wherever it ranked)
+take the record's primary slot (e.g. 8 ft @ 7 s NNE at Block Island Sound
+over a 3.8 ft @ 8 s E swell) — the buoy reads the same thing; on the page it
+is listed after the swell and never rated (below). Records also carry `wind_sea` (the candidate wherever it ranked)
 and `displaced_swell` (the swell it pushed out of the top 2), logged as
 `ww_*` / `displaced_*` / `sw{1,2}_type`, so a swell-only ranking is
 rebuildable from any shard without a re-pull. **/gland is opted out**
 (`wind_sea=False`): its window scoring needs both swell partitions, and the
 SE trade windsea would take a top-2 slot.
+
+**Shown, not rated (v2.0.4).** The ranking above is the DATA order — what
+the records carry, what CSC2 logs and trains on, what `/csc` and the
+historical ✓ compare against the buoy's energy-ranked partition 1. The
+PRESENTATION applies one rule on top, at read time, never by reordering the
+record: the wind sea never sets a cell's rating and never leads it. On the
+page `_displayComps` lists the swells in their order and the wind-sea line
+last (the glyph goes with it), and `_ratedHP` rates the first swell —
+`_NO_SWELL_HP` (0 ft @ 10 s, FLAT, the "—" cell's reading) when the wind sea
+is all the record holds, so a lone sea shows its line alone in FLAT's
+colours. The cell colour, Fun+ Days (`_primaryHP`) and the swell agreement
+chip read it; the map's arrows follow `_displayComps`, and a wind-sea arrow
+is drawn in FLAT's colour (`unrated`), never its own category's. `app.py _rated_hp` is the server twin for the Fun+ Days widget
+(`_widget_overview`) and the live widget's swell trend (`_live_payload`);
+change either side and the other. Don't move the rule into
+`rank_with_wind_sea` / the wave modules: `test_windsea_invariants` locks the
+data order and a reorder would make the next logger shard disagree with the
+archive the models learned.
 
 ## G-Land landmarks (gland.py)
 
@@ -852,7 +901,9 @@ SE trade windsea would take a top-2 slot.
 (Scriptable). `api_widget` in app.py is a server-side port of
 `computeModelOverview` (the Fun+ Days cell: 3 h stride from now, night
 skipped, min(EURO, GFS) category, EURO region-wind gate, ≥ 2 windows per
-day) — change the JS rule and this together, they must agree exactly.
+day) — change the JS rule and this together, they must agree exactly;
+`_rated_hp` is the server twin of the page's `_ratedHP` (first swell
+partition, the wind sea never rates).
 `last_update` is the OLDER of the two model runs, labelled "today 0Z" /
 "yesterday 12Z" by the run's own UTC date compared with today's local date
 (the forecasters' convention — today's 00Z run is 8 PM the previous evening
@@ -907,7 +958,10 @@ word is the hero in its category colour (`--cat`: dark = the dashboard's
 cell text, FLAT lifted to `#8c8ca6`; light = the `lw` set re-lit for the
 slab, FUN `#128038`, FLAT `#565965`, FIRING `#ae1d1f`, HECTIC `#4c3ddb`…,
 since the dashboard's light inks went muddy on a mid slate), with a glow
-(light: a halo of the category's pale cell tint `--cat-ink`), a light-leak
+(light: a halo of the category's pale cell tint `--cat-ink`), starred —
+`SOLID*` — when the buoy reads FUN or better and the wind rating the
+sentence leads with (the dawn hour's after sunset) is outside the good tier
+(`buoy.star`, set beside `wind_tint_cat` in `_live_payload`), a light-leak
 in the pane's lower-left corner (`.lk`: the colour; in light mode the pale
 tint) and a meniscus along
 the bottom edge (light mode borrows the dark widget's bar colour
@@ -922,7 +976,11 @@ from `hilo_time` while an older cached tide dict is live), then wind.
 Window = the rest of today's daylight; after sunset (or before sunrise) it
 is the coming daylight and the pane shows "dawn patrol wind" chips at the
 sunrise hour (both models' ratings, `×2` when they agree) instead of the
-outlook sentence. **The sentence leads with the rating now** — the better
+outlook sentence, the label led by a weather glyph for that same hour
+(`lido.weather`: `fetch_spot_weather`, the worse of the two models' kinds
+by `WEATHER_KINDS` order; `WX` in the template, stroked in `--ink` like
+`.ws-glyph`, no emoji; no glyph when neither model has one). The mockup
+previews any glyph with `?wx=`. **The sentence leads with the rating now** — the better
 model's word, starred when the two models sit in different tiers
 ("Textured* now"), since the slab no longer carries it — then the trend.
 Tiers: good = Glassy/Groomed/Clean, Textured, bad = Messy/Blown Out; not
@@ -1008,8 +1066,11 @@ comment.
   region wind, alt wind, tides, table, wind field); the page
   instant-paints from `sessionStorage['cs_snapshot_v1']` when present.
 - **Table header** — the top-left cell reads **BUOY/REGION** in overview
-  mode and **SPOT** in regional mode. Up to two ranked partitions per cell
-  (`.comp-line.p1/.p2`), a wind-sea line led by `.ws-glyph`.
+  mode and **SPOT** in regional mode. Up to two partitions per cell
+  (`.comp-line.p1/.p2`): the swells in energy order, then the wind-sea line
+  led by `.ws-glyph` (`_displayComps`); the cell's colour is the first
+  swell's rating (`_ratedHP`, FLAT when only the wind sea remains). The
+  record's own order is never changed on the page.
 - **Fun+ Days column** — `computeModelOverview(spotName)` samples both
   models on a fixed 3-hour stride regardless of UI resolution; tracks best
   `min(GFS_cat, EURO_cat)` for the cell colour and counts days with ≥ 2

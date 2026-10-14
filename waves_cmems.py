@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone as dtz
 from zoneinfo import ZoneInfo
 
-from cache import model_aware_cache, record_api_calls
+from cache import model_aware_cache, record_api_calls, refresh_wait
 from config import FORECAST_DAYS, TIMEZONE, SPOTS
 from wave_common import safe_float as _safe, rank_with_wind_sea, make_wave_record
 
@@ -47,8 +47,10 @@ CMEMS_VARS = [
 # Hard TTL is only the outage backstop — actual refresh is run-aware:
 # the cache invalidates when a new CMEMS cycle publishes (~07/19 UTC, per
 # MODEL_UPDATE_HOURS_UTC), so the warmer ingests each run within ~30 min
-# of publication instead of a flat-TTL lag of up to 6 h. Failed re-fetches
-# serve the still-cached previous run (model_aware_cache stale fallback).
+# of publication instead of a flat-TTL lag of up to 6 h. A re-fetch runs in
+# the background (the dashboard's request waits ≤ 6 s for it, everything else
+# waits it out) and a failed one serves the still-cached previous run for
+# 15 min before trying again (cache.REFRESH_WAIT_S / REFRESH_BACKOFF_S).
 _CMEMS_TTL_SECONDS = 86400
 
 # CMEMS publishes VTM01_SW1/SW2 (spectral mean period m1) but no VTPK_SW*.
@@ -283,19 +285,24 @@ from config import MODEL_UPDATE_HOURS_UTC as _WAVE_HOURS
 fetch_cmems_point._new_run_checker = _make_new_run_checker(_WAVE_HOURS)
 
 
-def fetch_all_cmems_wave_forecasts() -> dict | None:
+def fetch_all_cmems_wave_forecasts(wait: float | None = None) -> dict | None:
     """Parallel-fetch CMEMS for every region buoy in SPOTS. Returns
     {region_name: [hourly records]} or None if every buoy fails.
 
     Per-buoy results are cached individually by fetch_cmems_point, so this
-    aggregator is cheap when all entries are warm."""
+    aggregator is cheap when all entries are warm. `wait` caps how long a buoy
+    holding the previous run waits for a due re-fetch (cache.refresh_wait);
+    None waits for the new run."""
     t0 = time.monotonic()
     result: dict = {}
     n = len(SPOTS) or 1
+
+    def point(s):
+        with refresh_wait(wait):
+            return fetch_cmems_point(s["lat"], s["lon"])
+
     with ThreadPoolExecutor(max_workers=min(8, n)) as pool:
-        fut_to_spot = {
-            pool.submit(fetch_cmems_point, s["lat"], s["lon"]): s for s in SPOTS
-        }
+        fut_to_spot = {pool.submit(point, s): s for s in SPOTS}
         for fut in as_completed(fut_to_spot):
             s = fut_to_spot[fut]
             try:

@@ -375,6 +375,8 @@
     .c-ht { font-weight: 700; font-variant-numeric: tabular-nums; }
     /* Wind-sea glyph — leads a component the model filed under its wind-sea
        partition (still driven by local wind) rather than a swell partition.
+       The line is shown after the swells and never sets the cell's rating
+       (_displayComps / _ratedHP); its map arrow is drawn in FLAT's colour.
        Sized in em so it follows the p1/p2 line it sits on. */
     .ws-glyph {
       width: .95em; height: .95em; flex: none; align-self: center;
@@ -1493,11 +1495,12 @@
       <dt>Swell — GFS</dt><dd>Open-Meteo · NOAA NCEP GFS-Wave</dd>
       <dt>Wind — map &amp; spots</dt><dd>NOAA NCEP GFS 0.25° via NOMADS · ECMWF IFS 0.25° open data (CC BY 4.0) — the spot winds are this field read at each spot</dd>
       <dt>Wind — history</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless (hours older than the map's three-day store)</dd>
+      <dt>Widget weather</dt><dd>Open-Meteo · ECMWF IFS &amp; NOAA GFS-seamless weather codes (the live widget's dawn patrol)</dd>
       <dt>Buoys</dt><dd>NOAA NDBC realtime spectra</dd>
       <dt>Tides</dt><dd>NOAA CO-OPS predictions, Surfline-corrected</dd>
       <dt>Map</dt><dd>NOAA NCEI Coastal Relief / ETOPO elevation, drawn in-house</dd>
     </dl>
-    <span class="info-modal-version">v2.0.3</span>
+    <span class="info-modal-version">v2.0.4</span>
   </div>
 </div>
 
@@ -1522,7 +1525,7 @@
       <a class="info-modal-refresh" href="/tuner">⇞ TUNER</a>
       <button class="info-modal-refresh" onclick="openWidgetModal()">▣ IOS WIDGETS</button>
     </div>
-    <span class="about-version">v2.0.3</span>
+    <span class="about-version">v2.0.4</span>
   </div>
 </div>
 
@@ -1592,7 +1595,7 @@ await eval(await r.loadString());</pre>
     made by cole and claude &copy; 2026
   </span>
   <div class="footer-center">
-    <span class="footer-version">v2.0.3</span>
+    <span class="footer-version">v2.0.4</span>
   </div>
   <div class="footer-btns">
     <button class="footer-btn" onclick="openAboutModal()" title="Pages and settings">MORE</button>
@@ -2774,14 +2777,34 @@ function _swellCatIdx(catName) {
   return CFG.swell_categories.findIndex(c => c.name === catName);
 }
 
-// Primary (h, p) for a forecast record, mirroring buildBuoyCell.
+// A record's components are the models' energy order with the wind sea
+// ranked among the swells (wave_common.rank_with_wind_sea) — the order CSC2
+// logs, never reordered here. On the page the wind sea neither rates a cell
+// nor leads it (v2.0.4): the swells keep their order and the wind-sea line
+// goes last; the rating reads the first swell, or — when the wind sea is all
+// the record holds — the "—" cell's reading, 0 ft @ 10 s, which is FLAT.
+const _NO_SWELL_HP = { h: 0, p: 10 };
+function _displayComps(comps) {
+  if (!comps || comps.length < 2) return comps;
+  const ws = comps.filter(c => c.type === 'windsea');
+  return ws.length ? comps.filter(c => c.type !== 'windsea').concat(ws) : comps;
+}
+
+// What a record is rated by: the first swell partition, the record-level
+// reading when it has no components, FLAT's stand-in when only the wind sea
+// remains. Behind the cell colour, Fun+ Days and the M chip; mirrored by
+// app.py _rated_hp — the widgets must agree with the table exactly.
+function _ratedHP(rec) {
+  const comps = rec.components && rec.components.length > 0 ? rec.components : null;
+  if (!comps) return { h: rec.wave_height_ft, p: rec.wave_period_s };
+  const sw = comps.find(c => c.type !== 'windsea');
+  return sw ? { h: sw.height_ft, p: sw.period_s } : _NO_SWELL_HP;
+}
+
+// Rated (h, p) for a forecast record; null with no reading at all.
 function _primaryHP(rec) {
   if (!rec || rec.wave_height_ft == null) return null;
-  const pc = rec.components && rec.components.length > 0 ? rec.components[0] : null;
-  return {
-    h: pc ? pc.height_ft : rec.wave_height_ft,
-    p: pc ? pc.period_s  : rec.wave_period_s,
-  };
+  return _ratedHP(rec);
 }
 
 // Local-time day key, matching buildScrubber's dayKey scheme.
@@ -2891,16 +2914,15 @@ const _WIND_SEA_GLYPH = '<svg class="ws-glyph" viewBox="0 0 24 24" aria-label="w
 
 function _buildSwellInner(rec) {
   const comps = rec.components && rec.components.length > 0 ? rec.components : null;
-  const primaryH = comps ? comps[0].height_ft : rec.wave_height_ft;
-  const primaryP = comps ? comps[0].period_s  : rec.wave_period_s;
-  if (primaryH == null) return null;
-  const [bg, fg, catName] = swellColor(primaryH, primaryP);
-  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
-  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
-  const lines = comps || [{
+  const lines = comps ? _displayComps(comps) : [{
     height_ft: rec.wave_height_ft, period_s: rec.wave_period_s,
     direction_deg: rec.wave_direction_deg,
   }];
+  if (lines[0].height_ft == null) return null;
+  const hp = _ratedHP(rec);
+  const [bg, fg, catName] = swellColor(hp.h, hp.p);
+  const emph = (catName === 'FIRING' || catName === 'MONSTRO') ? ' cell-emphasis' : '';
+  let inner = `<div class="cell-inner${emph}" style="color:${fg}">`;
   lines.forEach((c, ci) => {
     const cls   = ['p1','p2','p3'][ci] || 'p3';
     const dir   = c.direction_deg != null ? toCard(c.direction_deg) : '?';
@@ -4020,7 +4042,8 @@ function _resolveLabelOverlapsDOM(labelSelector, seedRects) {
   return entries.map(e => padRect(e.node.getBoundingClientRect()));
 }
 
-function _drawSwellArrow(lat, lon, dirDeg, heightFt, periodS, isPrimary, skipLabel, filtered) {
+// unrated: a wind-sea partition — never rated (v2.0.4), so it wears FLAT's colour
+function _drawSwellArrow(lat, lon, dirDeg, heightFt, periodS, isPrimary, skipLabel, filtered, unrated) {
   if (!map || !swellArrowLayer || dirDeg == null) return;
   const dark   = _isDark();
   let color, opacity;
@@ -4029,7 +4052,8 @@ function _drawSwellArrow(lat, lon, dirDeg, heightFt, periodS, isPrimary, skipLab
     color   = dark ? '#666' : '#aaa';
     opacity = 0.45;
   } else {
-    const [, , catName] = swellColor(heightFt, periodS);
+    const [, , catName] = unrated ? swellColor(_NO_SWELL_HP.h, _NO_SWELL_HP.p)
+                                  : swellColor(heightFt, periodS);
     const catObj = CFG.swell_categories.find(c => c.name === catName);
     color  = dark
       ? (catObj ? catObj.dark_text  : '#7c6af7')
@@ -4089,7 +4113,7 @@ function buildSwellArrows(timeStr, source) {
       if (!rec) return;
       if (rec.wave_height_ft != null) {
         comps = (rec.components && rec.components.length > 0)
-          ? rec.components
+          ? _displayComps(rec.components)
           : [{ height_ft: rec.wave_height_ft, period_s: rec.wave_period_s, direction_deg: rec.wave_direction_deg }];
       } else if (rec.raw_direction_deg != null) {
         // Swell was filtered from table (period < 6s etc.) but we still
@@ -4110,12 +4134,12 @@ function buildSwellArrows(timeStr, source) {
       }
       arrows.push({ lat: spot.lat, lon: spot.lon, dir: c.direction_deg,
                      ht: c.height_ft, per: c.period_s, primary: ci === 0,
-                     filtered: !!c._filtered });
+                     filtered: !!c._filtered, unrated: c.type === 'windsea' });
     });
   });
 
   // Draw arrows (no labels yet)
-  arrows.forEach(a => _drawSwellArrow(a.lat, a.lon, a.dir, a.ht, a.per, a.primary, true, a.filtered));
+  arrows.forEach(a => _drawSwellArrow(a.lat, a.lon, a.dir, a.ht, a.per, a.primary, true, a.filtered, a.unrated));
 
   // Build label items for the shared collision solver.
   const LABEL_H = 15;
@@ -5238,7 +5262,7 @@ function _populateAboutLegends() {
     wsEl.style.background = dark ? 'var(--bg2)' : 'var(--bg1)';
     wsEl.style.color = dark ? 'var(--text1)' : 'var(--text2)';
     wsEl.style.border = '1px solid var(--border1)';
-    wsEl.innerHTML = `<span style="font-size:11px;margin-right:6px;display:inline-flex;vertical-align:middle">${_WIND_SEA_GLYPH}</span>wind sea — waves the local wind is still driving`;
+    wsEl.innerHTML = `<span style="font-size:11px;margin-right:6px;display:inline-flex;vertical-align:middle">${_WIND_SEA_GLYPH}</span>wind sea — waves the local wind is still driving; listed last, never rated`;
     swellEl.appendChild(wsEl);
   }
   const windEl = document.getElementById('about-wind-legend');

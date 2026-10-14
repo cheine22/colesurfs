@@ -358,6 +358,88 @@ def _open_meteo_region_hours(model_key: str, past_days: int) -> dict | None:
     return out
 
 
+# ─── Spot weather (live widget, dawn patrol) ─────────────────────────────────
+# The live widget's dawn-patrol weather glyph — nowhere else on the site:
+# Open-Meteo's hourly WMO weather code for the same two models as the wind
+# (WIND_MODELS), read at the beach's own grid cell (cell_selection=nearest;
+# the default land cell put Lido ~10 km inland).
+WEATHER_KINDS = ("sunny", "partly", "cloudy", "rainy", "snowy")   # mildest → worst
+
+
+def weather_kind(code, cloud=None, precip=None, snow=None):
+    """WMO code → one of WEATHER_KINDS: 0–1 sunny, 2 partly cloudy, 3 and fog
+    cloudy, drizzle / rain / freezing rain / showers / thunder rainy, snow
+    snowy. The raw fields stand in when the code is null."""
+    if code is not None:
+        c = int(code)
+        if c <= 1:
+            return "sunny"
+        if c == 2:
+            return "partly"
+        if c in (3, 45, 48):
+            return "cloudy"
+        if 71 <= c <= 77 or c in (85, 86):
+            return "snowy"
+        if 51 <= c <= 67 or 80 <= c <= 82 or 95 <= c <= 99:
+            return "rainy"
+        return None
+    if snow:
+        return "snowy"
+    if precip is not None and precip >= 0.1:
+        return "rainy"
+    if cloud is None:
+        return None
+    return "sunny" if cloud < 25 else "partly" if cloud < 70 else "cloudy"
+
+
+@ttl_cache(ttl_seconds=3600, skip_none=True)
+def fetch_spot_weather(lat: float, lon: float) -> dict | None:
+    """{local 'YYYY-MM-DDTHH:MM': {'EURO': kind, 'GFS': kind}} covering the
+    coming dawn at (lat, lon); None on failure (negative-cached 30 min, so a
+    slow Open-Meteo never holds up a widget render twice)."""
+    neg_key = f"weather:{lat:.4f},{lon:.4f}"
+    if _is_negative_cached(neg_key):
+        return None
+    models = {m: WIND_MODELS[m] for m in ("EURO", "GFS")}
+    # Unix times, keyed here in local time: Open-Meteo labels a whole response
+    # with one UTC offset, so across a DST change its local labels drift an hour
+    params = {
+        "latitude": lat, "longitude": lon,
+        "hourly": "weather_code,cloud_cover,precipitation,snowfall",
+        "models": ",".join(models.values()),
+        "forecast_days": 3, "timezone": "GMT", "timeformat": "unixtime",
+        "cell_selection": "nearest",
+    }
+    try:
+        record_api_calls("spot_weather", 1)
+        r = requests.get(FORECAST_API, params=params, timeout=8,
+                         headers={"User-Agent": "ColeSurfs/1.0"})
+        r.raise_for_status()
+        hourly = r.json()["hourly"]
+    except Exception as e:
+        print(f"[weather] Open-Meteo ({lat:.3f},{lon:.3f}): {e}")
+        _set_negative_cache(neg_key)
+        return None
+
+    def at(name, i):
+        v = hourly.get(name)
+        return v[i] if v and i < len(v) else None
+
+    tz = ZoneInfo(TIMEZONE)
+    out = {}
+    for i, epoch in enumerate(hourly.get("time") or []):
+        t = datetime.fromtimestamp(epoch, tz).strftime("%Y-%m-%dT%H:%M")
+        rec = {}
+        for m, mid in models.items():
+            k = weather_kind(at(f"weather_code_{mid}", i), at(f"cloud_cover_{mid}", i),
+                             at(f"precipitation_{mid}", i), at(f"snowfall_{mid}", i))
+            if k:
+                rec[m] = k
+        if rec:
+            out[t] = rec
+    return out or None
+
+
 _region_memo: dict[tuple, dict] = {}
 _region_lock = threading.Lock()
 
@@ -419,7 +501,7 @@ def fetch_region_wind_forecasts(model_key: str = "EURO", past_days: int = 0) -> 
     if need:
         om = _open_meteo_region_hours(model_key, past_days)
         for i, recs in (om or {}).items():
-            have = per_point[i]
+            have = per_point[int(i)]   # the disk cache hands int keys back as str
             for r in recs:
                 if r["time"] not in have and r["speed_mph"] is not None and r["time"] >= labels[0]:
                     have[r["time"]] = r

@@ -10,6 +10,8 @@ import json
 import os
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FutureTimeout
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -209,6 +211,40 @@ def age_of(func, *args, **kwargs) -> float | None:
     return _store.get_age(f"{func.__module__}.{func.__qualname__}:{args}:{sorted(kwargs.items())}")
 
 
+# A due re-fetch runs on a background pool, one per key, and every caller
+# shares it. Callers wait for it by default — the warmer, the widgets and the
+# fetchers that cache the result again themselves (/gland, /csc) must get the
+# new run, not the one it replaces. A caller holding the previous run can cap
+# the wait with refresh_wait(): the dashboard's EURO request waits at most
+# REFRESH_WAIT_S, then takes the cached run while the fetch finishes. A failed
+# re-fetch is not retried for REFRESH_BACKOFF_S; the cached run is served
+# meanwhile (nothing once the hard TTL lapses — callers fall back to their
+# last-known-good). clear_all() forgets the backoff along with the values.
+# Without these, a Copernicus login outage (2026-10-13) queued every EURO
+# request for ~25 min behind failing re-fetches and the page's 9 s fetch
+# timeout read it as a forecast outage.
+REFRESH_WAIT_S = 6.0
+REFRESH_BACKOFF_S = 900
+_refresh_pool = ThreadPoolExecutor(max_workers=12, thread_name_prefix="refresh")
+_refresh_guard = threading.Lock()
+_refresh_inflight: dict = {}   # key → Future of the running re-fetch
+_refresh_failed: dict = {}     # key → monotonic time of the last failed re-fetch
+_refresh_tls = threading.local()
+
+
+@contextmanager
+def refresh_wait(seconds):
+    """On this thread, inside the block, a model_aware_cache call that already
+    holds a cached value waits at most `seconds` for a due re-fetch and then
+    returns the cached value. None (the default outside any block) waits."""
+    prev = getattr(_refresh_tls, "wait", None)
+    _refresh_tls.wait = seconds
+    try:
+        yield
+    finally:
+        _refresh_tls.wait = prev
+
+
 def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0,
                       quiet: bool = False):
     """
@@ -224,49 +260,60 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0,
       1. If cached and within hard TTL:
          a. Ask new_run_checker if a new model run is available since cache time
          b. If no new run → return cached value (skip fetch)
-         c. If new run → re-fetch
-      2. If not cached or expired beyond hard TTL → fetch
+         c. If new run → re-fetch in the background and wait for it; inside
+            refresh_wait(s), at most s seconds, then the cached value
+      2. If not cached or expired beyond hard TTL → fetch and wait for it
+      3. Within REFRESH_BACKOFF_S of a failed fetch → no fetch; the cached
+         value, or None
     """
     def decorator(func):
         prefix = f"{func.__module__}.{func.__qualname__}"
         _store.register_prefix_ttl(prefix, hard_ttl)
-        def _cached_if_current(key, args):
-            """Return (serve_cached, value): serve_cached=True when the cache
-            holds data and no new model run has appeared since it was set."""
-            cached, hit = _store.get(key)
-            if not hit:
-                return False, None
-            age = _store.get_age(key)
-            model_key = args[model_arg_index] if len(args) > model_arg_index else "EURO"
-            checker = getattr(wrapper, '_new_run_checker', None)
-            if checker and age is not None and not checker(model_key, age):
-                if not quiet:
-                    print(f"[smart-cache] {func.__qualname__}({model_key}): "
-                          f"cached {age:.0f}s ago, no new run → skip fetch")
-                return True, cached
-            if age is not None:
-                print(f"[smart-cache] {func.__qualname__}({model_key}): "
-                      f"cached {age:.0f}s ago, new run available → re-fetching")
-            return False, None
+        def _fetch(key, args, kwargs):
+            try:
+                result = func(*args, **kwargs)
+            except Exception as e:
+                print(f"[smart-cache] {func.__qualname__}: {type(e).__name__}: {e}")
+                result = None
+            if result is not None:
+                _store.set(key, result, hard_ttl)
+                _refresh_failed.pop(key, None)
+            else:
+                _refresh_failed[key] = time.monotonic()
+            return result
+
+        def _start(key, args, kwargs, model_key, age):
+            """The running fetch for key — single-flight — started if none is."""
+            with _refresh_guard:
+                fut = _refresh_inflight.get(key)
+                if fut is None or fut.done():
+                    if age is not None:
+                        print(f"[smart-cache] {func.__qualname__}({model_key}): "
+                              f"cached {age:.0f}s ago, new run available → re-fetching")
+                    fut = _refresh_inflight[key] = _refresh_pool.submit(_fetch, key, args, kwargs)
+                return fut
 
         @wraps(func)
         def wrapper(*args, **kwargs):
             key = f"{prefix}:{args}:{sorted(kwargs.items())}"
-            serve, cached = _cached_if_current(key, args)
-            if serve:
+            cached, hit = _store.get(key)
+            age = _store.get_age(key) if hit else None
+            model_key = args[model_arg_index] if len(args) > model_arg_index else "EURO"
+            checker = getattr(wrapper, '_new_run_checker', None)
+            if hit and checker and age is not None and not checker(model_key, age):
+                if not quiet:
+                    print(f"[smart-cache] {func.__qualname__}({model_key}): "
+                          f"cached {age:.0f}s ago, no new run → skip fetch")
                 return cached
-            with _key_lock(key):
-                serve, cached = _cached_if_current(key, args)
-                if serve:
-                    return cached
-                result = func(*args, **kwargs)
-                if result is not None:
-                    _store.set(key, result, hard_ttl)
-                    return result
-                # Re-fetch failed — serve the still-valid cached value (if any)
-                # rather than going dark until the negative cache clears.
-                cached, hit = _store.get(key)
-                return cached if hit else result
+            failed = _refresh_failed.get(key)
+            if failed is not None and time.monotonic() - failed < REFRESH_BACKOFF_S:
+                return cached if hit else None
+            fut = _start(key, args, kwargs, model_key, age)
+            try:
+                result = fut.result(timeout=getattr(_refresh_tls, "wait", None) if hit else None)
+            except _FutureTimeout:
+                return cached
+            return result if result is not None else (cached if hit else None)
 
         wrapper._new_run_checker = None  # set by caller
         return wrapper
@@ -275,3 +322,4 @@ def model_aware_cache(hard_ttl: int = 21600, model_arg_index: int = 0,
 
 def clear_all():
     _store.clear()
+    _refresh_failed.clear()   # a refresh after an outage must try the upstream again

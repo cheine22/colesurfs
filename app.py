@@ -33,6 +33,13 @@ GFS waves from Open-Meteo.
 import ipaddress as _ipaddress
 import json as _json
 import os
+
+# Copernicus Marine toolkit, server process only: one retry and a 20 s timeout
+# (defaults 5 retries with backoff, 60 s), so a refused CMEMS login fails in
+# ~1 s instead of ~90 s. The csc2 logger and gland-euro jobs keep the defaults.
+# The toolkit reads these once, when copernicusmarine is first imported.
+os.environ.setdefault("COPERNICUSMARINE_HTTPS_RETRIES", "1")
+os.environ.setdefault("COPERNICUSMARINE_HTTPS_TIMEOUT", "20")
 import tempfile as _tempfile
 import time
 import threading
@@ -51,7 +58,8 @@ import requests as _req_buoy
 from waves import fetch_wave_forecast, fetch_all_wave_forecasts
 from waves_cmems import fetch_all_cmems_wave_forecasts
 from wind  import (fetch_spot_wind, fetch_all_spot_winds, fetch_spot_wind_forecasts,
-                    fetch_region_wind_forecasts, estimate_model_run)
+                    fetch_region_wind_forecasts, estimate_model_run,
+                    fetch_spot_weather, WEATHER_KINDS)
 from tide  import fetch_tide_predictions
 from sun   import compute_sun_data
 from fun_days import (all_summaries as _fun_days_all, review_payload as _review_payload,
@@ -252,7 +260,9 @@ def api_forecast(model_key: str):
     key = model_key.upper()
     if key in ("EURO", "C-EURO"):
         key = "EURO"
-        fresh = fetch_all_cmems_wave_forecasts()
+        # the page aborts this fetch at 9 s: take the cached run rather than
+        # wait out a slow or failing CMEMS re-fetch (it finishes in the background)
+        fresh = fetch_all_cmems_wave_forecasts(wait=_cache.REFRESH_WAIT_S)
     elif key == "GFS":
         fresh = fetch_all_wave_forecasts("GFS")
     else:
@@ -580,6 +590,25 @@ def _region_surfable_hours(region: str, wind: dict | None) -> set:
     return ok
 
 
+# What the dashboard rates a model record by (index.html _ratedHP): the
+# first swell partition — the wind sea is ranked with the swells in the record
+# (wave_common.rank_with_wind_sea, the order CSC2 logs) but never rates a cell
+# or leads it (v2.0.4) — or, when the wind sea is all the record holds, the
+# "—" cell's reading, 0 ft @ 10 s, which categorizes FLAT. None for a record
+# with no reading. The widgets must agree with the table exactly.
+_NO_SWELL_HP = (0.0, 10.0)
+
+
+def _rated_hp(rec):
+    if not rec or rec.get("wave_height_ft") is None:
+        return None
+    comps = rec.get("components") or []
+    if not comps:
+        return (rec["wave_height_ft"], rec["wave_period_s"])
+    sw = next((c for c in comps if c.get("type") != "windsea"), None)
+    return (sw["height_ft"], sw["period_s"]) if sw else _NO_SWELL_HP
+
+
 def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
                      sun: dict, now) -> dict:
     from datetime import datetime, timedelta
@@ -588,13 +617,6 @@ def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
     tz = ZoneInfo(TIMEZONE)
     cats = swell_rules.CATEGORIES
     fun_idx = cats.index("FUN")
-
-    def _hp(rec):
-        if not rec or rec.get("wave_height_ft") is None:
-            return None
-        comps = rec.get("components") or []
-        return (comps[0]["height_ft"], comps[0]["period_s"]) if comps \
-            else (rec["wave_height_ft"], rec["wave_period_s"])
 
     def _ms(t):   # local wall-clock string → epoch ms, as JS `new Date('Y-m-d H:M')`
         return datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=tz).timestamp() * 1000
@@ -619,7 +641,7 @@ def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
             t_ms = _ms(t)
             if t_ms + three_h <= _ms(s["sunrise"]) - thirty or t_ms >= _ms(s["sunset"]) + thirty:
                 continue
-        e_hp, g_hp = _hp(e_by_t.get(t)), _hp(g_by_t.get(t))
+        e_hp, g_hp = _rated_hp(e_by_t.get(t)), _rated_hp(g_by_t.get(t))
         if not e_hp or not g_hp:
             continue
         ei = cats.index(swell_rules.categorize(*e_hp))
@@ -715,7 +737,8 @@ def api_widget():
 # Medium widget, Scriptable parameters live-lido / live-landing /
 # live-southampton: the spot's buoy now (left) and the spot's tide / wind
 # (right) on one constant sea-glass slab (v2.0.3) — the swell rating is the
-# hero word's colour, the wind rating leads the outlook sentence. Any
+# hero word's colour (starred, SOLID*, when a fun+ reading sits under wind
+# outside the good tier — v2.0.4), the wind rating leads the outlook sentence. Any
 # WIND_SPOTS entry with a tide station and a shore normal works; the buoy is
 # the spot's buoy_region. The trend rules below are the source of the
 # sentences; the mockup page (development-assets/design-demo/widget-glass.html)
@@ -843,13 +866,28 @@ def _live_payload(spot: dict) -> dict:
     ahead = [w for w in wind_hours if w["t"] > now_hour]
     wind_sentence = _live_wind_sentence(wind_now, ahead, after_sunset) if wind_now else None
     wind_tint_cat = _wind_better(wind_now["e"], wind_now["g"]) if wind_now else None
+    # the swell word's star (v2.0.4): a fun+ reading under wind outside the good
+    # tier — the rating the sentence leads with (the better model's; the dawn
+    # hour's after sunset), so SOLID* reads "the swell is here, the wind isn't"
+    swell_star = bool(buoy_cat and cats.index(buoy_cat) >= cats.index("FUN")
+                      and wind_tint_cat and wind_tint_cat not in _WIND_GOOD)
+
+    # ── dawn-patrol weather (v2.0.4): the worse of the two models' glyphs at the
+    # dawn hour — the hour the chips rate — or none when neither has one ──
+    weather = None
+    if after_sunset:
+        wx = (fetch_spot_weather(spot["lat"], spot["lon"]) or {}).get(key(now_hour)) or {}
+        kinds = [k for k in (wx.get("EURO"), wx.get("GFS")) if k]
+        if kinds:
+            weather = {"kind": max(kinds, key=WEATHER_KINDS.index),
+                       "e": wx.get("EURO"), "g": wx.get("GFS")}
 
     # ── swell trend: worst primary rating either model forecasts in the window, floored at the buoy ──
     euro = fetch_all_cmems_wave_forecasts() or _last_known_forecast.get("EURO") or {}
     gfs = fetch_all_wave_forecasts("GFS") or _last_known_forecast.get("GFS") or {}
     def _cat(rec):
-        c = ((rec or {}).get("components") or [None])[0]
-        return swell_rules.categorize(c["height_ft"], c["period_s"]) if c and c.get("height_ft") is not None and c.get("period_s") else None
+        hp = _rated_hp(rec)
+        return swell_rules.categorize(*hp) if hp and hp[0] is not None and hp[1] else None
     e_by = {r["time"]: r for r in (euro.get(_LIVE_BUOY_REGION) or [])}
     g_by = {r["time"]: r for r in (gfs.get(_LIVE_BUOY_REGION) or [])}
     swell_hours = [{"t": h, "e": _cat(e_by.get(key(h))), "g": _cat(g_by.get(key(h)))}
@@ -904,14 +942,15 @@ def _live_payload(spot: dict) -> dict:
         "generated_at": now.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "site": _WIDGET_SITE,
         "buoy": {"region": _LIVE_BUOY_REGION, "buoy_id": region["buoy_id"], "time": obs_time,
-                 "category": buoy_cat, "colors": dict(swell_rules.COLORS[buoy_cat]) if buoy_cat else None,
+                 "category": buoy_cat, "star": swell_star,
+                 "colors": dict(swell_rules.COLORS[buoy_cat]) if buoy_cat else None,
                  "primary": primary, "secondary": comps[1] if len(comps) > 1 else None,
                  "swell_sentence": swell_sentence},
         "tap_url": spot.get("surfline_url") or _WIDGET_SITE,
         "lido": {"spot": _LIVE_SPOT, "after_sunset": after_sunset, "window_day": day.isoformat(),
                  "sunrise": _fmt_clock(sr) if sr else None, "sunset": _fmt_clock(ss) if ss else None,
                  "wind_now": wind_now, "wind_hours": wind_hours, "wind_sentence": wind_sentence,
-                 "wind_category": wind_tint_cat, "swell_hours": swell_hours,
+                 "wind_category": wind_tint_cat, "swell_hours": swell_hours, "weather": weather,
                  "tide": {"now_ft": tide_now, "trend": tide_trend, "now_h": round(now_h, 2),
                           "hourly": hourly, "hilo": hilo}},
     }

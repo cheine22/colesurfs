@@ -4,8 +4,12 @@
     sea-glass design (direction B of development-assets/design-demo/widget-glass.html,
     round 2) — a constant slab in the home screen's slate with the icon's glass
     on it, the rating pulled into the hero word, a light-leak in the pane's
-    corner and a meniscus along the bottom edge. CSS and markup are the
-    mockup's; the mockup is the spec. `data` is /api/widget/live's payload. -#}
+    corner and a meniscus along the bottom edge. v2.0.4: the hero word takes a
+    star (SOLID*) when a fun+ reading sits under wind outside the good tier
+    (`buoy.star`), and the dawn-patrol block leads with the weather glyph at
+    the dawn hour (`lido.weather`). CSS and markup are the mockup's; the
+    mockup is the spec.
+    `data` is /api/widget/live's payload. -#}
 <html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Archivo:wght@800&display=swap">
 <style>
@@ -125,6 +129,10 @@ html, body { margin:0; width:{{ w }}px; height:{{ h }}px; overflow:hidden; font-
 .lido .windblk { display:flex; flex-direction:column; gap:4px; margin-top:2px; }
 .lido .windblk .lbl { font-size:8.5px; color:var(--mute); }
 .lido .badges { display:flex; align-items:center; gap:5px; white-space:nowrap; }
+/* dawn patrol: the weather glyph at the dawn hour leads the label, in the ink the chips use */
+.lido .windblk .lbl.wx { display:flex; align-items:center; gap:4px; }
+.wx-glyph { width:13px; height:13px; flex:none; fill:none; stroke:var(--ink); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.wx-glyph .dots { stroke-width:3.2; }
 /* the wind sentence leads with the rating now; 9 px so its longest form wraps to two lines on its own */
 .lido .trend.sent { font-size:9px; letter-spacing:.06em; white-space:normal; line-height:1.25; }
 .lido .cond { font-size:8.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; padding:2px 7px; border-radius:999px;
@@ -175,6 +183,20 @@ const windInk = c => (appearance === 'dark' ? WIND : WINDL)[c] || (appearance ==
 
 // the dashboard's wind-sea glyph (_WIND_SEA_GLYPH), for partitions typed "windsea"
 const WS = '<svg class="ws-glyph" viewBox="0 0 24 24" aria-label="wind sea"><path d="M5 8h8.5a2.5 2.5 0 1 0-2.34-3.24"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.34 3.24"/><path d="M4 16h5.5a2.5 2.5 0 1 1-2.34 3.24"/></svg>';
+
+// dawn-patrol weather glyphs, one per wind.weather_kind — stroked in the ink like the wind-sea glyph,
+// no emoji (v2.0.4); the snow and rain marks under a cloud raised to make room
+const WX_CLOUD = 'M6.5 18.5h11a4 4 0 0 0 .6-7.95 5.5 5.5 0 0 0-10.7-1.1A4.5 4.5 0 0 0 6.5 18.5z';
+const WX_CLOUD_HI = 'M6.5 15h11a4 4 0 0 0 .6-7.95 5.5 5.5 0 0 0-10.7-1.1A4.5 4.5 0 0 0 6.5 15z';
+const WX = {
+  sunny:  '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.6 1.6M17.05 17.05l1.6 1.6M5.35 18.65l1.6-1.6M17.05 6.95l1.6-1.6"/>',
+  partly: '<circle cx="7" cy="7" r="2.6"/><path d="M7 2.9V1.6M7 11.1v1.3M2.9 7H1.6M11.1 7h1.3M4.1 4.1l-.92-.92M9.9 4.1l.92-.92M4.1 9.9l-.92.92"/><path d="M9 20h8.5a3.3 3.3 0 0 0 .5-6.56 4.5 4.5 0 0 0-8.75-.9A3.6 3.6 0 0 0 9 20z"/>',
+  cloudy: `<path d="${WX_CLOUD}"/>`,
+  rainy:  `<path d="${WX_CLOUD_HI}"/><path d="M8.5 18l-1 3.2M12.5 18l-1 3.2M16.5 18l-1 3.2"/>`,
+  snowy:  `<path d="${WX_CLOUD_HI}"/><path class="dots" d="M8 18.6h.01M12 18.6h.01M16 18.6h.01M10 21.6h.01M14 21.6h.01"/>`,
+};
+const WX_NAME = { sunny:'sunny', partly:'partly cloudy', cloudy:'cloudy', rainy:'rain', snowy:'snow' };
+const wxGlyph = k => WX[k] ? `<svg class="wx-glyph" viewBox="0 0 24 24" aria-label="${WX_NAME[k]}"><title>${WX_NAME[k]}</title>${WX[k]}</svg>` : '';
 
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
 const CARD = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
@@ -246,8 +268,9 @@ function widget(d) {
            (p.direction_deg != null ? `<div class="dir"><span>${toArrow(p.direction_deg)}</span><span>${toCard(p.direction_deg)}</span></div>` : '') + `</div>`;
     smalls = hasSecond ? `<div class="second">${line(b.secondary)}</div>` : `<div class="second mute">no secondary swell</div>`;
   } else {
-    // every category reads the way FLAT does — the word, then the swells beneath it; FLAT keeps only the primary
-    hero = `<div class="word hero">${esc(b.category)}</div>`;
+    // every category reads the way FLAT does — the word (starred when fun+ sits under wind that is not
+    // good), then the swells beneath it; FLAT keeps only the primary
+    hero = `<div class="word hero">${esc(b.category)}${b.star ? '*' : ''}</div>`;
     smalls = `<div class="second">${line(p)}</div>${hasSecond && !flat ? `<div class="second">${line(b.secondary)}</div>` : ''}`;
   }
   const left = `<div class="pane buoy${b.category ? ' lk' : ''}" style="${catVars(b.category)}">
@@ -261,8 +284,9 @@ function widget(d) {
   const RANK = { Glassy:0, Groomed:1, Clean:2, Textured:3, Messy:4, 'Blown Out':5 };
   const now = l.wind_now;
   const badges = now ? (now.e === now.g ? chip(now.e, true) : [now.e, now.g].sort((a, b) => RANK[a] - RANK[b]).map(c => chip(c, false)).join('')) : '';
+  const wx = l.after_sunset && l.weather ? wxGlyph(l.weather.kind) : '';
   const windblk = l.after_sunset
-    ? `<div class="lbl">dawn patrol wind</div><div class="badges">${badges}</div>`
+    ? `<div class="lbl${wx ? ' wx' : ''}">${wx}dawn patrol wind</div><div class="badges">${badges}</div>`
     : (l.wind_sentence ? `<div class="trend sent">${esc(l.wind_sentence)}</div>` : '');
   const tideSnap = { hourly: t.hourly, hilo: t.hilo, nowFt: t.now_ft };
   const right = `<div class="pane lido">
