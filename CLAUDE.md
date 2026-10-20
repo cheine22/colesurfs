@@ -900,8 +900,8 @@ archive the models learned.
 `widget/colesurfs.js` + `/api/widget` — the iOS home-screen widgets
 (Scriptable). `api_widget` in app.py is a server-side port of
 `computeModelOverview` (the Fun+ Days cell: 3 h stride from now, night
-skipped, min(EURO, GFS) category, EURO region-wind gate, ≥ 2 windows per
-day) — change the JS rule and this together, they must agree exactly;
+skipped, min(EURO, GFS) category, region-wind gate on both models, ≥ 2
+windows per day) — change the JS rule and this together, they must agree exactly;
 `_rated_hp` is the server twin of the page's `_ratedHP` (first swell
 partition, the wind sea never rates).
 `last_update` is the OLDER of the two model runs, labelled "today 0Z" /
@@ -1074,10 +1074,13 @@ comment.
 - **Fun+ Days column** — `computeModelOverview(spotName)` samples both
   models on a fixed 3-hour stride regardless of UI resolution; tracks best
   `min(GFS_cat, EURO_cat)` for the cell colour and counts days with ≥ 2
-  daytime windows ≥ FUN. A window additionally passes a region-wind gate:
-  ≥ 1 spot in the buoy's region must rate Textured-or-better (per
-  `regionWindData` + `windCondition`) at that hour; the gate is skipped
-  ("honest-empty") while region wind hasn't loaded. Denominator = span of
+  daytime windows ≥ FUN. A window additionally passes a region-wind gate
+  on BOTH models: `regionWindData` and `regionWindAlt` must each put ≥ 1
+  spot in the buoy's region at Textured-or-better (`windCondition`) at that
+  hour (not necessarily the same spot), so the count never moves with the
+  model toggle. A model with no region-wind records sits out
+  ("honest-empty"); neither loaded → swell alone. `_widget_overview` in
+  app.py applies the identical rule. Denominator = span of
   sampled future times in days. Cell rendered between `spot-cell` and
   `buoy-col` with class `model-overview`.
 - **Observed fun+ figures** — `funDaysData[buoy_id]` (from `/api/fun_days`,

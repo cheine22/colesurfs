@@ -2840,19 +2840,21 @@ function computeModelOverview(spotName) {
     }
   }
 
-  // Region-wind filter: a fun+ window is only counted if at least one
-  // surf spot in the same region has Textured-or-better wind at the
-  // exact same time, per the active wind model. This is the "is the
-  // wind even surfable somewhere in the region" gate.
+  // Region-wind gate: a fun+ window only counts when BOTH models put ≥1
+  // surf spot in the region at Textured-or-better at that hour (not
+  // necessarily the same spot) — the swell's min(EURO, GFS) rule applied to
+  // wind, so the count doesn't move with the model toggle. A model whose
+  // region wind hasn't loaded sits out (honest-empty); neither loaded →
+  // swell alone. app.py _widget_overview is the server twin.
   const _spotMeta = (CFG.spots || []).find(s => s.name === spotName);
   // For a buoy row (no buoy_region), the spot's own name is the region.
   const _region = (_spotMeta && _spotMeta.buoy_region) || spotName;
-  const _windyTimes = regionWindData
-    ? _regionCleanWind(_region, regionWindData).surfable : new Set();
-  // Honest-empty: if region wind data isn't loaded yet, skip the filter
-  // (count fun+ windows by swell alone) so the column doesn't go blank
-  // during a partial load.
-  const _applyWindFilter = _windyTimes.size > 0;
+  const _windGates = [regionWindData, regionWindAlt]
+    .filter(Boolean)
+    .map(d => _regionCleanWind(_region, d))
+    .filter(w => w.known.size > 0)
+    .map(w => w.surfable);
+  const _windOk = t => _windGates.every(s => s.has(t));
 
   const funIdx = _swellCatIdx('FUN');
   // Per-day count of fun-or-better windows.
@@ -2875,9 +2877,7 @@ function computeModelOverview(spotName) {
       bestHP = (ei <= gi) ? eHP : gHP;
     }
     if (m >= funIdx) {
-      // Wind gate: only count if ≥1 region spot has Textured-or-better
-      // wind at this same time. Skipped when wind data isn't loaded.
-      if (_applyWindFilter && !_windyTimes.has(t)) continue;
+      if (!_windOk(t)) continue;
       const k = _dayKey(t);
       perDay[k] = (perDay[k] || 0) + 1;
     }

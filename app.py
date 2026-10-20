@@ -571,23 +571,27 @@ _WIDGET_SITE = "https://surfreport.coleheine.com/"
 _SURFABLE_WIND = {"Glassy", "Groomed", "Clean", "Textured"}
 
 
-def _region_surfable_hours(region: str, wind: dict | None) -> set:
+def _region_surfable_hours(region: str, wind: dict | None) -> set | None:
     """Hours ('YYYY-MM-DDTHH:MM') where ≥1 wind spot in the region rates
-    Textured-or-better — the Fun+ Days gate (_regionCleanWind().surfable)."""
-    ok = set()
+    Textured-or-better (_regionCleanWind().surfable); None when no spot in
+    the region has a wind record (_regionCleanWind().known empty)."""
+    ok, known = set(), False
     if not wind:
-        return ok
+        return None
     for ws in WIND_SPOTS:
         if ws.get("buoy_region") != region or ws.get("shore_normal") is None:
             continue
         for rec in wind.get(ws["name"]) or []:
-            if not rec or rec.get("speed_mph") is None or rec["time"] in ok:
+            if not rec or rec.get("speed_mph") is None:
+                continue
+            known = True
+            if rec["time"] in ok:
                 continue
             cond = wind_rules.categorize(rec["speed_mph"], rec.get("direction_deg"),
                                          ws["shore_normal"], rec.get("gust_mph"))
             if cond in _SURFABLE_WIND:
                 ok.add(rec["time"])
-    return ok
+    return ok if known else None
 
 
 # What the dashboard rates a model record by (index.html _ratedHP): the
@@ -609,7 +613,7 @@ def _rated_hp(rec):
     return (sw["height_ft"], sw["period_s"]) if sw else _NO_SWELL_HP
 
 
-def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
+def _widget_overview(region: str, euro: dict, gfs: dict, winds: list,
                      sun: dict, now) -> dict:
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
@@ -630,8 +634,10 @@ def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
         t0 = _ms(times[0])
         sampled = [t for t in times if ((_ms(t) - t0) / 3600000) % 3 == 0]
 
-    surfable = _region_surfable_hours(region, wind)
-    apply_wind = len(surfable) > 0          # honest-empty: no wind → swell only
+    # Both models' region wind must be Textured-or-better (computeModelOverview);
+    # a model with no wind records sits out, neither → swell only.
+    gates = [g for g in (_region_surfable_hours(region, w) for w in winds) if g is not None]
+    apply_wind = bool(gates)
     three_h = 3 * 3600 * 1000
     thirty = 30 * 60 * 1000
     per_day, best_idx, best_hp = {}, -1, None
@@ -650,7 +656,7 @@ def _widget_overview(region: str, euro: dict, gfs: dict, wind: dict | None,
         if m > best_idx:
             best_idx, best_hp = m, (e_hp if ei <= gi else g_hp)
         if m >= fun_idx:
-            if apply_wind and t not in surfable:
+            if not all(t in g for g in gates):
                 continue
             per_day[t[:10]] = per_day.get(t[:10], 0) + 1
     count = sum(1 for v in per_day.values() if v >= 2)
@@ -686,10 +692,12 @@ def _widget_payload(names: list[str]) -> dict:
     known = {s["name"]: s for s in SPOTS}
     euro = fetch_all_cmems_wave_forecasts() or _last_known_forecast.get("EURO") or {}
     gfs = fetch_all_wave_forecasts("GFS") or _last_known_forecast.get("GFS") or {}
-    try:
-        wind = fetch_region_wind_forecasts("EURO")
-    except Exception:
-        wind = None
+    winds = []
+    for model in ("EURO", "GFS"):
+        try:
+            winds.append(fetch_region_wind_forecasts(model))
+        except Exception:
+            winds.append(None)
     spot = SPOTS[0] if SPOTS else {"lat": 40.58, "lon": -73.63}
     sun = compute_sun_data(spot["lat"], spot["lon"])
     now = datetime.now(_tz.utc)
@@ -717,7 +725,7 @@ def _widget_payload(names: list[str]) -> dict:
         "last_update": {"model": oldest.get("model"), "run_time": rt, "label": label},
         "runs": {k: {"run_time": v.get("run_time"), "run_utc": v.get("run_utc")} for k, v in runs.items()},
         "regions": [{"name": n, "buoy_id": known[n]["buoy_id"],
-                     **_widget_overview(n, euro, gfs, wind, sun, now)} for n in names],
+                     **_widget_overview(n, euro, gfs, winds, sun, now)} for n in names],
     }
 
 
